@@ -1,0 +1,73 @@
+# Tau-typer settings. Change values HERE, never in the code.
+
+# ---------- Step 1: toy data (simulated, for testing the pipeline) ----------
+toy_data:
+  seed: 42                      # random seed -> identical toy data on every run
+  n_subjects: 500
+  tau_negative_fraction: 0.60   # paper: 61% had no abnormal tau (stage 0)
+  # share of tau+ people per subtype (paper: 32.7 / 17.8 / 30.5 / 19.0 %)
+  subtype_fractions: {S1_limbic: 0.33, S2_MTL_sparing: 0.18, S3_posterior: 0.30, S4_lateral_temporal: 0.19}
+  z_events: [2, 5, 10]          # paper's cut-points, same for every region
+  z_max: 15                     # OUR choice - the paper does not report Z_max
+  # "Normal" (tau-negative) SUVR per lobe, used for both hemispheres.
+  # Invented, roughly flortaucipir-like. SUVR = mean + z * sd
+  normal_suvr:
+    MTL:       {mean: 1.20, sd: 0.10}
+    temporal:  {mean: 1.15, sd: 0.08}
+    parietal:  {mean: 1.10, sd: 0.08}
+    occipital: {mean: 1.12, sd: 0.08}
+    frontal:   {mean: 1.05, sd: 0.07}
+  # The 10 regions (= SuStaIn biomarkers). This is the column order everywhere.
+  regions: [L_MTL, R_MTL, L_temporal, R_temporal, L_parietal, R_parietal,
+            L_occipital, R_occipital, L_frontal, R_frontal]
+  # Order in which regions become abnormal in each subtype (first = earliest).
+  # The toy-data code turns each order into 30 events with the "wave" rule:
+  # each region starts one step after the previous one, earlier regions keep climbing.
+  subtype_region_order:
+    S1_limbic:           [L_MTL, R_MTL, L_temporal, R_temporal, L_parietal, R_parietal, L_frontal, R_frontal, L_occipital, R_occipital]
+    S2_MTL_sparing:      [L_parietal, R_parietal, L_frontal, R_frontal, L_temporal, R_temporal, L_occipital, R_occipital, L_MTL, R_MTL]
+    S3_posterior:        [L_occipital, R_occipital, L_parietal, R_parietal, L_temporal, R_temporal, L_MTL, R_MTL, L_frontal, R_frontal]
+    S4_lateral_temporal: [L_temporal, L_parietal, L_MTL, L_frontal, R_temporal, L_occipital, R_parietal, R_MTL, R_frontal, R_occipital]
+  # Simple covariates. Invented rules, only so the toy file looks like real study data.
+  # SuStaIn does not use them.
+  covariates:
+    age_mean: 75                       # age at stage 0
+    age_drop_per_stage: 0.3            # later stages are younger (paper: r = -0.59)
+    age_sd: 6
+    female_fraction: 0.55
+    diagnosis_stage_cutoffs: {MCI: 8, AD: 19}   # stage >= 19 -> AD, >= 8 -> MCI, else CN
+    amyloid_positive_fraction_tau_negative: 0.25 # tau+ people are always amyloid+
+
+# ---------- Step 2: pipeline (the paper's method) ----------
+pipeline:
+  input_csv: data/toy/toy_tau.csv
+  id_column: subject_id
+  # the regions SuStaIn uses (same names as the CSV columns)
+  regions: [L_MTL, R_MTL, L_temporal, R_temporal, L_parietal, R_parietal,
+            L_occipital, R_occipital, L_frontal, R_frontal]
+  seed: 42
+  gmm_components: 2        # paper: per region one "normal" + one "abnormal" bell curve
+  output_folder: results/toy
+
+# ---------- SuStaIn settings (paper steps 6-9) ----------
+sustain:
+  z_events: [2, 5, 10]        # paper: same cut-points for every region -> 30 events
+  z_max: 15                   # NOT reported in the paper - our choice (must be above 10)
+  n_subtypes_max: 4           # fit 1, 2, 3 and 4 subtypes (paper chose 4)
+  n_startpoints: 25           # not reported in the paper; pySuStaIn recommends 25
+  n_iterations_mcmc: 10000    # paper: 10,000 (pySuStaIn recommends 1e5 - 1e6)
+  use_parallel_startpoints: false
+  dataset_name: toy           # used in the names of SuStaIn's output files
+  # Quick first try: same model, far fewer start points and MCMC iterations (rough results!)
+  fast_test: {n_startpoints: 5, n_iterations_mcmc: 1000}
+
+# ---------- Results (paper steps 9-11) ----------
+results:
+  sustain_folder: results/toy/sustain_fast_test   # which SuStaIn run to look at
+  n_subtypes: 4                # which model to read (paper: 4, chosen by cross-validation)
+  poor_fit_threshold: 0.5      # paper: subtype probability < 0.5 = does not fit any subtype well
+  # Our names for the subtypes of THIS run, in SuStaIn's order (Subtype 1 = largest group).
+  # Chosen by looking at the average z-score table and the PVD (S6). Re-check after every new run!
+  subtype_names: [limbic, posterior, lateral temporal, MTL-sparing]
+  # Stage groups for the progression figure: [1, 7, 13, ...] -> 1-6, 7-12, 13-18, 19-24, 25-30
+  stage_edges: [1, 7, 13, 19, 25, 31]
