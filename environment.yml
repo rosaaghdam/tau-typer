@@ -20,6 +20,7 @@ dependencies:
   - jupyterlab
   - ipykernel
   - pytest
+  - shiny              # Shiny for Python: the Tau-typer app (app/app.py)
   - pip
   - pip:
       # original pySuStaIn, pinned to one commit; brings pathos, kde_ebm, awkde, tqdm

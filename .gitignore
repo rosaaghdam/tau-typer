@@ -19,3 +19,6 @@ Github/
 
 # SuStaIn result files (can be large; recreate by running the steps)
 *.pickle
+
+# Claude Code browser-pane settings (machine-specific)
+.claude/

@@ -398,3 +398,52 @@ Groups are small (n = 4-20), so late-stage columns are noisy.
 - C. Local install (Docker / package): strongest privacy, no server.
 
 **Open**: which privacy option (A is the only one where the server truly never sees the data).
+
+## 2026-10-16 – Git repository on GitHub
+
+**What we did**
+- git init (branch main); .gitignore now also excludes papers/ (copyright), Github/ (others'
+  repos) and *.pickle. Still excluded: env/, data/ except data/toy/, results/.
+- First commit 5f653ab (35 files). Merged GitHub's own initial commit fb15416 (README.md + MIT
+  LICENSE) -> merge 9d5ec76. Pushed to git@github.com:rosaaghdam/tau-typer.git (PRIVATE).
+- SSH: removed GitHub's old RSA host keys from ~/.ssh/known_hosts; created a new ED25519 key
+  ~/.ssh/id_ed25519 (fingerprint SHA256:Mwa7cndvIkRzTCX75WZW9B0a5MC7GidOGA9BkcmOkoI, with a
+  passphrase, stored in the macOS keychain) and added it to GitHub.
+
+**Open**
+- LICENSE is MIT (chosen by GitHub's template). Check with the lab before the repo is made public.
+- README.md is only 2 lines - write a real one later.
+- code/README.md still mentions run.sh (removed) - update.
+
+## 2026-10-16 – App step 1: empty 5-tab skeleton
+
+**What we did**
+- environment.yml: added `shiny`; installed into ./env with conda (shiny 1.8.0).
+  pySuStaIn still imports fine.
+- app/app.py: Shiny for Python, `ui.page_navbar` with 5 tabs (1 Data & QC, 2 Normalization,
+  3 Run SuStaIn, 4 Figures, 5 Subtype analysis), placeholder text only, empty server.
+- steps/S10_run_app.txt: `shiny run app/app.py`, then open http://127.0.0.1:8000.
+- Checked in the browser: title "Tau-typer", all 5 tabs, switching works.
+- .claude/launch.json (Claude's browser-pane setting) kept out of git.
+
+**Next**: tab 1 - upload a CSV, match columns, QC tables and plots.
+
+## 2026-10-16 – App tab 1, piece 1: upload + Sample Data + Data Head
+
+**Design decision (Rosa)**: follow her CMiNet app (https://cminet.wid.wisc.edu): each tab = sidebar
+(upload, "Sample Data" download with help text, options with one-line help, one action button)
++ main area with small tabs (Data Head, Results). Possible 6th tab "About" (not decided yet).
+
+**What we did**
+- app/app.py tab 1: `ui.layout_sidebar` with `input_file` (CSV), Sample Data `download_link`
+  (sends data/toy/toy_tau.csv), main `navset_tab` -> "Data Head" (status line + first 20 rows).
+- Server: `uploaded_data()` reactive calc (pandas read_csv), `data_status`, `data_head`,
+  `download_sample` (`@render.download_link` - `@render.download` is deprecated in shiny 1.8).
+- Sidebar `open="always"` (it started folded away otherwise).
+- Tested in the browser: Sample Data download = 501 lines; uploading it shows
+  "500 rows and 15 columns" + 20-row table.
+
+**Privacy note for later**: Shiny saves an uploaded file to a temporary file on the machine that
+runs the app (`datapath`). For the server version we must delete it after reading / at session end.
+
+**Tip**: `shiny run app/app.py --reload` restarts the app automatically when app.py changes.
