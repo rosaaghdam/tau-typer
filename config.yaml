@@ -76,3 +76,9 @@ results:
 qc:
   suvr_min: 0.5     # OUR choice: tau-PET SUVR below this is almost certainly an error
   suvr_max: 4.0     # OUR choice: SUVR above this is very unusual even in advanced AD
+
+# ---------- App tab 1: the paper's inclusion rule (Vogel 2021, Methods) ----------
+inclusion:
+  min_age_cn: 40                          # paper: cognitively normal people older than 40
+  cn_labels: [CN, CU, HC, control]        # diagnosis values meaning "cognitively normal"
+  impaired_labels: [MCI, AD, dementia]    # diagnosis values meaning MCI or AD (must be amyloid+)

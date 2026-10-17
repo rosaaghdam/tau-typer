@@ -12,7 +12,7 @@ from shiny import App, reactive, render, req, ui
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
-from src.qc import demographics_table, guess_columns, qc_summary
+from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_region_histograms
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
@@ -35,7 +35,10 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Data Head", ui.output_ui("data_status"),
                                       ui.output_data_frame("data_head")),
                          ui.nav_panel("QC summary", ui.output_ui("qc_status"),
-                                      ui.output_data_frame("qc_table")),
+                                      ui.output_data_frame("qc_table"),
+                                      ui.h6("Inclusion rule", class_="mt-4"),
+                                      ui.output_ui("inclusion_status"),
+                                      ui.output_data_frame("inclusion_table")),
                          ui.nav_panel("Region distributions",
                                       ui.p("Raw values of each selected region column, before normalization.",
                                            class_="text-muted small"),
@@ -82,7 +85,9 @@ def server(input, output, session):
                    for role, label in ROLE_LABELS.items()]
         regions = ui.input_selectize("col_regions", "Region columns (the SuStaIn features)",
                                      choices=columns, selected=guess["regions"], multiple=True)
-        return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions)
+        rule = ui.input_checkbox("apply_rule", "Apply the paper's inclusion rule "
+                                 "(CN older than 40, or MCI/AD amyloid-positive)", value=False)
+        return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions, ui.hr(), rule)
 
     @reactive.calc
     def chosen_columns():
@@ -90,9 +95,39 @@ def server(input, output, session):
         return {role: input[f"col_{role}"]() for role in ROLE_LABELS}
 
     @reactive.calc
-    def qc_results():
+    def included():
+        """(people used from here on, reasons table or None). The rule runs only if the box is ticked."""
         data = uploaded_data()
         req(data is not None)
+        if not input.apply_rule():
+            return data, None
+        rule = CONFIG["inclusion"]
+        return apply_inclusion_rule(data, chosen_columns(), rule["min_age_cn"],
+                                    rule["cn_labels"], rule["impaired_labels"])
+
+    @reactive.calc
+    def analysis_data():
+        """The people every later step uses (all, or only those kept by the inclusion rule)."""
+        return included()[0]
+
+    @render.ui
+    def inclusion_status():
+        reasons = included()[1]
+        if reasons is None:
+            return ui.p("Inclusion rule not applied (tick the box in the sidebar to apply it).",
+                        class_="text-muted small")
+        return ui.p(f"Inclusion rule: {len(analysis_data())} of {len(uploaded_data())} people kept.",
+                    class_="fw-bold")
+
+    @render.data_frame
+    def inclusion_table():
+        reasons = included()[1]
+        req(reasons is not None)
+        return reasons
+
+    @reactive.calc
+    def qc_results():
+        data = analysis_data()
         qc = CONFIG["qc"]
         return qc_summary(data, chosen_columns(), input.col_regions() or [], qc["suvr_min"], qc["suvr_max"])
 
@@ -112,15 +147,12 @@ def server(input, output, session):
 
     @render.data_frame
     def demographics():
-        data = uploaded_data()
-        req(data is not None)
-        return demographics_table(data, chosen_columns())
+        return demographics_table(analysis_data(), chosen_columns())
 
     @render.plot
     def region_hist():
-        data = uploaded_data()
-        req(data is not None, input.col_regions())       # wait for data and at least 1 region
-        return plot_region_histograms(data, input.col_regions())
+        req(input.col_regions())                         # wait for at least 1 region
+        return plot_region_histograms(analysis_data(), input.col_regions())
 
     @render.ui
     def data_status():

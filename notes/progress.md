@@ -543,3 +543,37 @@ probably show a smoother tail. Worth remembering when we judge the GMM in tab 2.
 outputs wait. Polish later (e.g. import matplotlib when the app starts).
 
 **Tab 1 status**: pieces 1-4 done. Left: piece 5 - the paper's inclusion rule (checkbox).
+
+## 2026-10-17 – Tab 1, piece 5a: the paper's inclusion rule (function)
+
+**What we did**
+- Committed + pushed demographics (73bc6cb).
+- src/qc.py: `apply_inclusion_rule(data, columns, min_age_cn, cn_labels, impaired_labels)` ->
+  (kept data, reasons table). Keeps CN older than min_age_cn, and MCI/AD with amyloid == 1.
+  Labels compared ignoring case. Missing diagnosis/age/amyloid column -> rule not applied, says why.
+- config.yaml: `inclusion:` min_age_cn 40, cn_labels [CN, CU, HC, control],
+  impaired_labels [MCI, AD, dementia].
+- Tested: toy data keeps 500/500 (350 CN + 150 MCI/AD); edited copy removes exactly 3 (CN aged 38,
+  AD amyloid-negative, diagnosis "FTD"), keeps an MCI aged 35 and a lower-case "cn";
+  no amyloid column -> "Rule NOT applied".
+
+**Open**: which diagnosis labels the real file uses (add them to config.yaml).
+
+**Next**: piece 5b - checkbox in the app; QC, histograms and demographics then use the kept people.
+
+## 2026-10-17 – Tab 1, piece 5b: inclusion-rule checkbox in the app
+
+**What we did**
+- Sidebar: checkbox "Apply the paper's inclusion rule (CN older than 40, or MCI/AD amyloid-positive)",
+  unticked by default (see the whole file first).
+- New reactive chain: uploaded_data() -> included() -> analysis_data(). QC summary, Region
+  distributions and Demographics now use analysis_data(); Data Head still shows the raw file.
+  Tab 2 will also start from analysis_data().
+- QC summary tab: new "Inclusion rule" section (status line + reasons table).
+- Tested in the browser with an edited sample (CN aged 38, AD amyloid-negative, diagnosis FTD):
+  unticked -> 500 people; ticked -> "497 of 500 people kept", reasons 348/149/1/1/1, QC counts 497,
+  Demographics All 497 (AD 80, all amyloid+); unticked again -> 500.
+
+**Tab 1 is complete** (upload, sample data, column matching, QC summary, histograms,
+demographics, inclusion rule). Still open for tab 1: widen QC "Check" column, speed of first plot,
+real-file assumptions (sex/amyloid coding, diagnosis labels), maybe an "About" tab.
