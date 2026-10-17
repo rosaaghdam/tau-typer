@@ -16,10 +16,11 @@ def sustain_inputs(z, regions, z_events, z_max):
         data  - people x regions array of z-scores (plain numbers, no names)
         Z_vals - regions x cut-points table, every row = z_events (e.g. [2, 5, 10])
         Z_max  - the z-score each region reaches at the very end (one per region)
+    z_max can be one number (same for every region) or one number per region.
     """
     data = z[regions].to_numpy()
     Z_vals = np.array([z_events] * len(regions), dtype=float)
-    Z_max = np.full(len(regions), float(z_max))
+    Z_max = np.broadcast_to(np.asarray(z_max, dtype=float), (len(regions),)).copy()
     return data, Z_vals, Z_max
 
 

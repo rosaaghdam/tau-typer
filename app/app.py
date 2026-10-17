@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
-from src.sustain_model import count_people_above, parse_cut_points, z_max_table
+from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
 from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
 
@@ -95,7 +95,8 @@ app_ui = ui.page_navbar(
                                       ui.output_ui("events_status"),
                                       ui.output_data_frame("events_table")),
                          ui.nav_panel("Z_max", ui.output_ui("zmax_status"),
-                                      ui.output_data_frame("zmax_table"))))),
+                                      ui.output_data_frame("zmax_table")),
+                         ui.nav_panel("SuStaIn input", ui.output_ui("sustain_input_summary"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -360,6 +361,42 @@ def server(input, output, session):
         table = z_max_values().reset_index(names="Region")
         table["people with z >= min"] = table["people with z >= min"].astype(int)   # 130, not 130.0
         return table
+
+    @reactive.calc
+    def sustain_input():
+        """Exactly what tab 3 gives to pySuStaIn (data, Z_vals, Z_max) + names, IDs and checks."""
+        z, cuts = normalized()["z"], cut_points()
+        regions = list(z.columns)
+        z_max = z_max_values().loc[regions, "Z_max used"].to_numpy()
+        data, Z_vals, Z_max = sustain_inputs(z, regions, cuts, z_max)
+        minimum = CONFIG["normalization"]["min_people_per_event"]
+        checks = [("At least 2 regions", len(regions) >= 2),
+                  ("Z_max above the last cut-point in every region", bool((Z_max > cuts[-1]).all())),
+                  (f"Every event reached by at least {minimum} people",
+                   bool((event_counts() >= minimum).all().all()))]
+        return {"data": data, "Z_vals": Z_vals, "Z_max": Z_max, "regions": regions,
+                "subjects": list(z.index), "cut_points": cuts, "checks": checks}
+
+    @render.ui
+    def sustain_input_summary():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        s = sustain_input()
+        n_events = int((s["Z_vals"] > 0).sum())
+        z_max_text = (f"{s['Z_max'][0]:g} in every region" if len(set(s["Z_max"])) == 1
+                      else f"{s['Z_max'].min():.2f} - {s['Z_max'].max():.2f} (per region)")
+        facts = [f"Normalization: {NORM_METHODS[normalized()['method']]}",
+                 f"People x regions: {s['data'].shape[0]} x {s['data'].shape[1]}",
+                 f"Cut-points: {', '.join(f'{c:g}' for c in s['cut_points'])} -> {n_events} events, "
+                 f"SuStaIn stages 0-{n_events}",
+                 f"Z_max: {z_max_text}"]
+        checks = [ui.tags.li(("✓ " if ok else "✗ ") + text, class_="text-success" if ok else "text-danger")
+                  for text, ok in s["checks"]]
+        ready = all(ok for _, ok in s["checks"])
+        verdict = (ui.p("Ready for tab 3 (Run SuStaIn).", class_="text-success fw-bold") if ready else
+                   ui.p("Not ready: fix the items marked ✗.", class_="text-danger fw-bold"))
+        return ui.TagList(ui.h6("What goes into SuStaIn"), ui.tags.ul(*[ui.tags.li(f) for f in facts]),
+                          ui.h6("Checks"), ui.tags.ul(*checks), verdict)
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

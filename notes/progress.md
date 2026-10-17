@@ -749,3 +749,18 @@ has GMM components, cut-points, Z_max. Left: 2.5 reference-group option, 2.6 SuS
   warning, Events works.
 
 **Tab 2 status**: complete except 2.6 (SuStaIn-input summary handed to tab 3).
+
+## 2026-10-17 – Tab 2, piece 2.6a: "SuStaIn input" tab
+
+**What we did**
+- Committed + pushed piece 2.5b (fb2138c).
+- src/sustain_model.py: `sustain_inputs` now accepts Z_max as one number OR one per region
+  (np.broadcast_to). Re-checked: one number gives the S4 result (500x10, 10x3, 15 everywhere).
+- app/app.py: reactive `sustain_input()` = exactly what tab 3 will give pySuStaIn (data, Z_vals,
+  Z_max) + region names, subject IDs, cut-points and 3 checks (>= 2 regions; Z_max above last
+  cut-point everywhere; every event reached by >= min people). New small tab "SuStaIn input":
+  method, people x regions, cut-points -> events/stages, Z_max, checks with ✓/✗, verdict.
+- Tested: default -> 500 x 10, 30 events (stages 0-30), Z_max 15, all ✓, "Ready for tab 3";
+  percentile -> "Z_max: 11.24 - 13.90 (per region)", ready; fixed 8 -> ✗ Z_max check, "Not ready".
+
+**Next**: 2.6b - download buttons (z-scores CSV, normal reference CSV), then tab 3.
