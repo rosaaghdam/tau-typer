@@ -3,13 +3,19 @@
 Run from the project folder (environment active):   shiny run app/app.py
 This file is only the user interface; all calculations live in src/.
 """
+import sys
 from pathlib import Path
 
 import pandas as pd
 from shiny import App, reactive, render, req, ui
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
+sys.path.insert(0, str(ROOT))                           # so Python can find src/
+from src.qc import guess_columns
+
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
+ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
+               "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
 
 app_ui = ui.page_navbar(
     ui.nav_panel("1. Data & QC",
@@ -19,6 +25,7 @@ app_ui = ui.page_navbar(
                          ui.download_link("download_sample", "Sample Data"),
                          ui.p("Download simulated toy data (500 people) to see the expected format.",
                               class_="text-muted small"),
+                         ui.output_ui("column_matching"),           # filled in after an upload
                          width=320, open="always"),          # always visible, like CMiNet
                      ui.navset_tab(
                          ui.nav_panel("Data Head", ui.output_ui("data_status"),
@@ -48,6 +55,21 @@ def server(input, output, session):
         if not file:
             return None
         return pd.read_csv(file[0]["datapath"])
+
+    @render.ui
+    def column_matching():
+        """Dropdowns to say which column is what, pre-filled with guess_columns()."""
+        data = uploaded_data()
+        if data is None:
+            return ui.p("Upload a file to match its columns.", class_="text-muted small")
+        columns = list(data.columns)
+        guess = guess_columns(columns)
+        choices = {"": "(not in file)", **{col: col for col in columns}}
+        selects = [ui.input_select(f"col_{role}", label, choices=choices, selected=guess[role] or "")
+                   for role, label in ROLE_LABELS.items()]
+        regions = ui.input_selectize("col_regions", "Region columns (the SuStaIn features)",
+                                     choices=columns, selected=guess["regions"], multiple=True)
+        return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions)
 
     @render.ui
     def data_status():

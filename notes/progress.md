@@ -447,3 +447,32 @@ Groups are small (n = 4-20), so late-stage columns are noisy.
 runs the app (`datapath`). For the server version we must delete it after reading / at session end.
 
 **Tip**: `shiny run app/app.py --reload` restarts the app automatically when app.py changes.
+
+## 2026-10-16 – Tab 1, piece 2a: guessing the column roles (src/qc.py)
+
+**What we did**
+- Committed + pushed the app so far (4ea4e5d).
+- src/qc.py: `guess_columns(columns)` - first guess of ID, age, sex, diagnosis, amyloid columns
+  (exact name, otherwise first column containing a hint word) and region columns (names starting
+  with L_/R_/lh_/rh_/left_/right_). The user always checks the guess in the app.
+- Tested: toy columns all correct; made-up names (RID, Age_at_scan, Gender, DX, AB_status,
+  lh_temporal, Left-MTL) all correct; no match -> None / [].
+
+**Known weaknesses**
+- Partial matching can mislead (e.g. "ml_stage" contains "age" if no better age column exists).
+- Desikan-Killiany names (ctx_lh_entorhinal) are not recognised as regions, and DK regions would
+  first need averaging into lobes -> depends on the real file format (open question).
+
+**Next**: piece 2b - dropdowns in the tab-1 sidebar, pre-filled with these guesses.
+
+## 2026-10-17 – Tab 1, piece 2b: column-matching dropdowns
+
+**What we did**
+- app/app.py: sidebar placeholder `output_ui("column_matching")`; server `column_matching()` builds,
+  after an upload, 5 dropdowns (Subject ID, Age, Sex, Diagnosis, Amyloid status; extra choice
+  "(not in file)") and a multi-select "Region columns", all pre-filled with `guess_columns()`.
+- The app adds the project folder to sys.path so it can import src/.
+- Tested in the browser with the sample data: before upload the hint shows; after upload all
+  5 roles + the 10 regions are pre-selected correctly.
+
+**Next**: piece 3 - QC summary table (src/qc.py), using the user's column choices.
