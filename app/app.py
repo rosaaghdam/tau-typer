@@ -7,11 +7,14 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import yaml
 from shiny import App, reactive, render, req, ui
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
-from src.qc import guess_columns
+from src.qc import guess_columns, qc_summary
+
+CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
@@ -29,7 +32,9 @@ app_ui = ui.page_navbar(
                          width=320, open="always"),          # always visible, like CMiNet
                      ui.navset_tab(
                          ui.nav_panel("Data Head", ui.output_ui("data_status"),
-                                      ui.output_data_frame("data_head"))))),
+                                      ui.output_data_frame("data_head")),
+                         ui.nav_panel("QC summary", ui.output_ui("qc_status"),
+                                      ui.output_data_frame("qc_table"))))),
     ui.nav_panel("2. Normalization",
                  ui.h3("Turn SUVR into z-scores (Gaussian mixture model)"),
                  ui.p("Coming: GMM per region, reference group, cut-points, Z_max.")),
@@ -70,6 +75,32 @@ def server(input, output, session):
         regions = ui.input_selectize("col_regions", "Region columns (the SuStaIn features)",
                                      choices=columns, selected=guess["regions"], multiple=True)
         return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions)
+
+    @reactive.calc
+    def chosen_columns():
+        """The user's dropdown choices: role -> column ("" = not in file)."""
+        return {role: input[f"col_{role}"]() for role in ROLE_LABELS}
+
+    @reactive.calc
+    def qc_results():
+        data = uploaded_data()
+        req(data is not None)
+        qc = CONFIG["qc"]
+        return qc_summary(data, chosen_columns(), input.col_regions() or [], qc["suvr_min"], qc["suvr_max"])
+
+    @render.ui
+    def qc_status():
+        n_warnings = int((qc_results()["Status"] == "Warning").sum())
+        if n_warnings == 0:
+            return ui.p("All checks OK.", class_="text-success fw-bold")
+        return ui.p(f"{n_warnings} warning(s): please look at the rows marked in red.",
+                    class_="text-danger fw-bold")
+
+    @render.data_frame
+    def qc_table():
+        table = qc_results()
+        warning_rows = [i for i, status in enumerate(table["Status"]) if status == "Warning"]
+        return render.DataGrid(table, styles=[{"rows": warning_rows, "style": {"background-color": "#fde2e1"}}])
 
     @render.ui
     def data_status():

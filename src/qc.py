@@ -1,6 +1,8 @@
 """Tab 1 - checks (QC) for an uploaded tau-PET table."""
 import re
 
+import pandas as pd
+
 # Words that often appear in each column's name (lower case), most specific first.
 COLUMN_HINTS = {
     "id": ["subject_id", "subject", "rid", "id"],
@@ -27,3 +29,32 @@ def guess_columns(columns):
         guesses[role] = (exact + partial + [None])[0]
     guesses["regions"] = [col for col in columns if REGION_PATTERN.match(col)]
     return guesses
+
+
+def qc_summary(data, columns, regions, suvr_min, suvr_max):
+    """Basic quality checks of the uploaded table. Returns a table: Check, Result, Status.
+
+    columns: dict role -> chosen column ("" or None = not in file), from the tab-1 dropdowns.
+    regions: chosen region columns. suvr_min / suvr_max: plausible SUVR range (config.yaml).
+    """
+    rows = []
+    def add(check, result, ok):
+        rows.append({"Check": check, "Result": result, "Status": "OK" if ok else "Warning"})
+
+    add("People (rows)", len(data), len(data) > 0)
+    if columns.get("id"):
+        n_duplicates = int(data[columns["id"]].duplicated().sum())
+        add("Duplicate subject IDs", n_duplicates, n_duplicates == 0)
+    add("Region columns selected", len(regions), len(regions) >= 2)
+    values = data[list(regions)].apply(pd.to_numeric, errors="coerce")   # text becomes missing
+    n_missing = int(values.isna().sum().sum())
+    add("Missing or non-numeric region values", n_missing, n_missing == 0)
+    n_outside = int(((values < suvr_min) | (values > suvr_max)).sum().sum())
+    add(f"Region values outside {suvr_min}-{suvr_max} (implausible SUVR)", n_outside, n_outside == 0)
+    for role in ["age", "sex", "diagnosis", "amyloid"]:
+        if columns.get(role):
+            n_missing_role = int(data[columns[role]].isna().sum())
+            add(f"Missing {role} values", n_missing_role, n_missing_role == 0)
+        else:
+            add(f"{role.capitalize()} column", "not in file", False)
+    return pd.DataFrame(rows)

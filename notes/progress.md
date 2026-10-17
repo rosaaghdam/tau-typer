@@ -476,3 +476,32 @@ runs the app (`datapath`). For the server version we must delete it after readin
   5 roles + the 10 regions are pre-selected correctly.
 
 **Next**: piece 3 - QC summary table (src/qc.py), using the user's column choices.
+
+## 2026-10-17 – Tab 1, piece 3a: QC summary function
+
+**What we did**
+- Committed + pushed piece 2 (15d6d44).
+- src/qc.py: `qc_summary(data, columns, regions, suvr_min, suvr_max)` -> table Check / Result /
+  Status (OK or Warning): people, duplicate IDs, number of regions (>= 2), missing or non-numeric
+  region values, values outside the plausible SUVR range, missing age/sex/diagnosis/amyloid
+  ("not in file" if the column was not chosen).
+- config.yaml: new `qc:` section, suvr_min 0.5 and suvr_max 4.0 (OUR choice, not from the paper).
+- Tested: clean toy data all OK; broken copy (1 duplicate ID, 1 text value, 1 SUVR of 25,
+  1 missing age, no amyloid column) -> exactly those 5 warnings.
+
+**Next**: piece 3b - show the QC table in the app (new small tab "QC summary").
+
+## 2026-10-17 – Tab 1, piece 3b: QC summary tab in the app
+
+**What we did**
+- app/app.py reads config.yaml once (CONFIG) and imports qc_summary.
+- New small tab "QC summary": verdict line (green "All checks OK." / red "N warning(s)...")
+  + checks table with warning rows highlighted in red (render.DataGrid styles).
+- Reactive calcs: `chosen_columns()` (dropdown choices) and `qc_results()` (qc_summary) - the
+  table updates by itself on upload or when a dropdown changes.
+- Tested in the browser: sample data -> "All checks OK."; Amyloid set to "(not in file)" ->
+  "1 warning(s)" and the Amyloid row in red.
+
+**Small UI note**: the Check column wraps into narrow lines - widen later.
+
+**Next**: piece 4 - region histograms and demographics.

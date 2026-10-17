@@ -71,3 +71,8 @@ results:
   subtype_names: [limbic, posterior, lateral temporal, MTL-sparing]
   # Stage groups for the progression figure: [1, 7, 13, ...] -> 1-6, 7-12, 13-18, 19-24, 25-30
   stage_edges: [1, 7, 13, 19, 25, 31]
+
+# ---------- App tab 1: data checks (QC) ----------
+qc:
+  suvr_min: 0.5     # OUR choice: tau-PET SUVR below this is almost certainly an error
+  suvr_max: 4.0     # OUR choice: SUVR above this is very unusual even in advanced AD
