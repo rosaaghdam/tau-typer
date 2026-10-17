@@ -60,7 +60,12 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Normal reference", ui.output_ui("norm_status"),
                                       ui.output_data_frame("norm_reference")),
                          ui.nav_panel("GMM fit per region", ui.output_ui("gmm_region_choice"),
-                                      ui.output_plot("gmm_fit_plot", height="420px"))))),
+                                      ui.output_plot("gmm_fit_plot", height="420px")),
+                         ui.nav_panel("Z-scores",
+                                      ui.p("z = (value - normal mean) / normal SD. First 20 people:",
+                                           class_="text-muted small"),
+                                      ui.output_data_frame("z_head"),
+                                      ui.output_plot("z_hist", height="520px"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -189,6 +194,9 @@ def server(input, output, session):
         req(regions)
         values = analysis_data()[regions].apply(pd.to_numeric, errors="coerce")
         complete = values.dropna()                       # the GMM cannot handle missing values
+        id_col = chosen_columns().get("id")
+        if id_col:                                       # label rows with subject IDs
+            complete.index = analysis_data().loc[complete.index, id_col].values
         n_components = input.gmm_components()
         z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
         return {"z": z, "reference": reference, "values": complete,
@@ -223,6 +231,15 @@ def server(input, output, session):
         reference = result["reference"]
         return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
                             reference.loc["normal_sd", region], CONFIG["sustain"]["z_events"])
+
+    @render.data_frame
+    def z_head():
+        return normalized()["z"].head(20).round(2).reset_index(names="Subject")
+
+    @render.plot
+    def z_hist():
+        z = normalized()["z"]
+        return plot_region_histograms(z, list(z.columns), xlabel="z-score")
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

@@ -622,3 +622,20 @@ change afterwards, the table is stale until the next click (to flag in the UI la
   so the figure always matches the reference table. Cut-points still from config (2, 5, 10).
 - Tested: before Normalize -> "Click Normalize first."; after -> 10 regions, L_MTL figure;
   switching to R_occipital redraws the figure (title "normal mean 1.143, normal SD 0.092").
+
+## 2026-10-17 – Tab 2, piece 2.3a: "Z-scores" tab
+
+**What we did**
+- Committed + pushed piece 2.2 (c2f5bd6).
+- At the Normalize click the z-score table now gets subject IDs as row labels (if an ID column is
+  chosen) - needed later to match SuStaIn results back to people.
+- src/figures.py: `plot_region_histograms(..., xlabel=...)` (default unchanged for tab 1).
+- app/app.py: new small tab "Z-scores": first 20 people (Subject + 10 regions, 2 decimals) and one
+  z-score histogram per region.
+- Tested: TOY_0001 L_MTL z = 7.88 (as in S3); 20 rows; histograms drawn, no errors.
+
+**What the z histograms show**: every region now on the same scale - normal bump centred near 0
+(range about -2 to +2), tau+ people at z ~8-14. Same shape as the SUVR histograms in tab 1, only
+re-scaled per region.
+
+**Next**: piece 2.3b - "Events" tab (people reaching each cut-point, warning below 10).

@@ -45,11 +45,11 @@ def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_
     return fig
 
 
-def plot_region_histograms(data, regions, n_cols=5):
-    """One small histogram per region column (raw values, e.g. SUVR) - the tab-1 data check.
+def plot_region_histograms(data, regions, n_cols=5, xlabel="value (e.g. SUVR)"):
+    """One small histogram per region column - raw values in tab 1, z-scores in tab 2.
 
-    Shows the "normal" bump and the tau+ tail of each region before any normalization,
-    and makes outliers or odd extra bumps easy to spot.
+    Shows the "normal" bump and the tau+ tail of each region, and makes outliers or odd extra
+    bumps easy to spot. xlabel is the label under each panel.
     """
     values = data[list(regions)].apply(pd.to_numeric, errors="coerce")   # text becomes missing
     n_rows = max(1, int(np.ceil(len(regions) / n_cols)))
@@ -57,7 +57,7 @@ def plot_region_histograms(data, regions, n_cols=5):
     for ax, region in zip(axes.flat, regions):
         ax.hist(values[region].dropna(), bins=40, color="#4C72B0")
         ax.set_title(region, fontsize=10)
-        ax.set_xlabel("value (e.g. SUVR)", fontsize=8)
+        ax.set_xlabel(xlabel, fontsize=8)
     for ax in axes.flat[len(regions):]:
         ax.set_visible(False)                                             # hide unused panels
     fig.tight_layout()
