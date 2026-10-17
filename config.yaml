@@ -82,3 +82,7 @@ inclusion:
   min_age_cn: 40                          # paper: cognitively normal people older than 40
   cn_labels: [CN, CU, HC, control]        # diagnosis values meaning "cognitively normal"
   impaired_labels: [MCI, AD, dementia]    # diagnosis values meaning MCI or AD (must be amyloid+)
+
+# ---------- App tab 2: normalization checks ----------
+normalization:
+  min_people_per_event: 10    # Young et al. 2018 dropped events reached by fewer than 10 people

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
+from src.sustain_model import count_people_above
 from src.zscore import fit_gmm, zscore_regions
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
@@ -65,7 +66,12 @@ app_ui = ui.page_navbar(
                                       ui.p("z = (value - normal mean) / normal SD. First 20 people:",
                                            class_="text-muted small"),
                                       ui.output_data_frame("z_head"),
-                                      ui.output_plot("z_hist", height="520px"))))),
+                                      ui.output_plot("z_hist", height="520px")),
+                         ui.nav_panel("Events",
+                                      ui.p("Number of people reaching each cut-point in each region.",
+                                           class_="text-muted small"),
+                                      ui.output_ui("events_status"),
+                                      ui.output_data_frame("events_table"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -240,6 +246,31 @@ def server(input, output, session):
     def z_hist():
         z = normalized()["z"]
         return plot_region_histograms(z, list(z.columns), xlabel="z-score")
+
+    @reactive.calc
+    def event_counts():
+        """People reaching each cut-point (rows = regions, columns = cut-points)."""
+        z = normalized()["z"]
+        return count_people_above(z, list(z.columns), CONFIG["sustain"]["z_events"])
+
+    @render.ui
+    def events_status():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        minimum = CONFIG["normalization"]["min_people_per_event"]
+        n_rare = int((event_counts() < minimum).sum().sum())
+        if n_rare == 0:
+            return ui.p(f"All events are reached by at least {minimum} people.", class_="text-success fw-bold")
+        return ui.p(f"{n_rare} event(s) are reached by fewer than {minimum} people (rows in red).",
+                    class_="text-danger fw-bold")
+
+    @render.data_frame
+    def events_table():
+        counts = event_counts()
+        minimum = CONFIG["normalization"]["min_people_per_event"]
+        rare_rows = [i for i, region in enumerate(counts.index) if (counts.loc[region] < minimum).any()]
+        return render.DataGrid(counts.reset_index(names="Region"),
+                               styles=[{"rows": rare_rows, "style": {"background-color": "#fde2e1"}}])
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

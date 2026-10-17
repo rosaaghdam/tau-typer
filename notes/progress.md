@@ -639,3 +639,17 @@ change afterwards, the table is stale until the next click (to flag in the UI la
 re-scaled per region.
 
 **Next**: piece 2.3b - "Events" tab (people reaching each cut-point, warning below 10).
+
+## 2026-10-17 – Tab 2, piece 2.3b: "Events" tab
+
+**What we did**
+- Committed + pushed piece 2.3a (2f39fc3).
+- config.yaml: new `normalization:` section, `min_people_per_event: 10` (Young et al. 2018).
+- app/app.py: new small tab "Events" - `event_counts()` reuses `count_people_above` (S4);
+  green/red verdict line; rows with an event below the minimum highlighted in red.
+- Tested: sample data -> counts identical to S4 (L_MTL 130/109/54 ... R_frontal 68/52/23),
+  "All events are reached by at least 10 people."; with the minimum temporarily set to 30 ->
+  "1 event(s) ... fewer than 30", only R_frontal red. Minimum set back to 10 afterwards.
+
+**Tab 2 so far**: Normal reference, GMM fit per region, Z-scores, Events.
+**Next**: piece 2.4 - cut-points and Z_max as sidebar choices + Z_max table.
