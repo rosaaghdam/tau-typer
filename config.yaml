@@ -86,3 +86,5 @@ inclusion:
 # ---------- App tab 2: normalization checks ----------
 normalization:
   min_people_per_event: 10    # Young et al. 2018 dropped events reached by fewer than 10 people
+  z_max_method: fixed         # "fixed" (sustain.z_max for every region) or "percentile" (per region)
+  z_max_percentile: 95        # used by "percentile": among people with z >= the first cut-point

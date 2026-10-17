@@ -81,7 +81,7 @@ def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
                 color="#2E7D32" if is_normal else "#C62828", label="normal" if is_normal else "abnormal")
     for z, cut in zip(z_events, cut_values):
         ax.axvline(cut, ls="--", color="black", lw=1)
-        ax.text(cut, ax.get_ylim()[1] * 0.95, f" z={z}", fontsize=9, va="top")
+        ax.text(cut, ax.get_ylim()[1] * 0.95, f" z={z:g}", fontsize=9, va="top")
     handles, labels = ax.get_legend_handles_labels()
     unique = dict(zip(labels, handles))                    # one legend entry per label
     ax.legend(unique.values(), unique.keys())

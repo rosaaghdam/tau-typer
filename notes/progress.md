@@ -653,3 +653,39 @@ re-scaled per region.
 
 **Tab 2 so far**: Normal reference, GMM fit per region, Z-scores, Events.
 **Next**: piece 2.4 - cut-points and Z_max as sidebar choices + Z_max table.
+
+## 2026-10-17 – Tab 2, piece 2.4a: cut-points + Z_max functions (src/sustain_model.py)
+
+**What we did**
+- Committed + pushed piece 2.3b (2c624f5).
+- `parse_cut_points(text)`: "2, 5, 10" -> [2.0, 5.0, 10.0] (sorted; ";" also accepted); refuses
+  empty text, words, zero or negative values with a message for the user.
+- `z_max_table(z, method, fixed_value, percentile, min_z)`: per region - number of people with
+  z >= min_z (= first cut-point), their max / p99 / p95, and "Z_max used" (fixed value, or the chosen
+  percentile per region).
+- config.yaml `normalization:` + `z_max_method: fixed`, `z_max_percentile: 95`.
+- Tested on the S3 z-scores: fixed -> 15 everywhere; percentile 95 -> 11.24 (L_occipital) to
+  13.90 (L_parietal).
+
+**Note**: p95 among z >= 2 is ~0.5 higher than the p95 among TRUE tau+ people (Z_max notes),
+because the low-z tau+ people (z < 2) are not counted. Still close to the true end value (~12-13).
+Cosmetic: the people count shows as 130.0 (mixed number types) - fix in the app table.
+
+**Next**: 2.4b - sidebar choices (cut-points text, Z_max method/value/percentile) + "Z_max" tab;
+Events, GMM figure and Z_max all use the typed cut-points.
+
+## 2026-10-17 – Tab 2, piece 2.4b: cut-points box in the sidebar
+
+**What we did**
+- Tab-2 sidebar: text box "Cut-points (the SuStaIn events)", pre-filled from config (2, 5, 10),
+  + help line. Reactive `cut_points()` uses `parse_cut_points`; invalid text -> SafeException,
+  so the user sees the message instead of an error.
+- Events tab and GMM figure use the typed cut-points, live (no Normalize click needed - the
+  z-scores do not depend on the cut-points).
+- Labels print as "z>=2" (not "z>=2.0"): `{cut:g}` in count_people_above and in plot_gmm_fit.
+- Tested: "1, 3, 6" -> columns z>=1/3/6, L_MTL 168/117/106; "two" -> "Cut-points must be numbers
+  separated by commas, e.g. 2, 5, 10"; back to "2, 5, 10" -> original table.
+  (Shiny logs the SafeException with a traceback in the server terminal - expected.)
+
+**Next**: 2.4c - Z_max choice in the sidebar + "Z_max" tab (z_max_table), warning if Z_max is not
+above the last cut-point.

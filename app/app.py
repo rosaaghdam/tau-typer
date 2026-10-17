@@ -9,12 +9,13 @@ from pathlib import Path
 import pandas as pd
 import yaml
 from shiny import App, reactive, render, req, ui
+from shiny.types import SafeException
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
-from src.sustain_model import count_people_above
+from src.sustain_model import count_people_above, parse_cut_points
 from src.zscore import fit_gmm, zscore_regions
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
@@ -55,6 +56,10 @@ app_ui = ui.page_navbar(
                                           value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
                          ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
                               "the one with the lowest mean is 'normal'. Paper: 2.", class_="text-muted small"),
+                         ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
+                                       value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
+                         ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
+                              class_="text-muted small"),
                          ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
                          width=320, open="always"),
                      ui.navset_tab(
@@ -236,7 +241,7 @@ def server(input, output, session):
         gmm = fit_gmm(values, result["n_components"], CONFIG["pipeline"]["seed"])   # same as Normalize
         reference = result["reference"]
         return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
-                            reference.loc["normal_sd", region], CONFIG["sustain"]["z_events"])
+                            reference.loc["normal_sd", region], cut_points())
 
     @render.data_frame
     def z_head():
@@ -248,10 +253,18 @@ def server(input, output, session):
         return plot_region_histograms(z, list(z.columns), xlabel="z-score")
 
     @reactive.calc
+    def cut_points():
+        """The typed cut-points as numbers; a clear message instead of an error if the text is invalid."""
+        try:
+            return parse_cut_points(input.cut_points())
+        except ValueError as error:
+            raise SafeException(str(error))              # shown to the user in the outputs
+
+    @reactive.calc
     def event_counts():
         """People reaching each cut-point (rows = regions, columns = cut-points)."""
         z = normalized()["z"]
-        return count_people_above(z, list(z.columns), CONFIG["sustain"]["z_events"])
+        return count_people_above(z, list(z.columns), cut_points())
 
     @render.ui
     def events_status():

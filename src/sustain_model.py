@@ -25,7 +25,37 @@ def sustain_inputs(z, regions, z_events, z_max):
 
 def count_people_above(z, regions, z_events):
     """How many people reach each cut-point in each region (rarely reached events are hard to place)."""
-    return pd.DataFrame({f"z>={cut}": (z[regions] >= cut).sum() for cut in z_events})
+    return pd.DataFrame({f"z>={cut:g}": (z[regions] >= cut).sum() for cut in z_events})   # :g -> "2", not "2.0"
+
+
+def parse_cut_points(text):
+    """Turn typed cut-points like "2, 5, 10" into sorted numbers [2.0, 5.0, 10.0].
+
+    Raises ValueError (with a message for the user) if the text is empty, not numbers, or <= 0.
+    """
+    try:
+        values = sorted(float(part) for part in text.replace(";", ",").split(",") if part.strip())
+    except ValueError:
+        raise ValueError("Cut-points must be numbers separated by commas, e.g. 2, 5, 10")
+    if not values or values[0] <= 0:
+        raise ValueError("Cut-points must be positive numbers, e.g. 2, 5, 10")
+    return values
+
+
+def z_max_table(z, method, fixed_value, percentile, min_z):
+    """Z_max per region, and the numbers that help choose it.
+
+    Per region, max / p99 / p95 of z among people with z >= min_z (clearly abnormal there - tau
+    status is unknown in real data). method "fixed": Z_max = fixed_value for every region;
+    method "percentile": Z_max = that percentile (e.g. 95) of the same people.
+    """
+    rows = {}
+    for region in z.columns:
+        high = z[region][z[region] >= min_z]
+        rows[region] = {"people with z >= min": len(high), "max": high.max(),
+                        "p99": high.quantile(0.99), "p95": high.quantile(0.95),
+                        "Z_max used": fixed_value if method == "fixed" else high.quantile(percentile / 100)}
+    return pd.DataFrame(rows).T.round(2)
 
 
 def run_sustain(data, Z_vals, Z_max, regions, settings, output_folder, seed, plot=True):
