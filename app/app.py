@@ -13,8 +13,8 @@ from shiny import App, reactive, render, req, ui
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
-from src.figures import plot_region_histograms
-from src.zscore import zscore_regions
+from src.figures import plot_gmm_fit, plot_region_histograms
+from src.zscore import fit_gmm, zscore_regions
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
@@ -58,7 +58,9 @@ app_ui = ui.page_navbar(
                          width=320, open="always"),
                      ui.navset_tab(
                          ui.nav_panel("Normal reference", ui.output_ui("norm_status"),
-                                      ui.output_data_frame("norm_reference"))))),
+                                      ui.output_data_frame("norm_reference")),
+                         ui.nav_panel("GMM fit per region", ui.output_ui("gmm_region_choice"),
+                                      ui.output_plot("gmm_fit_plot", height="420px"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -181,26 +183,46 @@ def server(input, output, session):
     @reactive.calc
     @reactive.event(input.normalize)                    # runs only when Normalize is clicked
     def normalized():
-        """GMM per region on the kept people -> (z-scores, normal reference, n left out)."""
+        """GMM per region on the kept people. Returns a dict with the z-scores, the normal
+        reference, the values used, the settings used and how many people were left out."""
         regions = list(input.col_regions() or [])
         req(regions)
         values = analysis_data()[regions].apply(pd.to_numeric, errors="coerce")
         complete = values.dropna()                       # the GMM cannot handle missing values
-        z, reference = zscore_regions(complete, regions, input.gmm_components(), CONFIG["pipeline"]["seed"])
-        return z, reference, len(values) - len(complete)
+        n_components = input.gmm_components()
+        z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
+        return {"z": z, "reference": reference, "values": complete,
+                "n_components": n_components, "n_left_out": len(values) - len(complete)}
 
     @render.ui
     def norm_status():
         if input.normalize() == 0:
             return ui.p("Choose the settings and click Normalize.", class_="text-muted")
-        z, reference, n_left_out = normalized()
-        return ui.p(f"Normalized {len(z)} people in {z.shape[1]} regions "
-                    f"({n_left_out} left out because of missing region values).", class_="fw-bold")
+        result = normalized()
+        return ui.p(f"Normalized {len(result['z'])} people in {result['z'].shape[1]} regions "
+                    f"({result['n_left_out']} left out because of missing region values).", class_="fw-bold")
 
     @render.data_frame
     def norm_reference():
-        reference = normalized()[1]
-        return reference.T.round(3).reset_index(names="Region")    # one row per region
+        return normalized()["reference"].T.round(3).reset_index(names="Region")   # one row per region
+
+    @render.ui
+    def gmm_region_choice():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        regions = list(normalized()["values"].columns)
+        return ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
+
+    @render.plot
+    def gmm_fit_plot():
+        result = normalized()
+        region = input.gmm_region()
+        req(region in result["values"].columns)
+        values = result["values"][region]
+        gmm = fit_gmm(values, result["n_components"], CONFIG["pipeline"]["seed"])   # same as Normalize
+        reference = result["reference"]
+        return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
+                            reference.loc["normal_sd", region], CONFIG["sustain"]["z_events"])
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

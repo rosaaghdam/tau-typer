@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pySuStaIn import ZscoreSustain
+from scipy import stats
 
 
 def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=5):
@@ -59,5 +60,33 @@ def plot_region_histograms(data, regions, n_cols=5):
         ax.set_xlabel("value (e.g. SUVR)", fontsize=8)
     for ax in axes.flat[len(regions):]:
         ax.set_visible(False)                                             # hide unused panels
+    fig.tight_layout()
+    return fig
+
+
+def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
+    """One region: histogram of the values + every GMM bell curve (normal one in green), and the
+    cut-points drawn on the value axis (SUVR = normal mean + z * normal SD) - the tab-2 check."""
+    values = np.asarray(values)
+    cut_values = [normal_mean + z * normal_sd for z in z_events]
+    fig, ax = plt.subplots(figsize=(9, 4))
+    ax.hist(values, bins=60, density=True, color="lightgray", label="people")
+    x = np.linspace(values.min(), max(values.max(), max(cut_values)), 500)
+    means, weights = gmm.means_.ravel(), gmm.weights_
+    sds = np.sqrt(gmm.covariances_.ravel())
+    normal = np.argmin(means)
+    for k in np.argsort(means):                          # draw from lowest to highest mean
+        is_normal = k == normal
+        ax.plot(x, weights[k] * stats.norm.pdf(x, means[k], sds[k]), lw=2.5 if is_normal else 1.5,
+                color="#2E7D32" if is_normal else "#C62828", label="normal" if is_normal else "abnormal")
+    for z, cut in zip(z_events, cut_values):
+        ax.axvline(cut, ls="--", color="black", lw=1)
+        ax.text(cut, ax.get_ylim()[1] * 0.95, f" z={z}", fontsize=9, va="top")
+    handles, labels = ax.get_legend_handles_labels()
+    unique = dict(zip(labels, handles))                    # one legend entry per label
+    ax.legend(unique.values(), unique.keys())
+    ax.set_title(f"{region}: normal mean {normal_mean:.3f}, normal SD {normal_sd:.3f}")
+    ax.set_xlabel("value (e.g. SUVR)")
+    ax.set_ylabel("density")
     fig.tight_layout()
     return fig

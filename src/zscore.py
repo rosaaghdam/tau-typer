@@ -8,13 +8,19 @@ import pandas as pd
 from sklearn.mixture import GaussianMixture
 
 
+def fit_gmm(values, n_components, seed):
+    """Fit a Gaussian mixture model to one region's values and return the fitted model."""
+    gmm = GaussianMixture(n_components=n_components, random_state=seed)
+    gmm.fit(np.asarray(values).reshape(-1, 1))   # scikit-learn wants one column: people x 1
+    return gmm
+
+
 def fit_normal_distribution(values, n_components, seed):
     """Fit a GMM to one region's values; return the mean and SD of the "normal" component.
 
     The normal component is the one with the LOWEST mean (no tau = lowest signal).
     """
-    gmm = GaussianMixture(n_components=n_components, random_state=seed)
-    gmm.fit(values.reshape(-1, 1))               # scikit-learn wants one column: people x 1
+    gmm = fit_gmm(values, n_components, seed)
     means = gmm.means_.ravel()
     sds = np.sqrt(gmm.covariances_.ravel())      # covariance = SD squared
     normal = np.argmin(means)

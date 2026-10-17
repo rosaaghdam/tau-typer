@@ -592,3 +592,33 @@ real-file assumptions (sex/amyloid coding, diagnosis labels), maybe an "About" t
 
 **Note**: results update only when Normalize is clicked again - if the data or tab-1 choices
 change afterwards, the table is stale until the next click (to flag in the UI later).
+
+## 2026-10-17 – Tab 2, piece 2.2a: GMM-fit figure (code in src/)
+
+**What we did**
+- Committed + pushed piece 2.1 (72c6dd9).
+- src/zscore.py: new `fit_gmm(values, n_components, seed)` returns the fitted GMM;
+  `fit_normal_distribution` now uses it. Re-checked: reference identical to the S3 file (True).
+- src/figures.py: `plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events)` -
+  histogram + every GMM bell curve (normal = thick green, others red) + dashed lines at the
+  cut-points on the value axis (SUVR = normal mean + z * normal SD).
+- Drawn for L_MTL and R_frontal (toy data).
+
+**What the figure shows (toy data)**
+- The green "normal" curve fits the big bump, but its right shoulder reaches into the early-tau
+  people (SUVR ~1.4-1.6) -> that is the "too wide" normal SD seen in S3.
+- L_MTL: z=2 falls at SUVR 1.47; with the TRUE normal values it would be 1.20 + 2*0.10 = 1.40.
+- The red "abnormal" curve is very wide and flat (it has to cover all tau+ people).
+
+**Next**: 2.2b - "GMM fit per region" small tab in the app with a region dropdown.
+
+## 2026-10-17 – Tab 2, piece 2.2b: "GMM fit per region" tab in the app
+
+**What we did**
+- `normalized()` now returns a dict: z, reference, values (used in the GMM), n_components (used at
+  the last Normalize click), n_left_out. norm_status / norm_reference updated.
+- New small tab "GMM fit per region": region dropdown (after Normalize) + `plot_gmm_fit` figure.
+  The GMM is re-fitted for the chosen region with the n_components of the last Normalize click,
+  so the figure always matches the reference table. Cut-points still from config (2, 5, 10).
+- Tested: before Normalize -> "Click Normalize first."; after -> 10 regions, L_MTL figure;
+  switching to R_occipital redraws the figure (title "normal mean 1.143, normal SD 0.092").
