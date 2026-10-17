@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
-from src.sustain_model import count_people_above, parse_cut_points
+from src.sustain_model import count_people_above, parse_cut_points, z_max_table
 from src.zscore import fit_gmm, zscore_regions
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
@@ -60,6 +60,15 @@ app_ui = ui.page_navbar(
                                        value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
                          ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
                               class_="text-muted small"),
+                         ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
+                                                choices={"fixed": "Fixed number", "percentile": "Percentile per region"},
+                                                selected=CONFIG["normalization"]["z_max_method"]),
+                         ui.panel_conditional("input.z_max_method === 'fixed'",
+                                              ui.input_numeric("z_max_fixed", "Fixed Z_max", value=CONFIG["sustain"]["z_max"])),
+                         ui.panel_conditional("input.z_max_method === 'percentile'",
+                                              ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
+                                                               value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
+                         ui.p("Not reported in the paper. Must be above the last cut-point.", class_="text-muted small"),
                          ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
                          width=320, open="always"),
                      ui.navset_tab(
@@ -76,7 +85,9 @@ app_ui = ui.page_navbar(
                                       ui.p("Number of people reaching each cut-point in each region.",
                                            class_="text-muted small"),
                                       ui.output_ui("events_status"),
-                                      ui.output_data_frame("events_table"))))),
+                                      ui.output_data_frame("events_table")),
+                         ui.nav_panel("Z_max", ui.output_ui("zmax_status"),
+                                      ui.output_data_frame("zmax_table"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -284,6 +295,30 @@ def server(input, output, session):
         rare_rows = [i for i, region in enumerate(counts.index) if (counts.loc[region] < minimum).any()]
         return render.DataGrid(counts.reset_index(names="Region"),
                                styles=[{"rows": rare_rows, "style": {"background-color": "#fde2e1"}}])
+
+    @reactive.calc
+    def z_max_values():
+        """Z_max per region with the user's method, plus max/p99/p95 to help choose."""
+        return z_max_table(normalized()["z"], input.z_max_method(), input.z_max_fixed(),
+                           input.z_max_percentile(), cut_points()[0])
+
+    @render.ui
+    def zmax_status():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        last_cut = cut_points()[-1]
+        too_low = z_max_values().index[z_max_values()["Z_max used"] <= last_cut].tolist()
+        if not too_low:
+            return ui.p(f"Z_max is above the last cut-point ({last_cut:g}) in every region.",
+                        class_="text-success fw-bold")
+        return ui.p(f"Z_max must be above the last cut-point ({last_cut:g}). Too low in: {', '.join(too_low)}",
+                    class_="text-danger fw-bold")
+
+    @render.data_frame
+    def zmax_table():
+        table = z_max_values().reset_index(names="Region")
+        table["people with z >= min"] = table["people with z >= min"].astype(int)   # 130, not 130.0
+        return table
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

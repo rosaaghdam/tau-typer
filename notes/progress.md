@@ -689,3 +689,19 @@ Events, GMM figure and Z_max all use the typed cut-points.
 
 **Next**: 2.4c - Z_max choice in the sidebar + "Z_max" tab (z_max_table), warning if Z_max is not
 above the last cut-point.
+
+## 2026-10-17 – Tab 2, piece 2.4c: Z_max choice + "Z_max" tab
+
+**What we did**
+- Committed + pushed 2.4a + 2.4b (1831c31).
+- Tab-2 sidebar: Z_max radio buttons "Fixed number" / "Percentile per region" (default from config:
+  fixed), with only the matching box shown (`panel_conditional`): Fixed Z_max (15) or Percentile
+  (95, among people with z >= first cut-point). Help line: not reported in the paper, must be above
+  the last cut-point.
+- New small tab "Z_max": verdict line + z_max_table (people count shown as whole number). Live -
+  no Normalize click needed.
+- Tested: fixed -> 15 everywhere, green; percentile -> 12.88 / 11.88 / 12.62 ..., green;
+  fixed 8 -> red "Too low in: L_MTL, R_MTL, ..." (all 10 regions).
+
+**Tab 2 status**: Normal reference, GMM fit per region, Z-scores, Events, Z_max - and the sidebar
+has GMM components, cut-points, Z_max. Left: 2.5 reference-group option, 2.6 SuStaIn-input summary.
