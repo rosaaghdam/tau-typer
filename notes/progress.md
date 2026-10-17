@@ -781,3 +781,15 @@ components, cut-points, Z_max; tabs Normal reference, GMM fit per region, Z-scor
 SuStaIn input (+ downloads). Still open: "settings changed, click Normalize again" hint.
 
 **Next**: plan tab 3 - run the original pySuStaIn in the background with the paper's defaults.
+
+## 2026-10-17 – Tab 3 plan (Run SuStaIn)
+
+**What we did**
+- Committed + pushed piece 2.6b (46976c2). Tab 2 complete.
+- Read pySuStaIn's run + cross-validation code; wrote notes/app_tab3_plan.md.
+- Learned: pySuStaIn fits 1..max subtypes and never picks the number itself (CVIC does);
+  it reuses existing pickles -> every run needs its own folder;
+  EM stops at relative change < 1e-6 or 100 iterations; MCMC always runs the full count.
+- Decisions: max subtypes 4 (normal run) / 6 (cross-validation); Cancel = stop a separate process.
+
+**Next**: piece 3.1 – sidebar with settings + presets, "Run" tab shows settings and checks (no running yet).
