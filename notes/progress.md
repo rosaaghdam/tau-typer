@@ -730,3 +730,22 @@ has GMM components, cut-points, Z_max. Left: 2.5 reference-group option, 2.6 SuS
   on the real data.
 
 **Next**: 2.5b - "Where normal comes from" choice in the tab-2 sidebar.
+
+## 2026-10-17 – Tab 2, piece 2.5b: "Where 'normal' comes from" - three choices
+
+**What we did**
+- Committed + pushed 2.5a + pySuStaIn check + results plan (0993427).
+- Tab-2 sidebar, top: radio "Where 'normal' comes from": GMM on everyone (paper, default) /
+  Reference group: amyloid-negative CN / My data is already z-scored. GMM-components box only shown
+  for the GMM choice.
+- `normalized()` branches on the method; reference group needs diagnosis + amyloid columns
+  (SafeException otherwise, also if < 2 people); already z-scored -> z = uploaded values, reference
+  None. Subject IDs are attached after the method has run. Result dict also has method + n_reference.
+- Status line names the method; reference group size shown; for "already z-scored" a warning if
+  the median is more than 1 away from 0. Normal reference table / GMM figure say they are not used
+  for the other methods.
+- Tested in the browser: GMM -> L_MTL 1.227/0.119; reference -> L_MTL 1.206/0.096, 226 people;
+  "already z-scored" on raw SUVR -> warning "median 1.16, far from 0"; on a z-scored copy -> no
+  warning, Events works.
+
+**Tab 2 status**: complete except 2.6 (SuStaIn-input summary handed to tab 3).

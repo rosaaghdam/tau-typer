@@ -16,7 +16,11 @@ sys.path.insert(0, str(ROOT))                           # so Python can find src
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
 from src.sustain_model import count_people_above, parse_cut_points, z_max_table
-from src.zscore import fit_gmm, zscore_regions
+from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
+                        zscore_with_reference)
+
+NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group: amyloid-negative CN",
+                "zscored": "My data is already z-scored"}
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
@@ -52,10 +56,14 @@ app_ui = ui.page_navbar(
     ui.nav_panel("2. Normalization",
                  ui.layout_sidebar(
                      ui.sidebar(
-                         ui.input_numeric("gmm_components", "Number of GMM components",
-                                          value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
-                         ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
-                              "the one with the lowest mean is 'normal'. Paper: 2.", class_="text-muted small"),
+                         ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
+                                                choices=NORM_METHODS, selected="gmm"),
+                         ui.panel_conditional(
+                             "input.norm_method === 'gmm'",
+                             ui.input_numeric("gmm_components", "Number of GMM components",
+                                              value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
+                             ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
+                                  "the one with the lowest mean is 'normal'. Paper: 2.", class_="text-muted small")),
                          ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
                                        value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
                          ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
@@ -210,42 +218,75 @@ def server(input, output, session):
     @reactive.calc
     @reactive.event(input.normalize)                    # runs only when Normalize is clicked
     def normalized():
-        """GMM per region on the kept people. Returns a dict with the z-scores, the normal
-        reference, the values used, the settings used and how many people were left out."""
+        """z-scores of the kept people with the chosen method ("gmm", "reference" or "zscored").
+        Returns a dict: z-scores, normal reference (None if already z-scored), values used,
+        method, settings used, reference-group size and how many people were left out."""
         regions = list(input.col_regions() or [])
         req(regions)
-        values = analysis_data()[regions].apply(pd.to_numeric, errors="coerce")
-        complete = values.dropna()                       # the GMM cannot handle missing values
+        data = analysis_data()
+        values = data[regions].apply(pd.to_numeric, errors="coerce")
+        complete = values.dropna()                       # people with every region value
+        method, n_components, n_reference = input.norm_method(), input.gmm_components(), None
+        if method == "gmm":
+            z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
+        elif method == "reference":
+            columns = chosen_columns()
+            if not (columns.get("diagnosis") and columns.get("amyloid")):
+                raise SafeException("The reference group needs the diagnosis and amyloid columns (tab 1).")
+            in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"],
+                                               columns["amyloid"], CONFIG["inclusion"]["cn_labels"])
+            n_reference = int(in_reference.sum())
+            if n_reference < 2:
+                raise SafeException("No amyloid-negative CN people found for the reference group.")
+            reference = reference_group_normal(complete, regions, in_reference)
+            z = zscore_with_reference(complete, regions, reference)
+        else:                                            # the uploaded values already are z-scores
+            z, reference = complete.copy(), None
         id_col = chosen_columns().get("id")
         if id_col:                                       # label rows with subject IDs
-            complete.index = analysis_data().loc[complete.index, id_col].values
-        n_components = input.gmm_components()
-        z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
-        return {"z": z, "reference": reference, "values": complete,
-                "n_components": n_components, "n_left_out": len(values) - len(complete)}
+            ids = data.loc[complete.index, id_col].values
+            z.index, complete.index = ids, ids
+        return {"z": z, "reference": reference, "values": complete, "method": method,
+                "n_components": n_components, "n_reference": n_reference,
+                "n_left_out": len(values) - len(complete)}
 
     @render.ui
     def norm_status():
         if input.normalize() == 0:
             return ui.p("Choose the settings and click Normalize.", class_="text-muted")
         result = normalized()
-        return ui.p(f"Normalized {len(result['z'])} people in {result['z'].shape[1]} regions "
-                    f"({result['n_left_out']} left out because of missing region values).", class_="fw-bold")
+        lines = [ui.p(f"{NORM_METHODS[result['method']]}: {len(result['z'])} people in {result['z'].shape[1]} "
+                      f"regions ({result['n_left_out']} left out because of missing region values).",
+                      class_="fw-bold")]
+        if result["method"] == "reference":
+            lines.append(ui.p(f"Reference group: {result['n_reference']} amyloid-negative CN people."))
+        if result["method"] == "zscored":
+            median = float(result["z"].median().median())
+            lines.append(ui.p("No normal reference is computed: the uploaded values are used as z-scores."))
+            if abs(median) > 1:
+                lines.append(ui.p(f"Warning: the median value is {median:.2f}, far from 0. Are these really "
+                                  "z-scores (not raw SUVR)?", class_="text-danger fw-bold"))
+        return ui.TagList(*lines)
 
     @render.data_frame
     def norm_reference():
-        return normalized()["reference"].T.round(3).reset_index(names="Region")   # one row per region
+        reference = normalized()["reference"]
+        req(reference is not None)                       # nothing to show for already z-scored data
+        return reference.T.round(3).reset_index(names="Region")   # one row per region
 
     @render.ui
     def gmm_region_choice():
         if input.normalize() == 0:
             return ui.p("Click Normalize first.", class_="text-muted")
+        if normalized()["method"] != "gmm":
+            return ui.p("The GMM figure is only used for 'GMM on everyone'.", class_="text-muted")
         regions = list(normalized()["values"].columns)
         return ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
 
     @render.plot
     def gmm_fit_plot():
         result = normalized()
+        req(result["method"] == "gmm")
         region = input.gmm_region()
         req(region in result["values"].columns)
         values = result["values"][region]
