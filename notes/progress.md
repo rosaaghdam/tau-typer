@@ -764,3 +764,20 @@ has GMM components, cut-points, Z_max. Left: 2.5 reference-group option, 2.6 SuS
   percentile -> "Z_max: 11.24 - 13.90 (per region)", ready; fixed 8 -> ✗ Z_max check, "Not ready".
 
 **Next**: 2.6b - download buttons (z-scores CSV, normal reference CSV), then tab 3.
+
+## 2026-10-17 – Tab 2, piece 2.6b: download buttons -> TAB 2 COMPLETE
+
+**What we did**
+- Committed + pushed piece 2.6a (4472d5b).
+- "SuStaIn input" tab: "Download z-scores (CSV)" (subject + one column per region, 4 decimals) and
+  "Download normal reference (CSV)" (region, normal_mean, normal_sd, method); for "already z-scored"
+  the reference file holds a one-line note. Uses @render.download_button (current Shiny way).
+  Hint: keep the reference - new people must be z-scored with the same numbers.
+- Tested: z file 501 lines (TOY_0001 L_MTL 7.8812); reference 11 lines (L_MTL 1.2266 / 0.1194,
+  GMM on everyone); already z-scored -> note only.
+
+**Tab 2 is complete**: choice of normalization (GMM / reference group / already z-scored), GMM
+components, cut-points, Z_max; tabs Normal reference, GMM fit per region, Z-scores, Events, Z_max,
+SuStaIn input (+ downloads). Still open: "settings changed, click Normalize again" hint.
+
+**Next**: plan tab 3 - run the original pySuStaIn in the background with the paper's defaults.

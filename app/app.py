@@ -96,7 +96,11 @@ app_ui = ui.page_navbar(
                                       ui.output_data_frame("events_table")),
                          ui.nav_panel("Z_max", ui.output_ui("zmax_status"),
                                       ui.output_data_frame("zmax_table")),
-                         ui.nav_panel("SuStaIn input", ui.output_ui("sustain_input_summary"))))),
+                         ui.nav_panel("SuStaIn input", ui.output_ui("sustain_input_summary"),
+                                      ui.download_button("download_z", "Download z-scores (CSV)"),
+                                      ui.download_button("download_reference", "Download normal reference (CSV)"),
+                                      ui.p("Keep the normal reference: new people must be z-scored with "
+                                           "these same numbers.", class_="text-muted small mt-2"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -397,6 +401,20 @@ def server(input, output, session):
                    ui.p("Not ready: fix the items marked ✗.", class_="text-danger fw-bold"))
         return ui.TagList(ui.h6("What goes into SuStaIn"), ui.tags.ul(*[ui.tags.li(f) for f in facts]),
                           ui.h6("Checks"), ui.tags.ul(*checks), verdict)
+
+    @render.download_button(filename="tau_typer_zscores.csv")       # pairs with ui.download_button
+    def download_z():
+        yield normalized()["z"].round(4).to_csv(index_label="subject")
+
+    @render.download_button(filename="tau_typer_normal_reference.csv")
+    def download_reference():
+        result = normalized()
+        if result["reference"] is None:
+            yield "note\nNo normal reference: the uploaded data was already z-scored.\n"
+        else:
+            table = result["reference"].T.round(4)
+            table["method"] = NORM_METHODS[result["method"]]
+            yield table.to_csv(index_label="region")
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():
