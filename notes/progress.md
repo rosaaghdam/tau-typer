@@ -505,3 +505,21 @@ runs the app (`datapath`). For the server version we must delete it after readin
 **Small UI note**: the Check column wraps into narrow lines - widen later.
 
 **Next**: piece 4 - region histograms and demographics.
+
+## 2026-10-17 – Tab 1, piece 4a: region histograms
+
+**What we did**
+- Committed + pushed the QC summary (7f7ad00).
+- src/figures.py: `plot_region_histograms(data, regions, n_cols=5)` - one histogram per region
+  (raw values), unused panels hidden.
+- app/app.py: new small tab "Region distributions" (`output_plot`, 520 px high), redrawn when the
+  data or the region selection changes.
+- Tested: the plot appears in the app (first draw ~10 s while matplotlib starts). The browser-pane
+  screenshot tool did not capture it, so the same figure was also drawn to a file and checked.
+
+**Observation (toy data)**: every region shows a tall normal bump (SUVR ~1.0-1.2) and a SEPARATE
+second bump at ~2.0-2.6 (tau+ people). The second bump is an artefact of our toy design: after
+z = 10 regions only creep towards Z_max, so many late-stage people pile up there. Real data will
+probably show a smoother tail. Worth remembering when we judge the GMM in tab 2.
+
+**Next**: piece 4b - demographics table.
