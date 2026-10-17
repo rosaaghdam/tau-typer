@@ -523,3 +523,23 @@ z = 10 regions only creep towards Z_max, so many late-stage people pile up there
 probably show a smoother tail. Worth remembering when we judge the GMM in tab 2.
 
 **Next**: piece 4b - demographics table.
+
+## 2026-10-17 – Tab 1, piece 4b: demographics table
+
+**What we did**
+- Committed + pushed the histograms (d9d9303).
+- src/qc.py: `demographics_table(data, columns)` - N, age mean (SD), % female, % amyloid+ for
+  everyone ("All") and per diagnosis group; roles not in the file are left out.
+- app/app.py: new small tab "Demographics".
+- Tested: All 500 / AD 81 / CN 350 / MCI 69; age 66.7 (AD) - 74.9 (CN); amyloid+ 100% in MCI and
+  AD, 35.4% in CN - same as the S1 checks. Without diagnosis/amyloid: only the "All" row, no
+  amyloid column.
+
+**Assumptions to check against the real file (open)**
+- Sex: female = value starting with "F". Numeric codes (1/2) would need a setting.
+- Amyloid: 1 = positive, 0 = negative. Text codes ("pos"/"neg") give an empty percentage.
+
+**Speed note**: right after an upload the first plot takes ~10-15 s (matplotlib starts) and other
+outputs wait. Polish later (e.g. import matplotlib when the app starts).
+
+**Tab 1 status**: pieces 1-4 done. Left: piece 5 - the paper's inclusion rule (checkbox).

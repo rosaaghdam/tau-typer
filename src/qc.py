@@ -58,3 +58,28 @@ def qc_summary(data, columns, regions, suvr_min, suvr_max):
         else:
             add(f"{role.capitalize()} column", "not in file", False)
     return pd.DataFrame(rows)
+
+
+def demographics_table(data, columns):
+    """Who is in the data: N, age, % female and % amyloid+, for everyone and per diagnosis.
+
+    columns: dict role -> chosen column ("" = not in file); roles not in the file are left out.
+    Assumes sex values starting with "F" mean female, and amyloid coded 1 = positive, 0 = negative.
+    """
+    parts = [("All", data)]
+    if columns.get("diagnosis"):
+        parts += list(data.groupby(data[columns["diagnosis"]].astype(str)))
+    rows = []
+    for group, part in parts:
+        row = {"Group": group, "N": len(part)}
+        if columns.get("age"):
+            age = pd.to_numeric(part[columns["age"]], errors="coerce")
+            row["Age, mean (SD)"] = f"{age.mean():.1f} ({age.std():.1f})"
+        if columns.get("sex"):
+            first_letter = part[columns["sex"]].astype(str).str.strip().str.upper().str[0]
+            row["Female, %"] = round(100 * (first_letter == "F").mean(), 1)
+        if columns.get("amyloid"):
+            amyloid = pd.to_numeric(part[columns["amyloid"]], errors="coerce")
+            row["Amyloid+, %"] = round(100 * amyloid.mean(), 1)
+        rows.append(row)
+    return pd.DataFrame(rows)

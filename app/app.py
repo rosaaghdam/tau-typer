@@ -12,7 +12,7 @@ from shiny import App, reactive, render, req, ui
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
-from src.qc import guess_columns, qc_summary
+from src.qc import demographics_table, guess_columns, qc_summary
 from src.figures import plot_region_histograms
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
@@ -39,7 +39,10 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Region distributions",
                                       ui.p("Raw values of each selected region column, before normalization.",
                                            class_="text-muted small"),
-                                      ui.output_plot("region_hist", height="520px"))))),
+                                      ui.output_plot("region_hist", height="520px")),
+                         ui.nav_panel("Demographics",
+                                      ui.p("Everyone, and per diagnosis group.", class_="text-muted small"),
+                                      ui.output_data_frame("demographics"))))),
     ui.nav_panel("2. Normalization",
                  ui.h3("Turn SUVR into z-scores (Gaussian mixture model)"),
                  ui.p("Coming: GMM per region, reference group, cut-points, Z_max.")),
@@ -106,6 +109,12 @@ def server(input, output, session):
         table = qc_results()
         warning_rows = [i for i, status in enumerate(table["Status"]) if status == "Warning"]
         return render.DataGrid(table, styles=[{"rows": warning_rows, "style": {"background-color": "#fde2e1"}}])
+
+    @render.data_frame
+    def demographics():
+        data = uploaded_data()
+        req(data is not None)
+        return demographics_table(data, chosen_columns())
 
     @render.plot
     def region_hist():
