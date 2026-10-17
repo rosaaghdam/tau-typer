@@ -705,3 +705,28 @@ above the last cut-point.
 
 **Tab 2 status**: Normal reference, GMM fit per region, Z-scores, Events, Z_max - and the sidebar
 has GMM components, cut-points, Z_max. Left: 2.5 reference-group option, 2.6 SuStaIn-input summary.
+
+## 2026-10-17 – Tab 2, piece 2.5a: reference-group normalization (src/zscore.py)
+
+**What we did**
+- Committed + pushed piece 2.4c (a80e1ba).
+- src/zscore.py: `amyloid_negative_cn()` (CN label from config + amyloid == 0),
+  `reference_group_normal()` (plain mean/SD of the group, same table format as the GMM reference),
+  `zscore_with_reference()` (z with any reference table).
+- Reasoning: if the group is truly normal it is ONE bell curve -> plain mean/SD (Young et al. 2018
+  style), not a 2-component GMM.
+
+**Result on toy data (226 amyloid-negative CN, all truly tau-negative)**
+
+| Region | true mean | GMM mean | group mean | true SD | GMM SD | group SD |
+|---|---|---|---|---|---|---|
+| L_MTL | 1.20 | 1.227 | 1.206 | 0.10 | 0.119 | 0.096 |
+| L_occipital | 1.12 | 1.150 | 1.118 | 0.08 | 0.099 | 0.075 |
+| R_frontal | 1.05 | 1.076 | 1.051 | 0.07 | 0.085 | 0.071 |
+
+- tau-negative z: GMM on everyone mean -0.24 / SD 0.84; reference group mean -0.01 / SD 1.00.
+- -> On toy data the reference group removes the S3 bias. Caveat for real data: amyloid-negative
+  older people can still have some (age-related) MTL tau; toy data has none. Compare both methods
+  on the real data.
+
+**Next**: 2.5b - "Where normal comes from" choice in the tab-2 sidebar.

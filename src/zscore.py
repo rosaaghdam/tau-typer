@@ -36,3 +36,23 @@ def zscore_regions(data, regions, n_components, seed):
         reference[region] = [mean, sd]
         z[region] = (data[region] - mean) / sd
     return z, reference
+
+
+# ---------- Alternative: a reference group instead of a GMM (Young et al. 2018 style) ----------
+def amyloid_negative_cn(data, diagnosis_col, amyloid_col, cn_labels):
+    """True for people who are cognitively normal (label in cn_labels, any case) AND amyloid = 0."""
+    diagnosis = data[diagnosis_col].astype(str).str.strip().str.upper()
+    amyloid = pd.to_numeric(data[amyloid_col], errors="coerce")
+    return diagnosis.isin([label.upper() for label in cn_labels]) & (amyloid == 0)
+
+
+def reference_group_normal(data, regions, in_reference):
+    """Normal mean and SD per region = plain mean and SD of the reference group.
+    Same table format as zscore_regions' reference (rows normal_mean, normal_sd)."""
+    group = data.loc[in_reference, regions]
+    return pd.DataFrame({"normal_mean": group.mean(), "normal_sd": group.std()}).T
+
+
+def zscore_with_reference(data, regions, reference):
+    """z = (value - normal mean) / normal SD, with a given reference table (any method)."""
+    return (data[regions] - reference.loc["normal_mean"]) / reference.loc["normal_sd"]

@@ -13,6 +13,7 @@ the scripts here call them.
 |---|---|---|---|
 | `00a_extract_pdf_text.sh` | 0a | Turns the PDFs in papers/ into text files in papers/text/ | done |
 | `00b_compare_pysustain_with_github.sh` | 0b | Checks Github/pySuStaIn-master is identical to the official repo | done |
+| `00c_check_installed_pysustain.sh` | 0 | Checks the pySuStaIn installed in ./env is the unchanged original (pinned commit) | done |
 | `01a_create_environment.sh` | 1 | Builds the conda environment in ./env from environment.yml and checks pySuStaIn | done |
 | `01b_check_event_sequences.py` | 1 | Checks the 30-event "wave" sequence of each subtype | done |
 | `01c_check_generator_inputs.py` | 1 | Checks Z_vals, Z_max and the 4 sequences for pySuStaIn's generator | done |
