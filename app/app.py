@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.figures import plot_region_histograms
+from src.zscore import zscore_regions
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
@@ -47,8 +48,17 @@ app_ui = ui.page_navbar(
                                       ui.p("Everyone, and per diagnosis group.", class_="text-muted small"),
                                       ui.output_data_frame("demographics"))))),
     ui.nav_panel("2. Normalization",
-                 ui.h3("Turn SUVR into z-scores (Gaussian mixture model)"),
-                 ui.p("Coming: GMM per region, reference group, cut-points, Z_max.")),
+                 ui.layout_sidebar(
+                     ui.sidebar(
+                         ui.input_numeric("gmm_components", "Number of GMM components",
+                                          value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
+                         ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
+                              "the one with the lowest mean is 'normal'. Paper: 2.", class_="text-muted small"),
+                         ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
+                         width=320, open="always"),
+                     ui.navset_tab(
+                         ui.nav_panel("Normal reference", ui.output_ui("norm_status"),
+                                      ui.output_data_frame("norm_reference"))))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
                  ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
@@ -166,6 +176,31 @@ def server(input, output, session):
         data = uploaded_data()
         req(data is not None)            # show nothing until a file is uploaded
         return data.head(20)
+
+    # ---------- Tab 2: normalization ----------
+    @reactive.calc
+    @reactive.event(input.normalize)                    # runs only when Normalize is clicked
+    def normalized():
+        """GMM per region on the kept people -> (z-scores, normal reference, n left out)."""
+        regions = list(input.col_regions() or [])
+        req(regions)
+        values = analysis_data()[regions].apply(pd.to_numeric, errors="coerce")
+        complete = values.dropna()                       # the GMM cannot handle missing values
+        z, reference = zscore_regions(complete, regions, input.gmm_components(), CONFIG["pipeline"]["seed"])
+        return z, reference, len(values) - len(complete)
+
+    @render.ui
+    def norm_status():
+        if input.normalize() == 0:
+            return ui.p("Choose the settings and click Normalize.", class_="text-muted")
+        z, reference, n_left_out = normalized()
+        return ui.p(f"Normalized {len(z)} people in {z.shape[1]} regions "
+                    f"({n_left_out} left out because of missing region values).", class_="fw-bold")
+
+    @render.data_frame
+    def norm_reference():
+        reference = normalized()[1]
+        return reference.T.round(3).reset_index(names="Region")    # one row per region
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

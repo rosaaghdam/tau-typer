@@ -577,3 +577,18 @@ outputs wait. Polish later (e.g. import matplotlib when the app starts).
 **Tab 1 is complete** (upload, sample data, column matching, QC summary, histograms,
 demographics, inclusion rule). Still open for tab 1: widen QC "Check" column, speed of first plot,
 real-file assumptions (sex/amyloid coding, diagnosis labels), maybe an "About" tab.
+
+## 2026-10-17 – Tab 2, piece 2.1: sidebar, Normalize button, Normal reference table
+
+**What we did**
+- Committed + pushed tab 1 (6982a5a). Tab-2 plan saved in notes/app_tab2_plan.md.
+- app/app.py tab 2: sidebar "Number of GMM components" (default from config, 2 = paper) + help text
+  + Normalize button; small tab "Normal reference" (status line + normal mean/SD per region).
+- Server: `normalized()` runs only on the Normalize click (reactive.event); uses analysis_data()
+  from tab 1 and the chosen regions; people with missing region values are left out of the GMM
+  (count shown); calls src/zscore.py `zscore_regions` (same as S3).
+- Tested: sample data -> "Normalized 500 people in 10 regions (0 left out)"; reference identical to
+  S3 (L_MTL 1.227/0.119, L_temporal 1.167/0.096, ...).
+
+**Note**: results update only when Normalize is clicked again - if the data or tab-1 choices
+change afterwards, the table is stale until the next click (to flag in the UI later).
