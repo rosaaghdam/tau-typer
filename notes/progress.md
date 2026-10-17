@@ -793,3 +793,15 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Decisions: max subtypes 4 (normal run) / 6 (cross-validation); Cancel = stop a separate process.
 
 **Next**: piece 3.1 – sidebar with settings + presets, "Run" tab shows settings and checks (no running yet).
+
+## 2026-10-17 – Tab 3, piece 3.1a: sidebar with settings
+
+**What we did**
+- config.yaml: new `cross_validation:` section (n_folds 10, n_subtypes_max 6).
+- app/app.py: tab 3 sidebar - preset (paper / fast test), max subtypes 4, start points 25,
+  MCMC 10,000, seed 42, parallel off, cross-validation checkbox (+ folds 10), run name
+  (date + time), Run button (does nothing yet). All defaults read from config.yaml.
+- Rosa tested: sidebar looks good, tabs 1-2 unchanged.
+- Known: run name time is taken when the app starts (fix in 3.1c).
+
+**Next**: 3.1b - presets fill in start points / MCMC; cross-validation switches max subtypes 4 <-> 6.

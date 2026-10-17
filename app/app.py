@@ -4,6 +4,7 @@ Run from the project folder (environment active):   shiny run app/app.py
 This file is only the user interface; all calculations live in src/.
 """
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -102,8 +103,27 @@ app_ui = ui.page_navbar(
                                       ui.p("Keep the normal reference: new people must be z-scored with "
                                            "these same numbers.", class_="text-muted small mt-2"))))),
     ui.nav_panel("3. Run SuStaIn",
-                 ui.h3("Fit the SuStaIn model (original pySuStaIn)"),
-                 ui.p("Coming: hyperparameters with the paper's defaults, background runs, saved runs.")),
+                 ui.layout_sidebar(
+                     ui.sidebar(
+                         ui.input_radio_buttons("run_preset", "Preset", selected="paper",
+                                                choices={"paper": "Paper settings", "fast": "Fast test (rough results)"}),
+                         ui.input_numeric("n_subtypes_max", "Max number of subtypes",
+                                          value=CONFIG["sustain"]["n_subtypes_max"], min=1, max=8),
+                         ui.p("pySuStaIn fits 1, 2, ... up to this number. Paper: 4.", class_="text-muted small"),
+                         ui.input_numeric("n_startpoints", "Start points", value=CONFIG["sustain"]["n_startpoints"], min=1),
+                         ui.input_numeric("n_mcmc", "MCMC iterations", value=CONFIG["sustain"]["n_iterations_mcmc"], min=100),
+                         ui.input_numeric("run_seed", "Random seed", value=CONFIG["pipeline"]["seed"]),
+                         ui.input_checkbox("use_parallel", "Parallel start points (faster on big computers)",
+                                           value=CONFIG["sustain"]["use_parallel_startpoints"]),
+                         ui.input_checkbox("do_cv", "Cross-validation (to choose the number of subtypes)"),
+                         ui.panel_conditional("input.do_cv",
+                                              ui.input_numeric("n_folds", "Number of folds",
+                                                               value=CONFIG["cross_validation"]["n_folds"], min=2)),
+                         ui.input_text("run_name", "Run name (new folder)",
+                                       value=datetime.now().strftime("run_%Y-%m-%d_%H%M")),
+                         ui.input_action_button("run_button", "Run SuStaIn", class_="btn-primary"),
+                         width=320, open="always"),
+                     ui.p("Settings will appear here.", class_="text-muted"))),
     ui.nav_panel("4. Figures",
                  ui.h3("Summary figures"),
                  ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),

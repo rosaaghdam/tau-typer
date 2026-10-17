@@ -88,3 +88,8 @@ normalization:
   min_people_per_event: 10    # Young et al. 2018 dropped events reached by fewer than 10 people
   z_max_method: fixed         # "fixed" (sustain.z_max for every region) or "percentile" (per region)
   z_max_percentile: 95        # used by "percentile": among people with z >= the first cut-point
+
+# ---------- App tab 3: cross-validation ----------
+cross_validation:
+  n_folds: 10                 # paper: 10-fold cross-validation
+  n_subtypes_max: 6           # fit 1..6 so CVIC can show whether more than 4 subtypes helps
