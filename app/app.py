@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.app_runs import list_runs, prepare_run_folder, start_run
-from src.results import load_sustain_result, model_likelihoods, size_order, subject_table, subtype_summary
+from src.results import (load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table,
+                         subtype_summary)
 from src.figures import (plot_gmm_fit, plot_model_choice, plot_person, plot_pvd, plot_region_histograms,
                          plot_stage_progression, plot_stages, plot_subtype_patterns,
                          plot_subtype_probabilities, plot_subtype_tree)
@@ -775,7 +776,8 @@ def server(input, output, session):
     @render.plot
     def fig_pvd():
         d = fig_data()
-        return plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), None, subtype_order=d["order"])
+        return plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), None,
+                        subtype_order=pvd_order(d["result"], d["order"]))
 
     @render.plot
     def fig_patterns():

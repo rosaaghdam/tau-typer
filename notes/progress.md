@@ -884,3 +884,13 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   Ext. Fig. 1f), Person (fingerprint, new).
 - Tested: all 8 figures as PNG outside the app (2-subtype run) and inside the app (CV run). Fixed:
   Shiny forces "tight" layout -> stage-progression colour bar now has its own column.
+
+## 2026-10-18 – Tab 4: subtype numbering fixed (important to understand)
+
+- pySuStaIn (subtype_and_stage_individuals) sorts subtypes by estimated proportion f BEFORE it
+  assigns people: ml_subtype / prob_subtype use the f-sorted numbers; samples_sequence keeps the
+  unsorted numbers; pySuStaIn's default PVD sorts by f too -> pySuStaIn's own outputs agree, and so
+  do our step scripts S6-S8 (no change needed there).
+- The app numbers subtypes by the number of tau+ people (size_order) and gives the PVD the matching
+  unsorted numbers (pvd_order). Found with a 4-subtype toy run (f order != people order: 66/39/58/33).
+- 4-subtype toy run (fast, 12 min): limbic-first, occipital-first, temporal-first, parietal/frontal-first.

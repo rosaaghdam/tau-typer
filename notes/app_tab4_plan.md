@@ -4,9 +4,11 @@ Follows notes/app_results_plan.md, section 3-4. Every figure is made from ONE ru
 (the run shown in tab 3: just finished, or loaded from "Saved runs"), so it also works for old runs.
 
 ## Subtype numbers (important)
-pySuStaIn numbers subtypes in its own internal order, but its PVD figure sorts them by size
-(largest first). To keep every figure and table consistent, the app numbers subtypes by size
-everywhere: Subtype 1 = largest (same as the PVD). `size_order()` in src/results.py.
+pySuStaIn sorts subtypes by their estimated proportion f before it assigns people
+(ml_subtype, prob_subtype), and its default PVD uses the same sorting - so pySuStaIn's own outputs
+agree. But f can differ from how many people are assigned (toy run: 66, 39, 58, 33). The app numbers
+subtypes by the number of tau+ people (Subtype 1 = most people; `size_order()`), and translates
+that order back to pySuStaIn's unsorted numbers for the PVD (`pvd_order()`), so all figures agree.
 
 ## Sidebar
 - Which run is shown (from tab 3) + model (number of subtypes, default 4 = paper)

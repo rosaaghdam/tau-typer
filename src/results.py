@@ -17,8 +17,26 @@ def load_sustain_result(output_folder, dataset_name, n_subtypes):
 
 
 def size_order(result):
-    """pySuStaIn's own subtype numbers, largest subtype first - the order its PVD figure uses."""
-    return np.argsort(result["samples_f"].mean(axis=1))[::-1]
+    """pySuStaIn's own subtype numbers, the subtype with the most tau+ people first.
+
+    (pySuStaIn's PVD sorts by its estimated subtype proportions, which can differ from the number of
+    people assigned; the app passes this order to the PVD too, so all figures and tables agree.)
+    """
+    k = result["samples_f"].shape[0]
+    tau_pos = result["ml_stage"].ravel() > 0
+    counts = np.bincount(result["ml_subtype"].ravel()[tau_pos].astype(int), minlength=k)
+    return np.argsort(-counts, kind="stable")
+
+
+def pvd_order(result, order):
+    """The subtype_order to give pySuStaIn's PVD so its panels follow `order` (from size_order).
+
+    pySuStaIn's ml_subtype and prob_subtype number the subtypes AFTER sorting them by estimated
+    proportion f (in subtype_and_stage_individuals), but samples_sequence - drawn by the PVD - keeps
+    the unsorted numbers. So we translate back, sorting exactly as pySuStaIn does.
+    """
+    by_f = np.argsort(np.mean(result["samples_f"], axis=1))[::-1]
+    return by_f[np.asarray(order)]
 
 
 def subject_table(result, subject_ids, poor_fit_threshold, order=None):
