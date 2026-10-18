@@ -3,6 +3,7 @@
 Run from the project folder (environment active):   shiny run app/app.py
 This file is only the user interface; all calculations live in src/.
 """
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group:
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
+RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
@@ -123,7 +125,8 @@ app_ui = ui.page_navbar(
                                        value=datetime.now().strftime("run_%Y-%m-%d_%H%M")),
                          ui.input_action_button("run_button", "Run SuStaIn", class_="btn-primary"),
                          width=320, open="always"),
-                     ui.p("Settings will appear here.", class_="text-muted"))),
+                     ui.navset_tab(
+                         ui.nav_panel("Run", ui.output_ui("run_checks_view"))))),
     ui.nav_panel("4. Figures",
                  ui.h3("Summary figures"),
                  ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),
@@ -455,6 +458,35 @@ def server(input, output, session):
         """Cross-validation tries more subtypes (6) to choose the number; a normal run uses 4."""
         section = "cross_validation" if input.do_cv() else "sustain"
         ui.update_numeric("n_subtypes_max", value=CONFIG[section]["n_subtypes_max"])
+
+    @reactive.effect
+    def _fresh_run_name():
+        """Each new visit gets a run name with the current date and time."""
+        ui.update_text("run_name", value=datetime.now().strftime("run_%Y-%m-%d_%H%M"))
+
+    @reactive.calc
+    def run_checks():
+        """Checks before a run, as (text, ok) - same style as tab 2."""
+        try:
+            tab2_ready = all(ok for _, ok in sustain_input()["checks"])
+        except Exception:                                   # no data yet, or not normalized
+            tab2_ready = False
+        name = input.run_name().strip()
+        name_ok = re.fullmatch(r"[A-Za-z0-9_-]+", name) is not None and not (RUNS_FOLDER / name).exists()
+        return [("Tab 2 says 'Ready for tab 3'", tab2_ready),
+                ("Run name is new and uses only letters, digits, - and _", name_ok),
+                ("Max number of subtypes is at least 1", (input.n_subtypes_max() or 0) >= 1)]
+
+    @render.ui
+    def run_checks_view():
+        items = [ui.tags.li(("✓ " if ok else "✗ ") + text, class_="text-success" if ok else "text-danger")
+                 for text, ok in run_checks()]
+        return ui.TagList(ui.h6("Checks before a run"), ui.tags.ul(*items))
+
+    @reactive.effect
+    def _run_button_state():
+        """The Run button only works when every check passes."""
+        ui.update_action_button("run_button", disabled=not all(ok for _, ok in run_checks()))
 
 
 app = App(app_ui, server)

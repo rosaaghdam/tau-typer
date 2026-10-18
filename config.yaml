@@ -93,3 +93,7 @@ normalization:
 cross_validation:
   n_folds: 10                 # paper: 10-fold cross-validation
   n_subtypes_max: 6           # fit 1..6 so CVIC can show whether more than 4 subtypes helps
+
+# ---------- App tab 3: where runs are saved ----------
+runs:
+  folder: results/app_runs    # one NEW sub-folder per run (pySuStaIn would reuse old files otherwise)

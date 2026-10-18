@@ -813,3 +813,12 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Rosa tested: works.
 
 **Next**: 3.1c - fresh run name per session, checks before a run, Run button greyed out until ready.
+
+## 2026-10-18 – Tab 3, piece 3.1c: checks before a run
+
+- New way of working (Rosa): Claude builds and tests each piece; Rosa reviews all parts at the end
+  (checklist in notes/app_review_checklist.md).
+- config.yaml: `runs.folder: results/app_runs`.
+- app: fresh run name per visit; "Run" small tab with 3 checks; Run button disabled until all ✓.
+- Tested (Claude, browser): no data -> ✗ + disabled; sample data + Normalize -> all ✓, enabled;
+  run name "my run" -> ✗ + disabled.
