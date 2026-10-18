@@ -858,3 +858,17 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   CSV download per person).
 - Tested (browser, toy, fast, 2 subtypes, 2 min 40 s): likelihood -15892.7 (1) / -12134.6 (2);
   S0 309 (61.8%), Subtype 1 109, Subtype 2 82 - identical to the command-line test (same seed).
+
+## 2026-10-18 – Tab 3, pieces 3.5 + 3.6: cross-validation, saved runs -> TAB 3 COMPLETE
+
+- Cross-validation: src/sustain_model.py `cross_validate` (KFold, shuffled with the seed - we have no
+  labels for StratifiedKFold) -> pySuStaIn's `cross_validate_sustain_model(test_idxs, plot=True)`.
+  Worker saves cross_validation.csv; Model choice shows CVIC + "lowest CVIC = k subtypes" +
+  pySuStaIn's Log_likelihoods_cv_folds.png.
+- Saved runs: src/app_runs.py `list_runs`; tab lists every run folder (status, start, settings),
+  refreshes every 10 s; "Load this run" (only finished runs) -> Model choice / Quick result.
+- Tested (browser): CV run, 2 subtypes, 2 folds, fast: ~10 min; app server was restarted during the
+  run and the run kept going; loaded from Saved runs: CVIC 32205.3 (1) / 25278.5 (2) -> 2 subtypes.
+- Bug found + fixed while testing: `reactive.isolate` is a `with` block in Shiny for Python.
+- For the server version (later): Saved runs shows ALL runs in results/app_runs - needs one folder
+  per user before several people use the same server.

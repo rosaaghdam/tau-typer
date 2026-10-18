@@ -16,7 +16,7 @@ from shiny.types import SafeException
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
-from src.app_runs import prepare_run_folder, start_run
+from src.app_runs import list_runs, prepare_run_folder, start_run
 from src.results import load_sustain_result, model_likelihoods, subject_table, subtype_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
 from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
@@ -134,11 +134,19 @@ app_ui = ui.page_navbar(
                                       ui.output_ui("run_progress_view")),
                          ui.nav_panel("Model choice", ui.output_ui("model_choice_status"),
                                       ui.output_data_frame("model_likelihood_table"),
-                                      ui.output_image("mcmc_likelihood_plot", height="auto")),
+                                      ui.output_image("mcmc_likelihood_plot", height="auto"),
+                                      ui.output_image("cv_folds_plot", height="auto")),
                          ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                       ui.input_select("result_model", "Model to look at", choices=[]),
                                       ui.output_data_frame("subtype_summary_table"),
-                                      ui.download_button("download_subjects", "Download subtype + stage per person (CSV)"))))),
+                                      ui.download_button("download_subjects", "Download subtype + stage per person (CSV)")),
+                         ui.nav_panel("Saved runs",
+                                      ui.p("Every run has its own folder. Load a finished run to see it in "
+                                           "Model choice and Quick result (and later in tabs 4-5).",
+                                           class_="text-muted small"),
+                                      ui.output_data_frame("saved_runs_table"),
+                                      ui.input_select("saved_run", "Finished run", choices=[]),
+                                      ui.input_action_button("load_run", "Load this run"))))),
     ui.nav_panel("4. Figures",
                  ui.h3("Summary figures"),
                  ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),
@@ -597,6 +605,12 @@ def server(input, output, session):
     def model_choice_status():
         if shown_run() is None:
             return no_run_yet()
+        cv_file = shown_run() / "cross_validation.csv"
+        if cv_file.exists():
+            best = pd.read_csv(cv_file, index_col="subtypes")["CVIC"].idxmin()
+            return ui.p(f"Run {shown_run().name}. Cross-validation: the lowest CVIC is for {best} subtype(s) - "
+                        "that is the number the data supports best (paper's method). Second figure: "
+                        "pySuStaIn's test log-likelihood per fold.", class_="text-success small")
         return ui.p(f"Run {shown_run().name}. Higher log-likelihood = fits this data better, but it rises "
                     "with every extra subtype - use cross-validation (CVIC) to choose the number. "
                     "Figure: pySuStaIn's own MCMC likelihood plot.", class_="text-muted small")
@@ -604,11 +618,20 @@ def server(input, output, session):
     @render.data_frame
     def model_likelihood_table():
         table = model_likelihoods(req(shown_run()), shown_settings()["dataset_name"])
+        cv_file = shown_run() / "cross_validation.csv"
+        if cv_file.exists():                                # only after a run with cross-validation
+            table = table.join(pd.read_csv(cv_file, index_col="subtypes"))
         return render.DataGrid(table.round(1).reset_index())
 
     @render.image
     def mcmc_likelihood_plot():
         path = req(shown_run()) / "MCMC_likelihoods.png"
+        req(path.exists())
+        return {"src": str(path), "width": "100%"}
+
+    @render.image
+    def cv_folds_plot():
+        path = req(shown_run()) / "Log_likelihoods_cv_folds.png"   # made by pySuStaIn's cross-validation
         req(path.exists())
         return {"src": str(path), "width": "100%"}
 
@@ -640,6 +663,36 @@ def server(input, output, session):
     @render.download_button(filename=lambda: f"{shown_run().name}_subtypes_stages.csv")
     def download_subjects():
         yield shown_table().to_csv(index_label="subject")
+
+    @reactive.calc
+    def saved_runs():
+        run_state()                                         # refresh when a run starts or ends ...
+        reactive.invalidate_later(10)                       # ... and every 10 s (runs from other visits)
+        return list_runs(RUNS_FOLDER)
+
+    @reactive.calc
+    def finished_runs():
+        runs = saved_runs()
+        return list(runs.loc[runs["status"] == "finished", "run"])
+
+    @render.data_frame
+    def saved_runs_table():
+        return render.DataGrid(saved_runs())
+
+    @reactive.effect
+    def _saved_run_choices():
+        with reactive.isolate():                            # keep the user's choice when the list refreshes
+            keep = input.saved_run()
+        ui.update_select("saved_run", choices=finished_runs(),
+                         selected=keep if keep in finished_runs() else None)
+
+    @reactive.effect
+    @reactive.event(input.load_run)
+    def _load_saved_run():
+        name = input.saved_run()
+        req(name in finished_runs())                        # only real, finished run folders
+        shown_run.set(RUNS_FOLDER / name)
+        ui.notification_show(f"Showing run {name} in Model choice and Quick result.")
 
 
 app = App(app_ui, server)

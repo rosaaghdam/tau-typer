@@ -7,6 +7,7 @@ import os
 import numpy as np
 import pandas as pd
 from pySuStaIn import ZscoreSustain
+from sklearn.model_selection import KFold
 
 
 def sustain_inputs(z, regions, z_events, z_max):
@@ -75,3 +76,16 @@ def run_sustain(data, Z_vals, Z_max, regions, settings, output_folder, seed, plo
                           settings["dataset_name"], settings["use_parallel_startpoints"], seed)
     outputs = model.run_sustain_algorithm(plot=plot)
     return model, outputs
+
+
+def cross_validate(model, n_people, n_folds, seed):
+    """pySuStaIn's own cross-validation (paper: 10 folds), for every model 1, 2, ... subtypes.
+
+    We only make the folds: scikit-learn's KFold, shuffled with the seed (so the same folds every time).
+    pySuStaIn fits each model on 9/10 of the people and scores it on the other 1/10, for each fold.
+    Returns CVIC per model (lower = better; the paper chose the number of subtypes this way) and the
+    test log-likelihood per fold and model. plot=True: pySuStaIn saves Log_likelihoods_cv_folds.png.
+    """
+    folds = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    test_idxs = [test for _, test in folds.split(np.zeros(n_people))]
+    return model.cross_validate_sustain_model(test_idxs, plot=True)

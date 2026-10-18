@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from src.sustain_model import run_sustain, sustain_inputs
+from src.sustain_model import cross_validate, run_sustain, sustain_inputs
 
 
 def main(folder):
@@ -20,7 +20,12 @@ def main(folder):
     z = pd.read_csv(folder / "zscores.csv", index_col="subject")
     data, Z_vals, Z_max = sustain_inputs(z, settings["regions"], settings["cut_points"], settings["z_max"])
     print(f"Run {folder.name}: {data.shape[0]} people x {data.shape[1]} regions", flush=True)
-    run_sustain(data, Z_vals, Z_max, settings["regions"], settings, str(folder), settings["seed"])
+    model, _ = run_sustain(data, Z_vals, Z_max, settings["regions"], settings, str(folder), settings["seed"])
+    if settings["n_folds"]:                             # None = no cross-validation
+        cvic, loglike = cross_validate(model, data.shape[0], settings["n_folds"], settings["seed"])
+        models = pd.RangeIndex(1, len(cvic) + 1, name="subtypes")
+        pd.DataFrame({"CVIC": cvic, "mean test log-likelihood": loglike.mean(axis=0)},
+                     index=models).to_csv(folder / "cross_validation.csv")
     (folder / "status.txt").write_text("finished\n")
 
 

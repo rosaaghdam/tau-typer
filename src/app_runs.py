@@ -6,8 +6,10 @@ that pySuStaIn prints), status.txt (finished / failed / cancelled) and pySuStaIn
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder
@@ -30,3 +32,19 @@ def start_run(folder):
     env = dict(os.environ, MPLBACKEND="Agg")             # figures go to files only, no windows
     return subprocess.Popen([sys.executable, "-u", "-m", "src.run_job", str(folder)],
                             cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, env=env)
+
+
+def list_runs(runs_folder):
+    """One row per run folder, newest first: status, start time and the main settings."""
+    rows = []
+    for settings_file in Path(runs_folder).glob("*/settings.yaml"):
+        folder, settings = settings_file.parent, yaml.safe_load(open(settings_file))
+        status = folder / "status.txt"
+        rows.append({"run": folder.name,
+                     "status": status.read_text().strip() if status.exists() else "running (or stopped)",
+                     "started": datetime.fromtimestamp(settings_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                     "people": settings["n_people"], "max subtypes": settings["n_subtypes_max"],
+                     "start points": settings["n_startpoints"], "MCMC": settings["n_iterations_mcmc"],
+                     "folds": settings["n_folds"] or "-"})
+    columns = ["run", "status", "started", "people", "max subtypes", "start points", "MCMC", "folds"]
+    return pd.DataFrame(rows, columns=columns).sort_values("started", ascending=False)
