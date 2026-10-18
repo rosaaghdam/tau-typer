@@ -90,4 +90,25 @@ Load a finished run in tab 3 ("Saved runs") first; tab 4 shows that run ("Run sh
 - [ ] Person: choose a person (type to search); bars = their z, dots = average of their subtype
       and stage group.
 - Code: src/figures.py (one function per figure), app `fig_data`, `fig_titles`, `fig_*` outputs.
-- To discuss: subtype numbering by size (see progress.md) - do the step-script figures (S7) agree?
+- Subtype numbering: Subtype 1 = most tau+ people, in every figure and table (and the PVD).
+  pySuStaIn's own outputs and our step scripts (S6-S8) use pySuStaIn's order, which is also
+  consistent - see notes/app_tab4_plan.md.
+
+---
+
+## Tab 5 – Subtype analysis
+Load a finished run in tab 3 first. Variables (age, sex, ...) are saved with every new run; for an
+older run, upload the same file in tab 1 (the status line says where the variables come from).
+- [ ] Sidebar: model, variables for Table 1 (all other columns are chosen), variable against stage.
+- [ ] Table 1: N, mean (SD) or % per group (S0, Subtype 1, ...) and p-values between the subtypes
+      (plain, and adjusted for stage for numbers).
+- [ ] Regional differences: heatmap of t-values, * = FDR p < 0.05. Toy 4-subtype run: Subtype 1 MTL,
+      2 occipital, 3 left temporal, 4 frontal/parietal.
+- [ ] Stage vs variable: table of Spearman rho (all tau+ and per subtype) + scatter with lines.
+- [ ] Left-right asymmetry: box plot per subtype + against stage (needs L_/R_ style region names).
+- [ ] Compare runs: choose another finished run and its number of subtypes -> cross-table, adjusted
+      Rand index, stage correlation.
+- [ ] Download: one CSV row per person with subtype, stage, probabilities and your other columns.
+- Code: src/subtype_analysis.py, the last three functions in src/figures.py, app `an_*`.
+- To decide together: which tests Table 1 should use for the paper (the paper compares each
+  subtype with the others; here: one test across subtypes + a stage-adjusted model).

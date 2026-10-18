@@ -1,6 +1,7 @@
 """App tab 3 - one folder per SuStaIn run, and starting pySuStaIn in its own process.
 
-A run folder holds: settings.yaml, zscores.csv, zscore_reference.csv (if any), log.txt (all
+A run folder holds: settings.yaml, zscores.csv, zscore_reference.csv (if any), covariates.csv
+(the other columns: age, sex, diagnosis, ... - used by tab 5), log.txt (all
 that pySuStaIn prints), status.txt (finished / failed / cancelled) and pySuStaIn's own files.
 """
 import os
@@ -15,7 +16,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent          # project folder
 
 
-def prepare_run_folder(folder, settings, z, reference=None):
+def prepare_run_folder(folder, settings, z, reference=None, covariates=None):
     """Make a NEW run folder and save what the run needs. Fails if the folder already exists."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=False)          # never reuse: pySuStaIn would load old results
@@ -24,6 +25,8 @@ def prepare_run_folder(folder, settings, z, reference=None):
     z.to_csv(folder / "zscores.csv", index_label="subject")
     if reference is not None:                           # needed later to z-score new people the same way
         reference.T.to_csv(folder / "zscore_reference.csv", index_label="region")
+    if covariates is not None:                          # same people and IDs as zscores.csv
+        covariates.to_csv(folder / "covariates.csv", index_label="subject")
 
 
 def start_run(folder):

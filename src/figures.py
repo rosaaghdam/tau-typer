@@ -276,3 +276,63 @@ def plot_person(person, z_person, regions, expected, prob_subtype, prob_stage, s
     ax3.set_ylabel("stage probability")
     fig.tight_layout()
     return fig
+
+
+def plot_regional_contrasts(t_values, p_fdr, subtype_titles):
+    """Paper Fig. 1d: t-value per region and subtype (this subtype vs all other tau+ people, same
+    stage). Red = more tau than the others, blue = less. * = FDR-corrected p < 0.05."""
+    limit = max(np.nanmax(np.abs(t_values.to_numpy())), 1)
+    fig, ax = plt.subplots(figsize=(1.8 * t_values.shape[1] + 3, 0.45 * t_values.shape[0] + 1.8))
+    image = ax.imshow(t_values, cmap="RdBu_r", vmin=-limit, vmax=limit, aspect="auto")
+    ax.set_xticks(range(t_values.shape[1]), [subtype_titles[k - 1] for k in t_values.columns])
+    ax.set_yticks(range(t_values.shape[0]), t_values.index)
+    for (row, col), t in np.ndenumerate(t_values.to_numpy()):
+        star = "*" if p_fdr.iloc[row, col] < 0.05 else ""
+        ax.text(col, row, f"{t:.1f}{star}", ha="center", va="center", fontsize=8)
+    fig.colorbar(image, ax=ax, label="t (this subtype vs other tau+, adjusted for stage)")
+    ax.set_title("Where does each subtype differ? (* = FDR p < 0.05)")
+    fig.tight_layout()
+    return fig
+
+
+def plot_stage_vs(table, values, label, subtype_titles):
+    """Paper Fig. 3a/b: SuStaIn stage against a number (age, MMSE, ...) for tau+ people,
+    coloured by subtype, with one straight line per subtype."""
+    numeric = pd.to_numeric(values, errors="coerce")
+    colors = subtype_colors(len(subtype_titles))
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for k, title in enumerate(subtype_titles, start=1):
+        people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0) & numeric.notna()
+        x, y = table.loc[people, "ml_stage"], numeric[people]
+        ax.scatter(x, y, s=14, alpha=0.6, color=colors[k - 1], label=f"{title} (n={people.sum()})")
+        if people.sum() > 2 and x.nunique() > 1:
+            slope, intercept = np.polyfit(x, y, 1)
+            xs = np.array([x.min(), x.max()])
+            ax.plot(xs, intercept + slope * xs, color=colors[k - 1], lw=2)
+    ax.set_xlabel("SuStaIn stage")
+    ax.set_ylabel(label)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_asymmetry(table, asymmetry, subtype_titles):
+    """Paper Ext. Fig. 9: left-right asymmetry of tau per subtype (box plot) and against stage.
+    Above 0 = more tau on the left, below 0 = more on the right."""
+    colors = subtype_colors(len(subtype_titles))
+    tau_pos = table["ml_stage"] > 0
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.8))
+    data = [asymmetry[tau_pos & (table["ml_subtype"] == k)] for k in range(1, len(subtype_titles) + 1)]
+    boxes = ax1.boxplot(data, patch_artist=True)
+    for box, color in zip(boxes["boxes"], colors):
+        box.set_facecolor(color)
+    ax1.set_xticks(range(1, len(subtype_titles) + 1), subtype_titles, rotation=30, ha="right")
+    ax1.axhline(0, color="gray", lw=1)
+    ax1.set_ylabel("asymmetry (left - right)")
+    ax2.scatter(table.loc[tau_pos, "ml_stage"], asymmetry[tau_pos], s=12, alpha=0.6,
+                c=colors[table.loc[tau_pos, "ml_subtype"].to_numpy() - 1])
+    ax2.axhline(0, color="gray", lw=1)
+    ax2.set_xlabel("SuStaIn stage")
+    ax2.set_ylabel("asymmetry (left - right)")
+    fig.tight_layout()
+    return fig

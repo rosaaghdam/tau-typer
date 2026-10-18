@@ -20,10 +20,11 @@ from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_s
 from src.app_runs import list_runs, prepare_run_folder, start_run
 from src.results import (load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table,
                          subtype_summary)
-from src.figures import (plot_gmm_fit, plot_model_choice, plot_person, plot_pvd, plot_region_histograms,
-                         plot_stage_progression, plot_stages, plot_subtype_patterns,
-                         plot_subtype_probabilities, plot_subtype_tree)
+from src.figures import (plot_asymmetry, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
+                         plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
+                         plot_stages, plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
+from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
 from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
 
@@ -48,6 +49,19 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
               "allowed (paper Ext. Fig. 1f).",
     "person": "Bars: this person's z-scores. Dots: average of people in the same subtype and stage group. "
               "Middle: subtype probabilities. Right: stage probabilities.",
+}
+
+AN_HELP = {     # short help text in tab 5 (paper = Vogel et al. 2021)
+    "table1": "Paper Table 1. Numbers: mean (SD); categories: %. p (subtypes): Kruskal-Wallis or chi-square "
+              "between the subtypes. Adjusted for stage: linear model variable ~ subtype + stage.",
+    "regions": "Paper Fig. 1d. For each subtype and region: this subtype vs all other tau+ people, at the same "
+               "stage (linear model z ~ subtype + stage). Red = more tau, blue = less; * = FDR p < 0.05.",
+    "stage": "Paper Fig. 3a/b. Spearman correlation between SuStaIn stage and the chosen variable (tau+ people), "
+             "overall and per subtype; one line per subtype in the figure.",
+    "asymmetry": "Paper Ext. Fig. 9. Asymmetry = mean over left/right region pairs of (L - R) / (|L| + |R|); "
+                 "above 0 = more tau on the left.",
+    "compare": "How well do two runs agree on the same people (e.g. other settings, Z_max or normalization)? "
+               "Cross-table of the groups, adjusted Rand index (1 = same subtypes) and stage correlation.",
 }
 
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
@@ -196,8 +210,37 @@ app_ui = ui.page_navbar(
                                       ui.p(FIG_HELP["person"], class_="text-muted small"),
                                       ui.output_plot("fig_person_plot", height="420px"))))),
     ui.nav_panel("5. Subtype analysis",
-                 ui.h3("Compare the subtypes"),
-                 ui.p("Coming: demographics, cognition, regional contrasts, export.")),
+                 ui.layout_sidebar(
+                     ui.sidebar(
+                         ui.output_ui("an_run_info"),
+                         ui.input_select("an_model", "Model (number of subtypes)", choices=[]),
+                         ui.input_selectize("an_variables", "Variables to compare (Table 1)", choices=[],
+                                            multiple=True),
+                         ui.input_select("an_stage_variable", "Variable against stage", choices=[]),
+                         ui.p("Variables come from the other columns of your file (age, sex, MMSE, APOE4, ...). "
+                              "Only tau+ people (stage > 0) are compared between subtypes.",
+                              class_="text-muted small"),
+                         width=320, open="always"),
+                     ui.navset_tab(
+                         ui.nav_panel("Table 1", ui.output_ui("an_status"), ui.output_data_frame("an_table1"),
+                                      ui.p(AN_HELP["table1"], class_="text-muted small mt-2")),
+                         ui.nav_panel("Regional differences", ui.p(AN_HELP["regions"], class_="text-muted small"),
+                                      ui.output_plot("an_regions_plot", height="520px")),
+                         ui.nav_panel("Stage vs variable", ui.p(AN_HELP["stage"], class_="text-muted small"),
+                                      ui.output_data_frame("an_stage_table"),
+                                      ui.output_plot("an_stage_plot", height="460px")),
+                         ui.nav_panel("Left-right asymmetry", ui.p(AN_HELP["asymmetry"], class_="text-muted small"),
+                                      ui.output_ui("an_asymmetry_status"),
+                                      ui.output_plot("an_asymmetry_plot", height="440px")),
+                         ui.nav_panel("Compare runs", ui.p(AN_HELP["compare"], class_="text-muted small"),
+                                      ui.input_select("an_other_run", "Other finished run", choices=[]),
+                                      ui.input_numeric("an_other_k", "Its number of subtypes", value=4, min=1),
+                                      ui.output_ui("an_compare_summary"),
+                                      ui.output_data_frame("an_compare_table")),
+                         ui.nav_panel("Download",
+                                      ui.p("One row per person: subtype, stage, probabilities and the other "
+                                           "columns of your file.", class_="text-muted small"),
+                                      ui.download_button("an_download", "Download results per person (CSV)"))))),
     title="Tau-typer",
 )
 
@@ -554,7 +597,8 @@ def server(input, output, session):
                 "n_iterations_mcmc": input.n_mcmc(), "seed": input.run_seed(),
                 "use_parallel_startpoints": input.use_parallel(),
                 "n_folds": input.n_folds() if input.do_cv() else None,       # None = no cross-validation
-                "dataset_name": CONFIG["runs"]["dataset_name"]}
+                "dataset_name": CONFIG["runs"]["dataset_name"],
+                "columns": {role: col for role, col in chosen_columns().items() if col}}   # for tab 5
 
     @render.ui
     def run_settings_view():
@@ -584,6 +628,16 @@ def server(input, output, session):
         """The Run button only works when every check passes."""
         ui.update_action_button("run_button", disabled=not all(ok for _, ok in run_checks()))
 
+    @reactive.calc
+    def run_covariates():
+        """All non-region columns (age, sex, diagnosis, ...) of the people in the run, same IDs as z."""
+        data, z = analysis_data(), normalized()["z"]
+        others = data.drop(columns=list(input.col_regions()))
+        id_col = chosen_columns().get("id")
+        if id_col:
+            others = others.set_index(id_col)
+        return others.loc[z.index]
+
     job = reactive.value(None)          # the run started in this visit: process, folder, start time
 
     @reactive.effect
@@ -591,7 +645,8 @@ def server(input, output, session):
     def _start_run():
         """Make the new run folder, then start pySuStaIn in its own process."""
         folder = RUNS_FOLDER / input.run_name().strip()
-        prepare_run_folder(folder, run_settings(), normalized()["z"], normalized()["reference"])
+        prepare_run_folder(folder, run_settings(), normalized()["z"], normalized()["reference"],
+                           run_covariates())
         job.set({"process": start_run(folder), "folder": folder, "started": datetime.now()})
 
     @reactive.calc
@@ -689,7 +744,9 @@ def server(input, output, session):
     @reactive.calc
     def shown_table():
         folder, settings = req(shown_run()), shown_settings()
-        result = load_sustain_result(folder, settings["dataset_name"], int(req(input.result_model())))
+        k = int(req(input.result_model()))
+        req(k <= settings["n_subtypes_max"])               # wait until the model list fits a newly shown run
+        result = load_sustain_result(folder, settings["dataset_name"], k)
         subjects = pd.read_csv(folder / "zscores.csv", index_col="subject").index
         return subject_table(result, subjects, CONFIG["results"]["poor_fit_threshold"], size_order(result))
 
@@ -749,14 +806,14 @@ def server(input, output, session):
     @reactive.effect
     def _fig_model_choices():
         k = shown_settings()["n_subtypes_max"]
-        ui.update_select("fig_model", choices={str(n): f"{n} subtype(s)" for n in range(1, k + 1)},
-                         selected=str(min(k, CONFIG["results"]["n_subtypes"])))       # paper: 4
+        for select_id in ["fig_model", "an_model"]:                                    # tabs 4 and 5
+            ui.update_select(select_id, choices={str(n): f"{n} subtype(s)" for n in range(1, k + 1)},
+                             selected=str(min(k, CONFIG["results"]["n_subtypes"])))   # paper: 4
 
-    @reactive.calc
-    def fig_data():
-        """What the figures need from the shown run; subtypes numbered by size (1 = largest), as in the PVD."""
+    def model_view(k):
+        """One model (k subtypes) of the shown run, as tabs 4 and 5 need it; subtypes numbered by size."""
         folder, settings = req(shown_run()), shown_settings()
-        k = int(req(input.fig_model()))
+        req(k <= settings["n_subtypes_max"])               # wait until the model list fits a newly shown run
         result = load_sustain_result(folder, settings["dataset_name"], k)
         order = size_order(result)
         z = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str})   # IDs as text
@@ -766,12 +823,18 @@ def server(input, output, session):
         return {"result": result, "order": order, "z": z, "table": table, "k": k, "edges": list(edges),
                 "regions": settings["regions"], "Z_vals": np.array([settings["cut_points"]] * len(settings["regions"]))}
 
-    @reactive.calc
-    def fig_titles():
-        """The subtype names typed by the user, or Subtype 1, 2, ... if the number does not match."""
-        k = fig_data()["k"]
+    def subtype_titles(k):
+        """The subtype names typed in tab 4, or Subtype 1, 2, ... if the number does not match k."""
         names = [name.strip() for name in input.subtype_names().split(",") if name.strip()]
         return names if len(names) == k else [f"Subtype {n}" for n in range(1, k + 1)]
+
+    @reactive.calc
+    def fig_data():
+        return model_view(int(req(input.fig_model())))
+
+    @reactive.calc
+    def fig_titles():
+        return subtype_titles(fig_data()["k"])
 
     @render.plot
     def fig_pvd():
@@ -838,6 +901,133 @@ def server(input, output, session):
         i = d["z"].index.get_loc(person)
         return plot_person(person, d["z"].loc[person], d["regions"], expected,
                            d["result"]["prob_subtype"][i][d["order"]], d["result"]["prob_stage"][i], fig_titles())
+
+    # ---------------- Tab 5: Subtype analysis ----------------
+    @render.ui
+    def an_run_info():
+        if shown_run() is None:
+            return ui.p("No finished run yet: run SuStaIn or load a saved run in tab 3.", class_="text-danger small")
+        return ui.p(f"Run shown: {shown_run().name}", class_="fw-bold small")
+
+    @reactive.calc
+    def an_data():
+        return model_view(int(req(input.an_model())))
+
+    @reactive.calc
+    def an_covariates():
+        """(other columns of the run's people, where they come from). From covariates.csv in the run
+        folder, or else from the file in tab 1 matched by subject ID; (None, reason) if neither works."""
+        folder, people = req(shown_run()), an_data()["z"].index
+        if (folder / "covariates.csv").exists():
+            covariates = pd.read_csv(folder / "covariates.csv", index_col="subject", dtype={"subject": str})
+            return covariates, "saved with the run"
+        data = uploaded_data()
+        id_col = chosen_columns().get("id") if data is not None else None
+        if not id_col:
+            return None, "this run has no saved covariates - upload the same file in tab 1 (with its ID column)"
+        others = data.drop(columns=list(input.col_regions() or []), errors="ignore")
+        others.index = others.pop(id_col).astype(str)
+        if not people.isin(others.index).any():
+            return None, "the IDs in tab 1 do not match the people of this run"
+        return others.reindex(people), "from the file in tab 1, matched by ID"
+
+    def covariates_or_stop():
+        """The covariates table; stops the output quietly if there is none (req cannot test a table)."""
+        covariates = an_covariates()[0]
+        req(covariates is not None)
+        return covariates
+
+    @reactive.effect
+    def _an_variable_choices():
+        covariates = an_covariates()[0]
+        columns = [] if covariates is None else list(covariates.columns)
+        numeric = [c for c in columns if pd.to_numeric(covariates[c], errors="coerce").notna().mean() > 0.9]
+        ui.update_selectize("an_variables", choices=columns, selected=columns)
+        ui.update_select("an_stage_variable", choices=numeric)
+
+    @render.ui
+    def an_status():
+        if shown_run() is None:
+            return no_run_yet()
+        covariates, source = an_covariates()
+        return ui.p(f"Run {shown_run().name}, {an_data()['k']} subtype(s). Variables: {source}.",
+                    class_="small " + ("text-danger" if covariates is None else "text-muted"))
+
+    @render.data_frame
+    def an_table1():
+        covariates = covariates_or_stop()
+        return render.DataGrid(group_table(an_data()["table"], covariates, list(input.an_variables() or [])))
+
+    @render.plot
+    def an_regions_plot():
+        d = an_data()
+        t_values, p_fdr = regional_contrasts(d["z"], d["table"], d["regions"])
+        return plot_regional_contrasts(t_values, p_fdr, subtype_titles(d["k"]))
+
+    @render.data_frame
+    def an_stage_table():
+        variable = req(input.an_stage_variable())
+        return render.DataGrid(stage_association(an_data()["table"], covariates_or_stop()[variable]))
+
+    @render.plot
+    def an_stage_plot():
+        d, variable = an_data(), req(input.an_stage_variable())
+        return plot_stage_vs(d["table"], covariates_or_stop()[variable], variable, subtype_titles(d["k"]))
+
+    @render.ui
+    def an_asymmetry_status():
+        if asymmetry_index(an_data()["z"], an_data()["regions"]) is None:
+            return ui.p("No left/right region pairs found in the region names (e.g. L_MTL / R_MTL).",
+                        class_="text-danger small")
+
+    @render.plot
+    def an_asymmetry_plot():
+        d = an_data()
+        asymmetry = asymmetry_index(d["z"], d["regions"])
+        req(asymmetry is not None)
+        return plot_asymmetry(d["table"], asymmetry, subtype_titles(d["k"]))
+
+    @reactive.effect
+    def _an_other_runs():
+        others = [run for run in finished_runs() if shown_run() is None or run != shown_run().name]
+        with reactive.isolate():
+            keep = input.an_other_run()
+        ui.update_select("an_other_run", choices=others, selected=keep if keep in others else None)
+
+    @reactive.calc
+    def an_comparison():
+        """(cross-table, summary, k used) for the shown run (A) against another finished run (B)."""
+        name = req(input.an_other_run())
+        req(name in finished_runs())                        # only real, finished run folders
+        folder = RUNS_FOLDER / name
+        settings = yaml.safe_load(open(folder / "settings.yaml"))
+        k = min(int(input.an_other_k() or 1), settings["n_subtypes_max"])
+        other = load_sustain_result(folder, settings["dataset_name"], k)
+        ids = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str}).index
+        other_table = subject_table(other, ids, CONFIG["results"]["poor_fit_threshold"], size_order(other))
+        crosstab, summary = compare_runs(an_data()["table"], other_table)
+        return crosstab, summary, k
+
+    @render.ui
+    def an_compare_summary():
+        _, summary, k = an_comparison()
+        facts = [f"Run A = {shown_run().name} ({an_data()['k']} subtypes), run B = {input.an_other_run()} ({k} subtypes)"]
+        facts += [f"{key}: {value}" for key, value in summary.items()]
+        return ui.tags.ul(*[ui.tags.li(f) for f in facts])
+
+    @render.data_frame
+    def an_compare_table():
+        return render.DataGrid(an_comparison()[0].reset_index())
+
+    @render.download_button(filename=lambda: f"{shown_run().name}_{an_data()['k']}subtypes_per_person.csv")
+    def an_download():
+        d = an_data()
+        probabilities = pd.DataFrame(d["result"]["prob_subtype"][:, d["order"]], index=d["table"].index,
+                                     columns=[f"prob {t}" for t in subtype_titles(d["k"])])
+        parts = [d["table"], probabilities]
+        if an_covariates()[0] is not None:
+            parts.append(an_covariates()[0])
+        yield pd.concat(parts, axis=1).to_csv(index_label="subject")
 
 
 app = App(app_ui, server)

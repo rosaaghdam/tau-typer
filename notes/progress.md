@@ -894,3 +894,17 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - The app numbers subtypes by the number of tau+ people (size_order) and gives the PVD the matching
   unsorted numbers (pvd_order). Found with a 4-subtype toy run (f order != people order: 66/39/58/33).
 - 4-subtype toy run (fast, 12 min): limbic-first, occipital-first, temporal-first, parietal/frontal-first.
+
+## 2026-10-18 – Tab 5: subtype analysis -> ALL 5 TABS BUILT
+
+- src/subtype_analysis.py + 3 figures. Small tabs: Table 1, Regional differences (Fig. 1d), Stage vs
+  variable (Fig. 3a/b), Left-right asymmetry (Ext. Fig. 9), Compare runs (Fig. 2b idea /
+  sensitivity), Download (one row per person: subtype, stage, probabilities, covariates).
+- Runs now save covariates.csv + column roles; older runs use tab-1 data matched by ID.
+- Tested on the 4-subtype toy run: regional differences recover each toy subtype (MTL, occipital,
+  left temporal, frontal/parietal); stage vs age rho = -0.45 (toy rule, like the paper); Subtype 3
+  (toy lateral temporal) clearly left-sided; 4 vs 2 subtypes: ARI 0.344, stage rho 0.99.
+- Bug found + fixed: in Shiny for Python an error inside an effect ends the session; switching to a
+  run with fewer subtypes caused one. Now guarded with req(k <= n_subtypes_max).
+- Still to do later (from app_results_plan.md): longitudinal analyses (need follow-up visits),
+  brain maps, one-page report, About tab, server deployment (per-user folders).
