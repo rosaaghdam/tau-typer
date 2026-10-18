@@ -839,3 +839,13 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   folder has settings.yaml, zscores.csv, log.txt (live tqdm progress), status.txt, pickle_files/,
   PVD PNGs, MCMC_likelihoods.png. Harmless warnings: "FigureCanvasAgg is non-interactive".
 - Found: pySuStaIn always tunes the MCMC first (3 x 10,000 iterations, fixed) -> notes/SuStaIn.md.
+
+## 2026-10-18 – Tab 3, piece 3.3: start, live progress, cancel
+
+- Run button -> prepare_run_folder + start_run; job kept per visit (reactive.value).
+- run_state(): running / finished / failed / cancelled, rechecked every 2 s while running.
+- Live log (last 12 lines of log.txt, tqdm \r handled) + elapsed time; Cancel = terminate the process,
+  status.txt "cancelled"; saved files stay in the folder.
+- Tested (browser, toy data, fast test): 1 subtype finished in 42 s; second run cancelled after 10 s
+  -> "cancelled", no process left; Run disabled while running and when the name is used.
+- Note: if the browser is closed, the run keeps going and its folder is kept (load it later, 3.6).

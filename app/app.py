@@ -16,6 +16,7 @@ from shiny.types import SafeException
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
+from src.app_runs import prepare_run_folder, start_run
 from src.figures import plot_gmm_fit, plot_region_histograms
 from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
 from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
@@ -124,10 +125,12 @@ app_ui = ui.page_navbar(
                          ui.input_text("run_name", "Run name (new folder)",
                                        value=datetime.now().strftime("run_%Y-%m-%d_%H%M")),
                          ui.input_action_button("run_button", "Run SuStaIn", class_="btn-primary"),
+                         ui.input_action_button("cancel_run", "Cancel run", class_="btn-outline-danger mt-2"),
                          width=320, open="always"),
                      ui.navset_tab(
                          ui.nav_panel("Run", ui.output_ui("run_settings_view"),
-                                      ui.output_ui("run_checks_view"))))),
+                                      ui.output_ui("run_checks_view"),
+                                      ui.output_ui("run_progress_view"))))),
     ui.nav_panel("4. Figures",
                  ui.h3("Summary figures"),
                  ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),
@@ -476,7 +479,8 @@ def server(input, output, session):
         name_ok = re.fullmatch(r"[A-Za-z0-9_-]+", name) is not None and not (RUNS_FOLDER / name).exists()
         return [("Tab 2 says 'Ready for tab 3'", tab2_ready),
                 ("Run name is new and uses only letters, digits, - and _", name_ok),
-                ("Max number of subtypes is at least 1", (input.n_subtypes_max() or 0) >= 1)]
+                ("Max number of subtypes is at least 1", (input.n_subtypes_max() or 0) >= 1),
+                ("No other run is going on", run_state() != "running")]
 
     @reactive.calc
     def run_settings():
@@ -500,7 +504,8 @@ def server(input, output, session):
         n_events = len(st["regions"]) * len(st["cut_points"])
         facts = [f"Data: {st['n_people']} people x {len(st['regions'])} regions, {n_events} events "
                  f"(stages 0-{n_events}); normalization: {NORM_METHODS[st['normalization']]}",
-                 f"Models: 1 to {st['n_subtypes_max']} subtypes",
+                 "Models: " + ("1 subtype only" if st["n_subtypes_max"] == 1
+                               else f"1, 2, ... {st['n_subtypes_max']} subtypes (one model each)"),
                  f"Start points: {st['n_startpoints']}, MCMC iterations: {st['n_iterations_mcmc']:,}, "
                  f"seed: {st['seed']}, parallel: {'yes' if st['use_parallel_startpoints'] else 'no'}",
                  "Cross-validation: " + (f"{st['n_folds']} folds" if st['n_folds'] else "off"),
@@ -517,6 +522,54 @@ def server(input, output, session):
     def _run_button_state():
         """The Run button only works when every check passes."""
         ui.update_action_button("run_button", disabled=not all(ok for _, ok in run_checks()))
+
+    job = reactive.value(None)          # the run started in this visit: process, folder, start time
+
+    @reactive.effect
+    @reactive.event(input.run_button)
+    def _start_run():
+        """Make the new run folder, then start pySuStaIn in its own process."""
+        folder = RUNS_FOLDER / input.run_name().strip()
+        prepare_run_folder(folder, run_settings(), normalized()["z"], normalized()["reference"])
+        job.set({"process": start_run(folder), "folder": folder, "started": datetime.now()})
+
+    @reactive.calc
+    def run_state():
+        """'none', 'running', 'finished', 'failed' or 'cancelled' - rechecked every 2 s while running."""
+        j = job()
+        if j is None:
+            return "none"
+        if j["process"].poll() is None:                     # poll() is None = still running
+            reactive.invalidate_later(2)
+            return "running"
+        status = j["folder"] / "status.txt"
+        return status.read_text().strip() if status.exists() else "failed"
+
+    @render.ui
+    def run_progress_view():
+        state = run_state()
+        if state == "none":
+            return None
+        j = job()
+        log = (j["folder"] / "log.txt").read_text(errors="replace")
+        lines = [line for line in re.split(r"[\r\n]+", log) if line.strip()][-12:]   # progress bars use \r
+        elapsed = str(datetime.now() - j["started"]).split(".")[0]
+        color = {"running": "text-primary", "finished": "text-success"}.get(state, "text-danger")
+        return ui.TagList(ui.h6(f"Run {j['folder'].name}: {state} ({elapsed})", class_=color),
+                          ui.tags.pre("\n".join(lines), style="font-size: 0.75rem; white-space: pre-wrap"))
+
+    @reactive.effect
+    @reactive.event(input.cancel_run)
+    def _cancel_run():
+        """Stop the running pySuStaIn process; what it saved so far stays in the folder."""
+        j = job()
+        if j is not None and j["process"].poll() is None:
+            j["process"].terminate()
+            (j["folder"] / "status.txt").write_text("cancelled\n")
+
+    @reactive.effect
+    def _cancel_button_state():
+        ui.update_action_button("cancel_run", disabled=run_state() != "running")
 
 
 app = App(app_ui, server)
