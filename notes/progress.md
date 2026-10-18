@@ -805,3 +805,11 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Known: run name time is taken when the app starts (fix in 3.1c).
 
 **Next**: 3.1b - presets fill in start points / MCMC; cross-validation switches max subtypes 4 <-> 6.
+
+## 2026-10-18 – Tab 3, piece 3.1b: presets and cross-validation react
+
+- Preset "Fast test" -> 5 start points / 1,000 MCMC; "Paper settings" -> 25 / 10,000.
+- Cross-validation ticked -> max subtypes 6; unticked -> 4. Numbers from config.yaml.
+- Rosa tested: works.
+
+**Next**: 3.1c - fresh run name per session, checks before a run, Run button greyed out until ready.

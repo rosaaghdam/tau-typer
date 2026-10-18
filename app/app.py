@@ -440,5 +440,21 @@ def server(input, output, session):
     def download_sample():
         return str(SAMPLE_DATA)
 
+    # ---------------- Tab 3: Run SuStaIn ----------------
+    @reactive.effect
+    @reactive.event(input.run_preset, ignore_init=True)
+    def _apply_preset():
+        """Fill in start points and MCMC iterations for the chosen preset (numbers from config.yaml)."""
+        settings = CONFIG["sustain"]["fast_test"] if input.run_preset() == "fast" else CONFIG["sustain"]
+        ui.update_numeric("n_startpoints", value=settings["n_startpoints"])
+        ui.update_numeric("n_mcmc", value=settings["n_iterations_mcmc"])
+
+    @reactive.effect
+    @reactive.event(input.do_cv, ignore_init=True)
+    def _cv_max_subtypes():
+        """Cross-validation tries more subtypes (6) to choose the number; a normal run uses 4."""
+        section = "cross_validation" if input.do_cv() else "sustain"
+        ui.update_numeric("n_subtypes_max", value=CONFIG[section]["n_subtypes_max"])
+
 
 app = App(app_ui, server)
