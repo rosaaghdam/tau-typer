@@ -31,3 +31,26 @@ def subject_table(result, subject_ids, poor_fit_threshold):
     table["subtype"] = np.where(table["ml_stage"] == 0, "S0", "Subtype " + table["ml_subtype"].astype(str))
     table["poor_fit"] = (table["ml_stage"] > 0) & (table["prob_subtype"] < poor_fit_threshold)
     return table
+
+
+def model_likelihoods(output_folder, dataset_name):
+    """Log-likelihood of every saved model (1, 2, ... subtypes), from pySuStaIn's MCMC samples.
+
+    Higher = fits this data better. It (almost) always rises with more subtypes, so it cannot
+    choose the number of subtypes on its own - cross-validation (CVIC) does that.
+    """
+    rows, n = {}, 1
+    while os.path.exists(os.path.join(output_folder, "pickle_files", f"{dataset_name}_subtype{n - 1}.pickle")):
+        likelihood = load_sustain_result(output_folder, dataset_name, n)["samples_likelihood"].ravel()
+        rows[n] = {"mean log-likelihood": likelihood.mean(), "best log-likelihood": likelihood.max()}
+        n += 1
+    return pd.DataFrame(rows).T.rename_axis("subtypes")
+
+
+def subtype_summary(table):
+    """People per group (S0, Subtype 1, ...): number, %, how many fit poorly, median stage."""
+    groups = table.groupby("subtype")
+    summary = pd.DataFrame({"people": groups.size(), "poor fit": groups["poor_fit"].sum(),
+                            "median stage": groups["ml_stage"].median()})
+    summary.insert(1, "%", (100 * summary["people"] / len(table)).round(1))
+    return summary

@@ -849,3 +849,12 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Tested (browser, toy data, fast test): 1 subtype finished in 42 s; second run cancelled after 10 s
   -> "cancelled", no process left; Run disabled while running and when the name is used.
 - Note: if the browser is closed, the run keeps going and its folder is kept (load it later, 3.6).
+
+## 2026-10-18 – Tab 3, piece 3.4: Model choice + Quick result
+
+- src/results.py: model_likelihoods(), subtype_summary().
+- app: shown_run (folder whose results are shown; set when a run finishes); "Model choice"
+  (likelihood table + pySuStaIn's MCMC_likelihoods.png); "Quick result" (model select, summary,
+  CSV download per person).
+- Tested (browser, toy, fast, 2 subtypes, 2 min 40 s): likelihood -15892.7 (1) / -12134.6 (2);
+  S0 309 (61.8%), Subtype 1 109, Subtype 2 82 - identical to the command-line test (same seed).

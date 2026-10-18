@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.app_runs import prepare_run_folder, start_run
+from src.results import load_sustain_result, model_likelihoods, subject_table, subtype_summary
 from src.figures import plot_gmm_fit, plot_region_histograms
 from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
 from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
@@ -130,7 +131,14 @@ app_ui = ui.page_navbar(
                      ui.navset_tab(
                          ui.nav_panel("Run", ui.output_ui("run_settings_view"),
                                       ui.output_ui("run_checks_view"),
-                                      ui.output_ui("run_progress_view"))))),
+                                      ui.output_ui("run_progress_view")),
+                         ui.nav_panel("Model choice", ui.output_ui("model_choice_status"),
+                                      ui.output_data_frame("model_likelihood_table"),
+                                      ui.output_image("mcmc_likelihood_plot", height="auto")),
+                         ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
+                                      ui.input_select("result_model", "Model to look at", choices=[]),
+                                      ui.output_data_frame("subtype_summary_table"),
+                                      ui.download_button("download_subjects", "Download subtype + stage per person (CSV)"))))),
     ui.nav_panel("4. Figures",
                  ui.h3("Summary figures"),
                  ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),
@@ -570,6 +578,68 @@ def server(input, output, session):
     @reactive.effect
     def _cancel_button_state():
         ui.update_action_button("cancel_run", disabled=run_state() != "running")
+
+    shown_run = reactive.value(None)    # folder of the run whose results are shown
+
+    @reactive.effect
+    def _show_finished_run():
+        if run_state() == "finished":
+            shown_run.set(job()["folder"])
+
+    @reactive.calc
+    def shown_settings():
+        return yaml.safe_load(open(req(shown_run()) / "settings.yaml"))
+
+    def no_run_yet():
+        return ui.p("No finished run yet: run SuStaIn (tab Run) first.", class_="text-muted")
+
+    @render.ui
+    def model_choice_status():
+        if shown_run() is None:
+            return no_run_yet()
+        return ui.p(f"Run {shown_run().name}. Higher log-likelihood = fits this data better, but it rises "
+                    "with every extra subtype - use cross-validation (CVIC) to choose the number. "
+                    "Figure: pySuStaIn's own MCMC likelihood plot.", class_="text-muted small")
+
+    @render.data_frame
+    def model_likelihood_table():
+        table = model_likelihoods(req(shown_run()), shown_settings()["dataset_name"])
+        return render.DataGrid(table.round(1).reset_index())
+
+    @render.image
+    def mcmc_likelihood_plot():
+        path = req(shown_run()) / "MCMC_likelihoods.png"
+        req(path.exists())
+        return {"src": str(path), "width": "100%"}
+
+    @reactive.effect
+    def _result_model_choices():
+        k = shown_settings()["n_subtypes_max"]
+        ui.update_select("result_model", choices={str(n): f"{n} subtype(s)" for n in range(1, k + 1)},
+                         selected=str(min(k, CONFIG["results"]["n_subtypes"])))       # paper: 4
+
+    @reactive.calc
+    def shown_table():
+        folder, settings = req(shown_run()), shown_settings()
+        result = load_sustain_result(folder, settings["dataset_name"], int(req(input.result_model())))
+        subjects = pd.read_csv(folder / "zscores.csv", index_col="subject").index
+        return subject_table(result, subjects, CONFIG["results"]["poor_fit_threshold"])
+
+    @render.ui
+    def quick_result_status():
+        if shown_run() is None:
+            return no_run_yet()
+        return ui.p(f"Run {shown_run().name}. S0 = no abnormal tau (stage 0, no subtype). Poor fit = subtype "
+                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). "
+                    "All figures are in tab 4.", class_="text-muted small")
+
+    @render.data_frame
+    def subtype_summary_table():
+        return render.DataGrid(subtype_summary(shown_table()).reset_index())
+
+    @render.download_button(filename=lambda: f"{shown_run().name}_subtypes_stages.csv")
+    def download_subjects():
+        yield shown_table().to_csv(index_label="subject")
 
 
 app = App(app_ui, server)
