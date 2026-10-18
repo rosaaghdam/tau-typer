@@ -126,7 +126,8 @@ app_ui = ui.page_navbar(
                          ui.input_action_button("run_button", "Run SuStaIn", class_="btn-primary"),
                          width=320, open="always"),
                      ui.navset_tab(
-                         ui.nav_panel("Run", ui.output_ui("run_checks_view"))))),
+                         ui.nav_panel("Run", ui.output_ui("run_settings_view"),
+                                      ui.output_ui("run_checks_view"))))),
     ui.nav_panel("4. Figures",
                  ui.h3("Summary figures"),
                  ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),
@@ -476,6 +477,35 @@ def server(input, output, session):
         return [("Tab 2 says 'Ready for tab 3'", tab2_ready),
                 ("Run name is new and uses only letters, digits, - and _", name_ok),
                 ("Max number of subtypes is at least 1", (input.n_subtypes_max() or 0) >= 1)]
+
+    @reactive.calc
+    def run_settings():
+        """Everything one run needs, in one dictionary (saved as settings.yaml in the run folder)."""
+        s = sustain_input()
+        return {"n_people": len(s["subjects"]), "regions": s["regions"],
+                "normalization": normalized()["method"], "cut_points": [float(c) for c in s["cut_points"]],
+                "z_max": [round(float(v), 4) for v in s["Z_max"]],
+                "n_subtypes_max": input.n_subtypes_max(), "n_startpoints": input.n_startpoints(),
+                "n_iterations_mcmc": input.n_mcmc(), "seed": input.run_seed(),
+                "use_parallel_startpoints": input.use_parallel(),
+                "n_folds": input.n_folds() if input.do_cv() else None,       # None = no cross-validation
+                "dataset_name": CONFIG["runs"]["dataset_name"]}
+
+    @render.ui
+    def run_settings_view():
+        try:
+            st = run_settings()
+        except Exception:                                   # no data yet, or not normalized
+            return ui.p("Upload data (tab 1) and click Normalize (tab 2) first.", class_="text-muted")
+        n_events = len(st["regions"]) * len(st["cut_points"])
+        facts = [f"Data: {st['n_people']} people x {len(st['regions'])} regions, {n_events} events "
+                 f"(stages 0-{n_events}); normalization: {NORM_METHODS[st['normalization']]}",
+                 f"Models: 1 to {st['n_subtypes_max']} subtypes",
+                 f"Start points: {st['n_startpoints']}, MCMC iterations: {st['n_iterations_mcmc']:,}, "
+                 f"seed: {st['seed']}, parallel: {'yes' if st['use_parallel_startpoints'] else 'no'}",
+                 "Cross-validation: " + (f"{st['n_folds']} folds" if st['n_folds'] else "off"),
+                 f"Results folder: {CONFIG['runs']['folder']}/{input.run_name().strip()}"]
+        return ui.TagList(ui.h6("This run"), ui.tags.ul(*[ui.tags.li(f) for f in facts]))
 
     @render.ui
     def run_checks_view():

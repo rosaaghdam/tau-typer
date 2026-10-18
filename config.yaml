@@ -97,3 +97,4 @@ cross_validation:
 # ---------- App tab 3: where runs are saved ----------
 runs:
   folder: results/app_runs    # one NEW sub-folder per run (pySuStaIn would reuse old files otherwise)
+  dataset_name: tau_typer      # start of the result file names pySuStaIn writes

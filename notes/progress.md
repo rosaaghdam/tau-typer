@@ -822,3 +822,11 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - app: fresh run name per visit; "Run" small tab with 3 checks; Run button disabled until all ✓.
 - Tested (Claude, browser): no data -> ✗ + disabled; sample data + Normalize -> all ✓, enabled;
   run name "my run" -> ✗ + disabled.
+
+## 2026-10-18 – Tab 3, piece 3.1d: "This run" settings list
+
+- run_settings(): one dictionary with data size, regions, normalization, cut-points, Z_max,
+  max subtypes, start points, MCMC, seed, parallel, folds (None = no CV), dataset_name.
+  Will be saved as settings.yaml in each run folder.
+- config.yaml: runs.dataset_name: tau_typer.
+- Tested (browser): 500 x 10, 30 events, models 1-4; with CV ticked: models 1-6, 10 folds.
