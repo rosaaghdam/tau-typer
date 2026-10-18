@@ -12,39 +12,68 @@ from sklearn.metrics import adjusted_rand_score
 from statsmodels.stats.multitest import multipletests
 
 
-def group_table(table, covariates, variables):
-    """Table 1: each variable per group (S0, Subtype 1, ...) and a test between the subtypes.
+def one_vs_others_p(values, groups, tau_pos, subtype, numeric):
+    """p for one subtype vs all other tau+ people: Mann-Whitney (numbers) or chi-square (categories)."""
+    this, others = tau_pos & (groups == subtype), tau_pos & (groups != subtype)
+    if numeric:
+        a, b = values[this].dropna(), values[others].dropna()
+        return stats.mannwhitneyu(a, b).pvalue if len(a) > 1 and len(b) > 1 else np.nan
+    counts = pd.crosstab(values[tau_pos].astype(str), this[tau_pos])
+    return stats.chi2_contingency(counts).pvalue if counts.shape[0] > 1 and counts.shape[1] == 2 else np.nan
 
-    Numbers: mean (SD), test = Kruskal-Wallis between the subtypes (tau+ people only), and a
-    linear model "variable ~ subtype + stage" (p for subtype, i.e. adjusted for stage).
-    Text / categories: % for every value, test = chi-square between the subtypes.
+
+def group_table(table, covariates, variables):
+    """Table 1: each variable per group (S0, Subtype 1, ...) and tests between the subtypes (tau+ only).
+
+    Numbers: mean (SD); p (subtypes) = Kruskal-Wallis; p adjusted for stage = linear model
+    "variable ~ subtype + stage". Categories: % for every value; p (subtypes) = chi-square.
+    Like the paper, each subtype is also compared with all other tau+ people (Mann-Whitney or
+    chi-square); * after a value = different from the other subtypes (FDR-corrected p < 0.05).
     """
     groups = table["subtype"]
-    order = ["S0"] + sorted(g for g in groups.unique() if g != "S0")
+    subtypes = sorted(g for g in groups.unique() if g != "S0")
+    order = (["S0"] if (groups == "S0").any() else []) + subtypes
     tau_pos = table["ml_stage"] > 0
-    rows = [{"variable": "N", **{g: int((groups == g).sum()) for g in order}}]
+    rows = [{"variable": "N", **{g: str(int((groups == g).sum())) for g in order}}]
+    marks = []                                               # (row number, subtype, p one vs others)
     for var in variables:
         values = covariates[var]
-        numeric = pd.to_numeric(values, errors="coerce")
-        if numeric.notna().mean() > 0.9 and values.nunique() > 2:                  # a number
-            row = {"variable": var, **{g: f"{numeric[groups == g].mean():.1f} ({numeric[groups == g].std():.1f})"
+        numeric_values = pd.to_numeric(values, errors="coerce")
+        is_number = numeric_values.notna().mean() > 0.9 and values.nunique() > 2
+        if is_number:
+            row = {"variable": var, **{g: f"{numeric_values[groups == g].mean():.1f} ({numeric_values[groups == g].std():.1f})"
                                        for g in order}}
-            samples = [numeric[(groups == g) & tau_pos].dropna() for g in order[1:]]
-            row["p (subtypes)"] = stats.kruskal(*samples).pvalue if len(samples) > 1 else np.nan
-            data = pd.DataFrame({"y": numeric, "subtype": groups, "stage": table["ml_stage"]})[tau_pos].dropna()
-            if len(samples) > 1:                         # ANOVA table of the linear model -> p for subtype
-                fit = smf.ols("y ~ C(subtype) + stage", data=data).fit()
+            samples = [numeric_values[(groups == g) & tau_pos].dropna() for g in subtypes]
+            if len(samples) > 1:
+                row["p (subtypes)"] = stats.kruskal(*samples).pvalue
+                data = pd.DataFrame({"y": numeric_values, "subtype": groups, "stage": table["ml_stage"]})[tau_pos].dropna()
+                fit = smf.ols("y ~ C(subtype) + stage", data=data).fit()      # ANOVA table -> p for subtype
                 row["p (subtypes, adjusted for stage)"] = sm.stats.anova_lm(fit, typ=2).loc["C(subtype)", "PR(>F)"]
-            rows.append(row)
-        else:                                                                     # categories
+            new_rows = [row]
+        else:
             counts = pd.crosstab(values.astype(str), groups)[order]
             percent = 100 * counts / counts.sum()
             subtype_counts = pd.crosstab(values[tau_pos].astype(str), groups[tau_pos])
-            p = stats.chi2_contingency(subtype_counts).pvalue if subtype_counts.shape[1] > 1 and subtype_counts.shape[0] > 1 else np.nan
-            for level in counts.index:
-                rows.append({"variable": f"{var} = {level}, %", **{g: f"{percent.loc[level, g]:.1f}" for g in order},
-                             "p (subtypes)": p if level == counts.index[0] else np.nan})
+            p = (stats.chi2_contingency(subtype_counts).pvalue
+                 if subtype_counts.shape[0] > 1 and subtype_counts.shape[1] > 1 else np.nan)
+            new_rows = [{"variable": f"{var} = {level}, %", **{g: f"{percent.loc[level, g]:.1f}" for g in order}}
+                        for level in counts.index]
+            new_rows[0]["p (subtypes)"] = p
+        if len(subtypes) > 1:
+            for g in subtypes:
+                values_used = numeric_values if is_number else values
+                marks.append((len(rows), g, one_vs_others_p(values_used, groups, tau_pos, g, is_number)))
+        rows += new_rows
     result = pd.DataFrame(rows)
+    if marks:
+        p_values = np.array([p for _, _, p in marks], dtype=float)
+        ok = ~np.isnan(p_values)
+        corrected = np.full(len(p_values), np.nan)
+        if ok.any():
+            corrected[ok] = multipletests(p_values[ok], method="fdr_bh")[1]
+        for (row, g, _), q in zip(marks, corrected):
+            if q < 0.05:
+                result.loc[row, g] += " *"
     for col in ["p (subtypes)", "p (subtypes, adjusted for stage)"]:
         if col in result:
             result[col] = result[col].map(lambda p: "" if pd.isna(p) else f"{p:.3g}")

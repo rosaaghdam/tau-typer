@@ -908,3 +908,15 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   run with fewer subtypes caused one. Now guarded with req(k <= n_subtypes_max).
 - Still to do later (from app_results_plan.md): longitudinal analyses (need follow-up visits),
   brain maps, one-page report, About tab, server deployment (per-user folders).
+
+## 2026-10-18 – App final version (before Rosa's review)
+
+- Tab 2 "click Normalize again" warning + tab 3 check; Table 1 paper-style subtype-vs-others (*, FDR);
+  report ZIP (9 figures PNG+PDF, 6 tables, README, settings); pySuStaIn version + commit saved in
+  every run and shown in the new About tab; config runs.private_per_visit (default false); wider QC
+  column; README.md and code/README.md updated.
+- End-to-end test (browser, toy data, fast, 2 subtypes, 2 min 46 s): all checks, tabs 4-5, report ZIP
+  1.2 MB complete. Private mode tested by switching it on temporarily: own visit folder, empty saved
+  list, run stopped + folder deleted when the visit ended; switched back off afterwards.
+- Not done (needs Rosa / data / installs): brain maps, longitudinal analyses, server deployment,
+  license, checking the citations against the papers.

@@ -112,3 +112,20 @@ older run, upload the same file in tab 1 (the status line says where the variabl
 - Code: src/subtype_analysis.py, the last three functions in src/figures.py, app `an_*`.
 - To decide together: which tests Table 1 should use for the paper (the paper compares each
   subtype with the others; here: one test across subtypes + a stage-adjusted model).
+
+---
+
+## Final additions (2026-10-18)
+- [ ] Tab 2: after Normalize, change the method (or GMM components / regions / data / inclusion rule):
+      red "click Normalize again" line; tab 3 shows ✗ "Normalization is up to date". Changing it back
+      removes the warning.
+- [ ] Tab 5 Table 1: a * after a subtype's value = that subtype differs from all other tau+ people
+      (paper style, FDR p < 0.05). The toy data has no such differences, so no * is expected there.
+- [ ] Tab 5 Download: "Download report (ZIP)" -> figures/ (PNG 300 dpi + PDF), tables/ (CSV),
+      README.txt, settings.yaml (incl. pySuStaIn commit).
+- [ ] About tab: steps, pySuStaIn version 0.1 / commit 708fa22..., papers. PLEASE CHECK the three
+      citations against the PDFs in papers/ (written from memory).
+- [ ] config.yaml `runs.private_per_visit`: false on your computer. Only for a shared server: true ->
+      each visit its own folder, deleted when the visit ends (download the report first!).
+- [ ] Tab 1: the QC "Check" column is wider now.
+- [ ] README.md (front page on GitHub) and code/README.md.

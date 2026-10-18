@@ -4,6 +4,8 @@ Run from the project folder (environment active):   shiny run app/app.py
 This file is only the user interface; all calculations live in src/.
 """
 import re
+import secrets
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.app_runs import list_runs, prepare_run_folder, start_run
+from src.report import pysustain_info, report_zip
 from src.results import (load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table,
                          subtype_summary)
 from src.figures import (plot_asymmetry, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
@@ -240,12 +243,33 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Download",
                                       ui.p("One row per person: subtype, stage, probabilities and the other "
                                            "columns of your file.", class_="text-muted small"),
-                                      ui.download_button("an_download", "Download results per person (CSV)"))))),
+                                      ui.download_button("an_download", "Download results per person (CSV)"),
+                                      ui.p("Report: every figure of tabs 4-5 (PNG 300 dpi + PDF), every table "
+                                           "(CSV) and the run's settings, for the model chosen in the sidebar.",
+                                           class_="text-muted small mt-3"),
+                                      ui.download_button("an_report", "Download report (ZIP)"))))),
+    ui.nav_panel("About", ui.output_ui("about")),
     title="Tau-typer",
 )
 
 
 def server(input, output, session):
+    # Where this visit's runs are saved. On a shared server (config runs.private_per_visit: true) every
+    # visit gets its own folder, sees only its own runs, and the folder is deleted when the visit ends.
+    private = CONFIG["runs"].get("private_per_visit", False)
+    runs_folder = RUNS_FOLDER / f"visit_{secrets.token_hex(8)}" if private else RUNS_FOLDER
+
+    def _end_visit():
+        """Private visits only: stop a running SuStaIn and delete this visit's folder."""
+        with reactive.isolate():
+            j = job()
+        if j is not None and j["process"].poll() is None:
+            j["process"].terminate()
+        shutil.rmtree(runs_folder, ignore_errors=True)
+
+    if private:
+        session.on_ended(_end_visit)
+
     # ---------- Tab 1: data upload ----------
     @reactive.calc
     def uploaded_data():
@@ -326,7 +350,9 @@ def server(input, output, session):
     def qc_table():
         table = qc_results()
         warning_rows = [i for i, status in enumerate(table["Status"]) if status == "Warning"]
-        return render.DataGrid(table, styles=[{"rows": warning_rows, "style": {"background-color": "#fde2e1"}}])
+        return render.DataGrid(table, width="100%",
+                               styles=[{"rows": warning_rows, "style": {"background-color": "#fde2e1"}},
+                                       {"cols": [0], "style": {"min-width": "260px"}}])   # wide "Check" column
 
     @render.data_frame
     def demographics():
@@ -384,14 +410,35 @@ def server(input, output, session):
             z.index, complete.index = ids, ids
         return {"z": z, "reference": reference, "values": complete, "method": method,
                 "n_components": n_components, "n_reference": n_reference,
-                "n_left_out": len(values) - len(complete)}
+                "n_left_out": len(values) - len(complete), "inputs": norm_inputs()}
+
+    def norm_inputs():
+        """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
+        method = input.norm_method()
+        return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
+                int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
+
+    @reactive.calc
+    def norm_outdated():
+        """True if a setting or the data changed after the last click on Normalize."""
+        if input.normalize() == 0:
+            return False
+        try:
+            return normalized()["inputs"] != norm_inputs()
+        except Exception:                                   # e.g. the data was removed
+            return True
+
+    def outdated_warning():
+        return ui.p("Settings or data changed after Normalize - click Normalize again to update the z-scores.",
+                    class_="text-danger fw-bold")
 
     @render.ui
     def norm_status():
         if input.normalize() == 0:
             return ui.p("Choose the settings and click Normalize.", class_="text-muted")
         result = normalized()
-        lines = [ui.p(f"{NORM_METHODS[result['method']]}: {len(result['z'])} people in {result['z'].shape[1]} "
+        lines = [outdated_warning()] if norm_outdated() else []
+        lines += [ui.p(f"{NORM_METHODS[result['method']]}: {len(result['z'])} people in {result['z'].shape[1]} "
                       f"regions ({result['n_left_out']} left out because of missing region values).",
                       class_="fw-bold")]
         if result["method"] == "reference":
@@ -530,7 +577,8 @@ def server(input, output, session):
         ready = all(ok for _, ok in s["checks"])
         verdict = (ui.p("Ready for tab 3 (Run SuStaIn).", class_="text-success fw-bold") if ready else
                    ui.p("Not ready: fix the items marked ✗.", class_="text-danger fw-bold"))
-        return ui.TagList(ui.h6("What goes into SuStaIn"), ui.tags.ul(*[ui.tags.li(f) for f in facts]),
+        return ui.TagList(outdated_warning() if norm_outdated() else None,
+                          ui.h6("What goes into SuStaIn"), ui.tags.ul(*[ui.tags.li(f) for f in facts]),
                           ui.h6("Checks"), ui.tags.ul(*checks), verdict)
 
     @render.download_button(filename="tau_typer_zscores.csv")       # pairs with ui.download_button
@@ -580,8 +628,9 @@ def server(input, output, session):
         except Exception:                                   # no data yet, or not normalized
             tab2_ready = False
         name = input.run_name().strip()
-        name_ok = re.fullmatch(r"[A-Za-z0-9_-]+", name) is not None and not (RUNS_FOLDER / name).exists()
+        name_ok = re.fullmatch(r"[A-Za-z0-9_-]+", name) is not None and not (runs_folder / name).exists()
         return [("Tab 2 says 'Ready for tab 3'", tab2_ready),
+                ("Normalization is up to date (no changes after Normalize)", not norm_outdated()),
                 ("Run name is new and uses only letters, digits, - and _", name_ok),
                 ("Max number of subtypes is at least 1", (input.n_subtypes_max() or 0) >= 1),
                 ("No other run is going on", run_state() != "running")]
@@ -598,7 +647,8 @@ def server(input, output, session):
                 "use_parallel_startpoints": input.use_parallel(),
                 "n_folds": input.n_folds() if input.do_cv() else None,       # None = no cross-validation
                 "dataset_name": CONFIG["runs"]["dataset_name"],
-                "columns": {role: col for role, col in chosen_columns().items() if col}}   # for tab 5
+                "columns": {role: col for role, col in chosen_columns().items() if col},   # for tab 5
+                "pysustain": pysustain_info()}                                          # what was run
 
     @render.ui
     def run_settings_view():
@@ -614,7 +664,7 @@ def server(input, output, session):
                  f"Start points: {st['n_startpoints']}, MCMC iterations: {st['n_iterations_mcmc']:,}, "
                  f"seed: {st['seed']}, parallel: {'yes' if st['use_parallel_startpoints'] else 'no'}",
                  "Cross-validation: " + (f"{st['n_folds']} folds" if st['n_folds'] else "off"),
-                 f"Results folder: {CONFIG['runs']['folder']}/{input.run_name().strip()}"]
+                 f"Results folder: {(runs_folder / input.run_name().strip()).relative_to(ROOT)}"]
         return ui.TagList(ui.h6("This run"), ui.tags.ul(*[ui.tags.li(f) for f in facts]))
 
     @render.ui
@@ -644,7 +694,7 @@ def server(input, output, session):
     @reactive.event(input.run_button)
     def _start_run():
         """Make the new run folder, then start pySuStaIn in its own process."""
-        folder = RUNS_FOLDER / input.run_name().strip()
+        folder = runs_folder / input.run_name().strip()
         prepare_run_folder(folder, run_settings(), normalized()["z"], normalized()["reference"],
                            run_covariates())
         job.set({"process": start_run(folder), "folder": folder, "started": datetime.now()})
@@ -770,7 +820,7 @@ def server(input, output, session):
     def saved_runs():
         run_state()                                         # refresh when a run starts or ends ...
         reactive.invalidate_later(10)                       # ... and every 10 s (runs from other visits)
-        return list_runs(RUNS_FOLDER)
+        return list_runs(runs_folder)
 
     @reactive.calc
     def finished_runs():
@@ -793,7 +843,7 @@ def server(input, output, session):
     def _load_saved_run():
         name = input.saved_run()
         req(name in finished_runs())                        # only real, finished run folders
-        shown_run.set(RUNS_FOLDER / name)
+        shown_run.set(runs_folder / name)
         ui.notification_show(f"Showing run {name} in Model choice and Quick result.")
 
     # ---------------- Tab 4: Figures ----------------
@@ -873,15 +923,17 @@ def server(input, output, session):
 
     @render.plot
     def fig_tree():
+        return plot_subtype_tree(subtypes_by_k(fig_data()["z"].index))
+
+    def subtypes_by_k(people):
         """Subtype of every person in each model 1, 2, ... (0 = S0), all numbered by size."""
         folder, settings = req(shown_run()), shown_settings()
-        z_index = fig_data()["z"].index
         by_k = {}
         for k in range(1, settings["n_subtypes_max"] + 1):
             result = load_sustain_result(folder, settings["dataset_name"], k)
-            table = subject_table(result, z_index, CONFIG["results"]["poor_fit_threshold"], size_order(result))
+            table = subject_table(result, people, CONFIG["results"]["poor_fit_threshold"], size_order(result))
             by_k[k] = table["ml_subtype"].where(table["ml_stage"] > 0, 0)
-        return plot_subtype_tree(by_k)
+        return by_k
 
     @reactive.effect
     def _fig_person_choices():
@@ -999,7 +1051,7 @@ def server(input, output, session):
         """(cross-table, summary, k used) for the shown run (A) against another finished run (B)."""
         name = req(input.an_other_run())
         req(name in finished_runs())                        # only real, finished run folders
-        folder = RUNS_FOLDER / name
+        folder = runs_folder / name
         settings = yaml.safe_load(open(folder / "settings.yaml"))
         k = min(int(input.an_other_k() or 1), settings["n_subtypes_max"])
         other = load_sustain_result(folder, settings["dataset_name"], k)
@@ -1019,15 +1071,103 @@ def server(input, output, session):
     def an_compare_table():
         return render.DataGrid(an_comparison()[0].reset_index())
 
-    @render.download_button(filename=lambda: f"{shown_run().name}_{an_data()['k']}subtypes_per_person.csv")
-    def an_download():
+    def per_person_table():
+        """One row per person: subtype, stage, probabilities and the other columns of the file."""
         d = an_data()
         probabilities = pd.DataFrame(d["result"]["prob_subtype"][:, d["order"]], index=d["table"].index,
                                      columns=[f"prob {t}" for t in subtype_titles(d["k"])])
         parts = [d["table"], probabilities]
         if an_covariates()[0] is not None:
             parts.append(an_covariates()[0])
-        yield pd.concat(parts, axis=1).to_csv(index_label="subject")
+        return pd.concat(parts, axis=1).rename_axis("subject")
+
+    @render.download_button(filename=lambda: f"{shown_run().name}_{an_data()['k']}subtypes_per_person.csv")
+    def an_download():
+        yield per_person_table().to_csv()
+
+    @render.download_button(filename=lambda: f"{shown_run().name}_{an_data()['k']}subtypes_report.zip")
+    def an_report():
+        """All figures (tabs 4-5) and tables of the shown run and model in one ZIP."""
+        d, folder, settings = an_data(), shown_run(), shown_settings()
+        titles, vmax = subtype_titles(d["k"]), input.fig_vmax() or CONFIG["figures"]["heatmap_vmax"]
+        cv_file = folder / "cross_validation.csv"
+        likelihoods = model_likelihoods(folder, settings["dataset_name"])
+        if cv_file.exists():
+            likelihoods = likelihoods.join(pd.read_csv(cv_file, index_col="subtypes"))
+        t_values, p_fdr = regional_contrasts(d["z"], d["table"], d["regions"])
+        figures = {
+            "01_pvd": plot_pvd(d["result"], d["Z_vals"], d["regions"], titles, None,
+                               subtype_order=pvd_order(d["result"], d["order"])),
+            "02_tau_patterns": plot_subtype_patterns(d["z"], d["table"], d["regions"], titles, vmax),
+            "03_stage_progression": plot_stage_progression(d["z"], d["table"], d["regions"], titles, d["edges"],
+                                                           None, vmax=vmax),
+            "04_subtype_probabilities": plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]],
+                                                                   d["table"], titles,
+                                                                   CONFIG["results"]["poor_fit_threshold"]),
+            "05_stages": plot_stages(d["table"], d["result"]["prob_stage"], titles),
+            "06_model_choice": plot_model_choice(likelihoods[["mean log-likelihood"]],
+                                                 likelihoods[["CVIC"]] if "CVIC" in likelihoods else None),
+            "07_subtype_tree": plot_subtype_tree(subtypes_by_k(d["z"].index)),
+            "08_regional_differences": plot_regional_contrasts(t_values, p_fdr, titles),
+        }
+        asymmetry = asymmetry_index(d["z"], d["regions"])
+        if asymmetry is not None:
+            figures["09_left_right_asymmetry"] = plot_asymmetry(d["table"], asymmetry, titles)
+        tables = {"per_person": per_person_table(), "model_choice": likelihoods,
+                  "regional_differences_t": t_values, "regional_differences_p_fdr": p_fdr}
+        covariates = an_covariates()[0]
+        if covariates is not None:
+            tables["table1"] = group_table(d["table"], covariates, list(input.an_variables() or [])).set_index("variable")
+            stage_variable = input.an_stage_variable()
+            if stage_variable:
+                tables[f"stage_vs_{stage_variable}"] = stage_association(d["table"], covariates[stage_variable])
+        readme = (f"Tau-typer report - run {folder.name}, model with {d['k']} subtype(s)\n"
+                  f"Made {datetime.now():%Y-%m-%d %H:%M}. Subtypes are numbered by number of tau+ people "
+                  f"(Subtype 1 = most). Subtype names: {', '.join(titles)}.\n"
+                  "figures/: PNG (300 dpi) and PDF. tables/: CSV. settings.yaml: everything the run used.\n")
+        yield report_zip(figures, tables, {"README.txt": readme,
+                                           "settings.yaml": (folder / "settings.yaml").read_text()})
+
+    # ---------------- About ----------------
+    @render.ui
+    def about():
+        info = pysustain_info()
+        commit = info["commit"] or "unknown (not installed from git)"
+        steps = ["1. Data & QC - upload a CSV (one row per person), match the columns, check the data, "
+                 "optionally apply the paper's inclusion rule.",
+                 "2. Normalization - turn regional tau values into z-scores (GMM as in the paper, an "
+                 "amyloid-negative CN reference group, or data already z-scored); choose cut-points and Z_max.",
+                 "3. Run SuStaIn - fit the original pySuStaIn (ZscoreSustain) in the background, with "
+                 "cross-validation to choose the number of subtypes; every run is saved in its own folder.",
+                 "4. Figures - PVD, tau patterns, subtype probabilities, stages, choosing k, one person.",
+                 "5. Subtype analysis - Table 1, regional differences, stage vs age / cognition, "
+                 "left-right asymmetry, comparing runs, downloads and a full report."]
+        papers = ["Vogel JW, Young AL, Oxtoby NP, et al. Four distinct trajectories of tau deposition identified "
+                  "in Alzheimer's disease. Nature Medicine 27, 871-881 (2021).",
+                  "Young AL, Marinescu RV, Oxtoby NP, et al. Uncovering the heterogeneity and temporal complexity "
+                  "of neurodegenerative diseases with Subtype and Stage Inference. Nature Communications 9, "
+                  "4273 (2018).",
+                  "Aksman LM, Wijeratne PA, Oxtoby NP, et al. pySuStaIn: a Python implementation of the Subtype "
+                  "and Stage Inference algorithm. SoftwareX 16, 100811 (2021)."]
+        return ui.TagList(
+            ui.h3("Tau-typer"),
+            ui.p("Automated tau-PET subtyping with SuStaIn, following Vogel et al. 2021. The app only calls "
+                 "the original pySuStaIn package - its code is never changed or copied."),
+            ui.h5("The five steps"), ui.tags.ul(*[ui.tags.li(step) for step in steps]),
+            ui.h5("pySuStaIn used by this app"),
+            ui.tags.ul(ui.tags.li(f"version: {info['version']}"), ui.tags.li(f"git commit: {commit}"),
+                       ui.tags.li(f"source: {info['source'] or 'unknown'}")),
+            ui.p("Every run saves this information in its settings.yaml.", class_="text-muted small"),
+            ui.h5("Please cite"), ui.tags.ul(*[ui.tags.li(paper) for paper in papers]),
+            ui.h5("Your data"),
+            ui.p("Uploaded data and results stay on the computer that runs this app (in results/app_runs/). "
+                 "Nothing is sent anywhere else."),
+            ui.p("Private runs: " + ("ON - this visit has its own folder, only you see its runs, and it is "
+                                     "deleted when you close the app (download what you need first)."
+                                     if private else "off - everyone using this app sees all saved runs."),
+                 class_="fw-bold" if private else "text-muted"),
+        )
+
 
 
 app = App(app_ui, server)

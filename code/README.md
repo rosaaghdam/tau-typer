@@ -4,10 +4,10 @@ Every step we run is recorded here as a script, numbered in the order we did it,
 so it can be reviewed and redone. Reusable Python functions live in `src/`;
 the scripts here call them.
 
-**How to run a step** (from the project folder; no need to activate the environment):
-
-    bash run.sh 01c        # runs code/01c_...
-    bash run.sh            # lists all steps
+**How to run a step** (from the project folder): activate the environment once
+(`conda activate ./env`), then run the script, e.g. `python code/01c_check_generator_inputs.py`
+(`.sh` scripts: `bash code/00c_check_installed_pysustain.sh`). The copy-paste versions of the
+main steps are in `steps/` (S0-S10). The app (`app/app.py`, step S10) uses the same `src/` functions.
 
 | Script | Step | What it does | Status |
 |---|---|---|---|
@@ -20,6 +20,7 @@ the scripts here call them.
 | `01d_check_subtypes_stages.py` | 1 | Checks the true subtype + stage of the 500 people | done |
 | `01e_check_suvr.py` | 1 | Checks the simulated z-scores and SUVR values | done |
 | `01f_check_covariates.py` | 1 | Checks age, sex, diagnosis, amyloid | done |
-| `01g_make_toy_data.py` | 1 | Writes data/toy/toy_tau.csv and data/toy/toy_truth.csv | planned |
+| `01g_make_toy_data.py` | 1 | Writes data/toy/toy_tau.csv and data/toy/toy_truth.csv | done in steps/S1-S2 instead |
+| `02_run_sustain_full.py` | 2 | Runs pySuStaIn with the paper's settings on the toy z-scores (results/toy/sustain_full) | done |
 
 Steps 0c (tables) and the notes were writing only – see notes/.
