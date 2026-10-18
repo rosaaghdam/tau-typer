@@ -872,3 +872,15 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Bug found + fixed while testing: `reactive.isolate` is a `with` block in Shiny for Python.
 - For the server version (later): Saved runs shows ALL runs in results/app_runs - needs one folder
   per user before several people use the same server.
+
+## 2026-10-18 – Tab 4: figures
+
+- Plan: notes/app_tab4_plan.md. All figures come from one run folder (finished or loaded run).
+- Subtype numbers: pySuStaIn's PVD sorts subtypes by size, but ml_subtype keeps pySuStaIn's own
+  numbers. The app now numbers by size everywhere (size_order). The step scripts (S6-S8) still use
+  pySuStaIn's own numbers -> CHECK with Rosa whether the CLI figures had matching titles.
+- Small tabs: PVD, Tau patterns (Fig. 1a/c heatmap + Fig. 1e), Subtype probabilities (Fig. 1b polygon,
+  Ext. Fig. 2 poor fit), Stages (+ stage uncertainty, new), Choosing k (Ext. Fig. 1c-e, subtype tree
+  Ext. Fig. 1f), Person (fingerprint, new).
+- Tested: all 8 figures as PNG outside the app (2-subtype run) and inside the app (CV run). Fixed:
+  Shiny forces "tight" layout -> stage-progression colour bar now has its own column.

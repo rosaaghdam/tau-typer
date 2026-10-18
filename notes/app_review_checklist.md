@@ -73,3 +73,21 @@ To get data quickly: tab 1 -> download "Sample Data", upload it again; tab 2 -> 
 
 ## Test runs made by Claude (in results/app_runs/, not in git - safe to delete)
 test_fast, test_app_1, test_app_cancel, test_app_2, test_app_cv (all toy data).
+
+---
+
+## Tab 4 – Figures
+Load a finished run in tab 3 ("Saved runs") first; tab 4 shows that run ("Run shown: ...").
+- [ ] Sidebar: model (number of subtypes, default 4 or the largest available), subtype names
+      (type e.g. "limbic, posterior" for 2 subtypes - all titles change), colour scale maximum.
+- [ ] PVD: pySuStaIn's own figure. Subtype 1 = largest (same numbering in every figure and table).
+- [ ] Tau patterns: heatmap of average z per region and subtype (numbers in the cells), and the
+      per-stage-group heatmaps (5 groups, e.g. 1-6 ... 25-30).
+- [ ] Subtype probabilities: polygon (2 subtypes = a line) and histogram with the 0.5 line.
+- [ ] Stages: stacked bars (grey = S0) and stage uncertainty scatter.
+- [ ] Choosing k: log-likelihood curve (+ CVIC curve with a star after cross-validation) and the
+      subtype tree.
+- [ ] Person: choose a person (type to search); bars = their z, dots = average of their subtype
+      and stage group.
+- Code: src/figures.py (one function per figure), app `fig_data`, `fig_titles`, `fig_*` outputs.
+- To discuss: subtype numbering by size (see progress.md) - do the step-script figures (S7) agree?

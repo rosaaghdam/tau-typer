@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 from shiny import App, reactive, render, req, ui
@@ -17,8 +18,10 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.app_runs import list_runs, prepare_run_folder, start_run
-from src.results import load_sustain_result, model_likelihoods, subject_table, subtype_summary
-from src.figures import plot_gmm_fit, plot_region_histograms
+from src.results import load_sustain_result, model_likelihoods, size_order, subject_table, subtype_summary
+from src.figures import (plot_gmm_fit, plot_model_choice, plot_person, plot_pvd, plot_region_histograms,
+                         plot_stage_progression, plot_stages, plot_subtype_patterns,
+                         plot_subtype_probabilities, plot_subtype_tree)
 from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
 from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
@@ -30,6 +33,22 @@ CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in co
 
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
+FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
+    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Red = region "
+           "reaches z 2, magenta = z 5, blue = z 10; dark = SuStaIn is sure the event happens at that stage.",
+    "patterns": "Top: average z-score per region in each subtype, tau+ people (paper Fig. 1a/c). Bottom: the "
+                "same per stage group - read left to right to see tau spread (paper Fig. 1e).",
+    "probs": "Left: each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b). "
+             "Right: highest subtype probability; below the dashed line = poor fit (paper Ext. Fig. 2).",
+    "stages": "Left: people per stage and subtype; grey = S0 (paper Ext. Fig. 2). Right: how sure SuStaIn is "
+              "about each person's stage (spread of the stage probabilities).",
+    "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
+              "best; paper Ext. Fig. 1c-e). Bottom: subtype tree - where people go when one more subtype is "
+              "allowed (paper Ext. Fig. 1f).",
+    "person": "Bars: this person's z-scores. Dots: average of people in the same subtype and stage group. "
+              "Middle: subtype probabilities. Right: stage probabilities.",
+}
+
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
 
@@ -148,8 +167,33 @@ app_ui = ui.page_navbar(
                                       ui.input_select("saved_run", "Finished run", choices=[]),
                                       ui.input_action_button("load_run", "Load this run"))))),
     ui.nav_panel("4. Figures",
-                 ui.h3("Summary figures"),
-                 ui.p("Coming: PVD, stage progression, subtype probabilities, cross-validation.")),
+                 ui.layout_sidebar(
+                     ui.sidebar(
+                         ui.output_ui("fig_run_info"),
+                         ui.input_select("fig_model", "Model (number of subtypes)", choices=[]),
+                         ui.input_text("subtype_names", "Subtype names (optional)",
+                                       placeholder="e.g. limbic, posterior, ..."),
+                         ui.p("Comma-separated, Subtype 1 first. Subtypes are numbered by size "
+                              "(1 = largest), as in the PVD.", class_="text-muted small"),
+                         ui.input_numeric("fig_vmax", "Colour scale maximum (z)",
+                                          value=CONFIG["figures"]["heatmap_vmax"], min=1),
+                         width=320, open="always"),
+                     ui.navset_tab(
+                         ui.nav_panel("PVD", ui.p(FIG_HELP["pvd"], class_="text-muted small"),
+                                      ui.output_plot("fig_pvd", height="520px")),
+                         ui.nav_panel("Tau patterns", ui.p(FIG_HELP["patterns"], class_="text-muted small"),
+                                      ui.output_plot("fig_patterns", height="520px"),
+                                      ui.output_plot("fig_progression", height="460px")),
+                         ui.nav_panel("Subtype probabilities", ui.p(FIG_HELP["probs"], class_="text-muted small"),
+                                      ui.output_plot("fig_probs", height="480px")),
+                         ui.nav_panel("Stages", ui.p(FIG_HELP["stages"], class_="text-muted small"),
+                                      ui.output_plot("fig_stages", height="440px")),
+                         ui.nav_panel("Choosing k", ui.p(FIG_HELP["choice"], class_="text-muted small"),
+                                      ui.output_plot("fig_choice", height="380px"),
+                                      ui.output_plot("fig_tree", height="480px")),
+                         ui.nav_panel("Person", ui.input_selectize("fig_person", "Person", choices=[]),
+                                      ui.p(FIG_HELP["person"], class_="text-muted small"),
+                                      ui.output_plot("fig_person_plot", height="420px"))))),
     ui.nav_panel("5. Subtype analysis",
                  ui.h3("Compare the subtypes"),
                  ui.p("Coming: demographics, cognition, regional contrasts, export.")),
@@ -646,7 +690,7 @@ def server(input, output, session):
         folder, settings = req(shown_run()), shown_settings()
         result = load_sustain_result(folder, settings["dataset_name"], int(req(input.result_model())))
         subjects = pd.read_csv(folder / "zscores.csv", index_col="subject").index
-        return subject_table(result, subjects, CONFIG["results"]["poor_fit_threshold"])
+        return subject_table(result, subjects, CONFIG["results"]["poor_fit_threshold"], size_order(result))
 
     @render.ui
     def quick_result_status():
@@ -693,6 +737,105 @@ def server(input, output, session):
         req(name in finished_runs())                        # only real, finished run folders
         shown_run.set(RUNS_FOLDER / name)
         ui.notification_show(f"Showing run {name} in Model choice and Quick result.")
+
+    # ---------------- Tab 4: Figures ----------------
+    @render.ui
+    def fig_run_info():
+        if shown_run() is None:
+            return ui.p("No finished run yet: run SuStaIn or load a saved run in tab 3.", class_="text-danger small")
+        return ui.p(f"Run shown: {shown_run().name}", class_="fw-bold small")
+
+    @reactive.effect
+    def _fig_model_choices():
+        k = shown_settings()["n_subtypes_max"]
+        ui.update_select("fig_model", choices={str(n): f"{n} subtype(s)" for n in range(1, k + 1)},
+                         selected=str(min(k, CONFIG["results"]["n_subtypes"])))       # paper: 4
+
+    @reactive.calc
+    def fig_data():
+        """What the figures need from the shown run; subtypes numbered by size (1 = largest), as in the PVD."""
+        folder, settings = req(shown_run()), shown_settings()
+        k = int(req(input.fig_model()))
+        result = load_sustain_result(folder, settings["dataset_name"], k)
+        order = size_order(result)
+        z = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str})   # IDs as text
+        table = subject_table(result, z.index, CONFIG["results"]["poor_fit_threshold"], order)
+        n_events = len(settings["regions"]) * len(settings["cut_points"])
+        edges = np.unique(np.linspace(1, n_events + 1, CONFIG["figures"]["n_stage_groups"] + 1).round().astype(int))
+        return {"result": result, "order": order, "z": z, "table": table, "k": k, "edges": list(edges),
+                "regions": settings["regions"], "Z_vals": np.array([settings["cut_points"]] * len(settings["regions"]))}
+
+    @reactive.calc
+    def fig_titles():
+        """The subtype names typed by the user, or Subtype 1, 2, ... if the number does not match."""
+        k = fig_data()["k"]
+        names = [name.strip() for name in input.subtype_names().split(",") if name.strip()]
+        return names if len(names) == k else [f"Subtype {n}" for n in range(1, k + 1)]
+
+    @render.plot
+    def fig_pvd():
+        d = fig_data()
+        return plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), None, subtype_order=d["order"])
+
+    @render.plot
+    def fig_patterns():
+        d = fig_data()
+        return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12)
+
+    @render.plot
+    def fig_progression():
+        d = fig_data()
+        return plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
+                                      vmax=input.fig_vmax() or 12)
+
+    @render.plot
+    def fig_probs():
+        d = fig_data()
+        return plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]], d["table"], fig_titles(),
+                                          CONFIG["results"]["poor_fit_threshold"])
+
+    @render.plot
+    def fig_stages():
+        d = fig_data()
+        return plot_stages(d["table"], d["result"]["prob_stage"], fig_titles())
+
+    @render.plot
+    def fig_choice():
+        folder = req(shown_run())
+        cv_file = folder / "cross_validation.csv"
+        cv = pd.read_csv(cv_file, index_col="subtypes") if cv_file.exists() else None
+        return plot_model_choice(model_likelihoods(folder, shown_settings()["dataset_name"]), cv)
+
+    @render.plot
+    def fig_tree():
+        """Subtype of every person in each model 1, 2, ... (0 = S0), all numbered by size."""
+        folder, settings = req(shown_run()), shown_settings()
+        z_index = fig_data()["z"].index
+        by_k = {}
+        for k in range(1, settings["n_subtypes_max"] + 1):
+            result = load_sustain_result(folder, settings["dataset_name"], k)
+            table = subject_table(result, z_index, CONFIG["results"]["poor_fit_threshold"], size_order(result))
+            by_k[k] = table["ml_subtype"].where(table["ml_stage"] > 0, 0)
+        return plot_subtype_tree(by_k)
+
+    @reactive.effect
+    def _fig_person_choices():
+        table = fig_data()["table"]
+        tau_pos = list(table.index[table["ml_stage"] > 0])
+        ui.update_selectize("fig_person", choices=list(table.index), selected=tau_pos[0] if tau_pos else None)
+
+    @render.plot
+    def fig_person_plot():
+        d = fig_data()
+        person = req(input.fig_person())
+        req(person in d["table"].index)
+        row, table = d["table"].loc[person], d["table"]
+        group = pd.cut(table["ml_stage"], d["edges"], right=False)
+        same = (table["ml_subtype"] == row["ml_subtype"]) & (group == group[person])
+        expected = d["z"][same].mean() if row["ml_stage"] > 0 else None
+        i = d["z"].index.get_loc(person)
+        return plot_person(person, d["z"].loc[person], d["regions"], expected,
+                           d["result"]["prob_subtype"][i][d["order"]], d["result"]["prob_stage"][i], fig_titles())
 
 
 app = App(app_ui, server)

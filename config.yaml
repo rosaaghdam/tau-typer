@@ -98,3 +98,8 @@ cross_validation:
 runs:
   folder: results/app_runs    # one NEW sub-folder per run (pySuStaIn would reuse old files otherwise)
   dataset_name: tau_typer      # start of the result file names pySuStaIn writes
+
+# ---------- App tab 4: figures ----------
+figures:
+  heatmap_vmax: 12            # colour scale maximum (z-score) of the tau heatmaps
+  n_stage_groups: 5           # stages are shown in this many groups (30 events -> 1-6, 7-12, ... 25-30)

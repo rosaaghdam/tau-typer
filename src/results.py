@@ -16,14 +16,24 @@ def load_sustain_result(output_folder, dataset_name, n_subtypes):
         return pickle.load(f)
 
 
-def subject_table(result, subject_ids, poor_fit_threshold):
+def size_order(result):
+    """pySuStaIn's own subtype numbers, largest subtype first - the order its PVD figure uses."""
+    return np.argsort(result["samples_f"].mean(axis=1))[::-1]
+
+
+def subject_table(result, subject_ids, poor_fit_threshold, order=None):
     """One row per person: subtype, stage and their probabilities.
 
     Stage 0 = no abnormal tau -> "S0" (no subtype), as in the paper.
     poor_fit = tau+ but subtype probability below the threshold (paper: 0.5).
+    order (from size_order): renumber subtypes so Subtype 1 = largest, as in the PVD.
+    Without order, pySuStaIn's own numbers are kept.
     """
+    raw = result["ml_subtype"].ravel().astype(int)
+    if order is not None:
+        raw = np.argsort(order)[raw]                    # position of each subtype in the size order
     table = pd.DataFrame({
-        "ml_subtype": result["ml_subtype"].ravel().astype(int) + 1,   # 1..k, like the figure titles
+        "ml_subtype": raw + 1,                                         # 1..k, like the figure titles
         "prob_subtype": result["prob_ml_subtype"].ravel(),
         "ml_stage": result["ml_stage"].ravel().astype(int),
         "prob_stage": result["prob_ml_stage"].ravel(),
