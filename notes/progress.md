@@ -830,3 +830,12 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   Will be saved as settings.yaml in each run folder.
 - config.yaml: runs.dataset_name: tau_typer.
 - Tested (browser): 500 x 10, 30 events, models 1-4; with CV ticked: models 1-6, 10 folds.
+
+## 2026-10-18 – Tab 3, piece 3.2: run folder + separate process
+
+- src/app_runs.py (prepare_run_folder, start_run) and src/run_job.py (the worker).
+  By hand: `python -m src.run_job results/app_runs/<run name>`.
+- Test (toy z-scores, 2 subtypes, 5 start points, 1,000 MCMC): finished in 154 s, exit code 0;
+  folder has settings.yaml, zscores.csv, log.txt (live tqdm progress), status.txt, pickle_files/,
+  PVD PNGs, MCMC_likelihoods.png. Harmless warnings: "FigureCanvasAgg is non-interactive".
+- Found: pySuStaIn always tunes the MCMC first (3 x 10,000 iterations, fixed) -> notes/SuStaIn.md.

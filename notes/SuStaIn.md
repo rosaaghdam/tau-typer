@@ -229,3 +229,10 @@ Vogel 2021 did exactly this for 519 follow-up scans: 88.5% kept their subtype.
 - **False positives** (diffuse low-level signal) can be glued onto a subtype's early stages
   (Vogel's T− correction).
 - **Early stages are uncertain** – subtype confidence is low until a few events have happened.
+
+## Hidden MCMC tuning step (found 2026-10-18)
+Before the real MCMC, pySuStaIn always runs **3 tuning passes of 10,000 iterations** to choose the
+MCMC step size (`_optimise_mcmc_settings`, `n_iterations_MCMC_optimisation = int(1e4)`, marked
+"FIXME: set externally" in the package). This is fixed inside pySuStaIn - we do not change it.
+So our "MCMC iterations" setting (paper: 10,000) is only the real sampling after the tuning; the
+progress bar first shows 10,000 three times. This is why even a "fast test" takes a few minutes.
