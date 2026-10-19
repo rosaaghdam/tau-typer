@@ -26,7 +26,7 @@ from src.results import (load_sustain_result, mcmc_traces, model_likelihoods, pv
 from src.figures import (plot_asymmetry, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
                          plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
                          plot_stages, plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
-from src.sustain_model import count_people_above, parse_cut_points, sustain_inputs, z_max_table
+from src.sustain_model import count_people_above, parse_cut_points, parse_z_max, sustain_inputs, z_max_table
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
 from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
@@ -111,10 +111,13 @@ app_ui = ui.page_navbar(
                          ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
                               class_="text-muted small"),
                          ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
-                                                choices={"fixed": "Fixed number", "percentile": "Percentile per region"},
+                                                choices={"manual": "Manual: one value per region",
+                                                         "percentile": "Percentile per region"},
                                                 selected=CONFIG["normalization"]["z_max_method"]),
-                         ui.panel_conditional("input.z_max_method === 'fixed'",
-                                              ui.input_numeric("z_max_fixed", "Fixed Z_max", value=CONFIG["sustain"]["z_max"])),
+                         ui.panel_conditional("input.z_max_method === 'manual'",
+                                              ui.input_text("z_max_manual", "Z_max per region (comma-separated)",
+                                                            value=f"{CONFIG['sustain']['z_max']:g}"),
+                                              ui.output_ui("z_max_order")),
                          ui.panel_conditional("input.z_max_method === 'percentile'",
                                               ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
                                                                value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
@@ -523,8 +526,23 @@ def server(input, output, session):
     @reactive.calc
     def z_max_values():
         """Z_max per region with the user's method, plus max/p99/p95 to help choose."""
-        return z_max_table(normalized()["z"], input.z_max_method(), input.z_max_fixed(),
-                           input.z_max_percentile(), cut_points()[0])
+        z = normalized()["z"]
+        manual = None
+        if input.z_max_method() == "manual":
+            try:
+                manual = parse_z_max(input.z_max_manual(), list(z.columns))
+            except ValueError as error:
+                raise SafeException(str(error))
+        return z_max_table(z, input.z_max_method(), manual, input.z_max_percentile(), cut_points()[0])
+
+    @render.ui
+    def z_max_order():
+        """Shows the region order the manual Z_max values must follow."""
+        regions = list(input.col_regions() or [])
+        if not regions:
+            return None
+        return ui.p(f"In this order ({len(regions)} values): {', '.join(regions)}. "
+                    "One number = the same for every region.", class_="text-muted small")
 
     @render.ui
     def zmax_status():
