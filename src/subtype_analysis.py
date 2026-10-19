@@ -12,13 +12,20 @@ from sklearn.metrics import adjusted_rand_score
 from statsmodels.stats.multitest import multipletests
 
 
+def as_categories(values):
+    """Category labels as text, empty cells left out; whole numbers without ".0" (APOE4 1.0 -> "1")."""
+    known = values.dropna()
+    return known.map(lambda v: f"{v:g}" if isinstance(v, float) else str(v))
+
+
 def one_vs_others_p(values, groups, tau_pos, subtype, numeric):
     """p for one subtype vs all other tau+ people: Mann-Whitney (numbers) or chi-square (categories)."""
     this, others = tau_pos & (groups == subtype), tau_pos & (groups != subtype)
     if numeric:
         a, b = values[this].dropna(), values[others].dropna()
         return stats.mannwhitneyu(a, b).pvalue if len(a) > 1 and len(b) > 1 else np.nan
-    counts = pd.crosstab(values[tau_pos].astype(str), this[tau_pos])
+    labels = as_categories(values[tau_pos])
+    counts = pd.crosstab(labels, this[labels.index])
     return stats.chi2_contingency(counts).pvalue if counts.shape[0] > 1 and counts.shape[1] == 2 else np.nan
 
 
@@ -51,9 +58,11 @@ def group_table(table, covariates, variables):
                 row["p (subtypes, adjusted for stage)"] = sm.stats.anova_lm(fit, typ=2).loc["C(subtype)", "PR(>F)"]
             new_rows = [row]
         else:
-            counts = pd.crosstab(values.astype(str), groups)[order]
-            percent = 100 * counts / counts.sum()
-            subtype_counts = pd.crosstab(values[tau_pos].astype(str), groups[tau_pos])
+            labels = as_categories(values)                        # empty cells are not counted
+            counts = pd.crosstab(labels, groups[labels.index]).reindex(columns=order, fill_value=0)
+            percent = 100 * counts / counts.sum().replace(0, np.nan)
+            tau_labels = labels[tau_pos[labels.index]]
+            subtype_counts = pd.crosstab(tau_labels, groups[tau_labels.index])
             p = (stats.chi2_contingency(subtype_counts).pvalue
                  if subtype_counts.shape[0] > 1 and subtype_counts.shape[1] > 1 else np.nan)
             new_rows = [{"variable": f"{var} = {level}, %", **{g: f"{percent.loc[level, g]:.1f}" for g in order}}

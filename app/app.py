@@ -37,7 +37,7 @@ NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group:
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
-SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
+SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy data + 10 clinical variables
 FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Red = region "
            "reaches z 2, magenta = z 5, blue = z 10; dark = SuStaIn is sure the event happens at that stage.",
@@ -76,7 +76,8 @@ app_ui = ui.page_navbar(
                      ui.sidebar(
                          ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
                          ui.download_link("download_sample", "Sample Data"),
-                         ui.p("Download simulated toy data (500 people) to see the expected format.",
+                         ui.p("Download simulated toy data (500 people, 10 regions, 10 clinical variables) to see the "
+                              "expected format.",
                               class_="text-muted small"),
                          ui.output_ui("column_matching"),           # filled in after an upload
                          width=320, open="always"),          # always visible, like CMiNet

@@ -37,6 +37,9 @@ toy_data:
     female_fraction: 0.55
     diagnosis_stage_cutoffs: {MCI: 8, AD: 19}   # stage >= 19 -> AD, >= 8 -> MCI, else CN
     amyloid_positive_fraction_tau_negative: 0.25 # tau+ people are always amyloid+
+  # 10 invented clinical variables for testing tab 5 (code/01h_make_toy_clinical.py)
+  clinical_seed: 43
+  clinical_missing_fraction: 0.05   # share of empty cells per clinical column
 
 # ---------- Step 2: pipeline (the paper's method) ----------
 pipeline:
