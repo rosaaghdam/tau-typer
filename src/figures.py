@@ -214,11 +214,12 @@ def plot_stages(table, prob_stage, subtype_titles):
     return fig
 
 
-def plot_model_choice(likelihoods, cross_validation=None):
+def plot_model_choice(likelihoods, cross_validation=None, traces=None):
     """How many subtypes? Log-likelihood (rises with every extra subtype) and, after cross-validation,
-    CVIC (lower = better; the paper chose the number of subtypes by CVIC) - paper Ext. Fig. 1c-e."""
-    n_panels = 1 if cross_validation is None else 2
-    fig, axes = plt.subplots(1, n_panels, figsize=(5.5 * n_panels, 4), squeeze=False)
+    CVIC (lower = better; the paper chose the number of subtypes by CVIC) - paper Ext. Fig. 1c-e.
+    traces {k: MCMC log-likelihoods}: extra panel, one line per model; flat = the MCMC is stable."""
+    n_panels = 1 + (cross_validation is not None) + (traces is not None)
+    fig, axes = plt.subplots(1, n_panels, figsize=(4.5 * n_panels, 3.2), squeeze=False)
     ax = axes[0, 0]
     ax.plot(likelihoods.index, likelihoods["mean log-likelihood"], "o-")
     ax.set_xlabel("number of subtypes")
@@ -233,6 +234,14 @@ def plot_model_choice(likelihoods, cross_validation=None):
         ax.set_ylabel("CVIC (lower = better)")
         ax.set_xticks(cvic.index)
         ax.legend()
+    if traces is not None:
+        ax = axes[0, -1]
+        for k, trace in traces.items():
+            ax.plot(trace, lw=1, label=f"{k} subtype{'s' if k > 1 else ''}")
+        ax.set_xlabel("MCMC sample")
+        ax.set_ylabel("log-likelihood")
+        ax.set_title("MCMC per model (flat = stable)", fontsize=10)
+        ax.legend(fontsize=8)
     fig.tight_layout()
     return fig
 

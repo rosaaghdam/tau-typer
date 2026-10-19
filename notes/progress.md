@@ -928,3 +928,7 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Explained: SUVR; the five column boxes are only for special jobs - all other columns (any number of
   clinical features) are kept automatically for tab 5.
 - To fix after the review: empty cells in a category column show as "= nan, %" in Table 1.
+- Review: Model choice now shows our own small figure (fit per k, CVIC, MCMC lines per model) instead
+  of pySuStaIn's big MCMC_likelihoods.png. After-review list: plainer run log (model + phase, hide
+  harmless warnings), MCMC-tuning note, "This run" -> "Next run", automatic new run name after a run,
+  clearer run-name check text, "= nan" rows in Table 1.

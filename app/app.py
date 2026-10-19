@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))                           # so Python can find src
 from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
 from src.app_runs import list_runs, prepare_run_folder, start_run
 from src.report import pysustain_info, report_zip
-from src.results import (load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table,
+from src.results import (load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order, subject_table,
                          subtype_summary)
 from src.figures import (plot_asymmetry, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
                          plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
@@ -171,7 +171,7 @@ app_ui = ui.page_navbar(
                                       ui.output_ui("run_progress_view")),
                          ui.nav_panel("Model choice", ui.output_ui("model_choice_status"),
                                       ui.output_data_frame("model_likelihood_table"),
-                                      ui.output_image("mcmc_likelihood_plot", height="auto"),
+                                      ui.output_plot("model_choice_plot", height="330px"),
                                       ui.output_image("cv_folds_plot", height="auto")),
                          ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                       ui.input_select("result_model", "Model to look at", choices=[]),
@@ -773,11 +773,13 @@ def server(input, output, session):
             table = table.join(pd.read_csv(cv_file, index_col="subtypes"))
         return render.DataGrid(table.round(1).reset_index())
 
-    @render.image
-    def mcmc_likelihood_plot():
-        path = req(shown_run()) / "MCMC_likelihoods.png"
-        req(path.exists())
-        return {"src": str(path), "width": "100%"}
+    @render.plot
+    def model_choice_plot():
+        """Small figure: fit per number of subtypes (+ CVIC) and the MCMC line of each model."""
+        folder, dataset = req(shown_run()), shown_settings()["dataset_name"]
+        cv_file = folder / "cross_validation.csv"
+        cv = pd.read_csv(cv_file, index_col="subtypes") if cv_file.exists() else None
+        return plot_model_choice(model_likelihoods(folder, dataset), cv, mcmc_traces(folder, dataset))
 
     @render.image
     def cv_folds_plot():

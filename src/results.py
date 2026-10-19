@@ -75,6 +75,15 @@ def model_likelihoods(output_folder, dataset_name):
     return pd.DataFrame(rows).T.rename_axis("subtypes")
 
 
+def mcmc_traces(output_folder, dataset_name):
+    """{number of subtypes: log-likelihood of every MCMC sample} for every saved model."""
+    traces, n = {}, 1
+    while os.path.exists(os.path.join(output_folder, "pickle_files", f"{dataset_name}_subtype{n - 1}.pickle")):
+        traces[n] = load_sustain_result(output_folder, dataset_name, n)["samples_likelihood"].ravel()
+        n += 1
+    return traces
+
+
 def subtype_summary(table):
     """People per group (S0, Subtype 1, ...): number, %, how many fit poorly, median stage."""
     groups = table.groupby("subtype")
