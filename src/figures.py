@@ -5,6 +5,8 @@ import pandas as pd
 from pySuStaIn import ZscoreSustain
 from scipy import stats
 
+from src.subtype_analysis import region_pairs
+
 
 def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=5, subtype_order=None):
     """Clearer positional variance diagram (PVD), drawn by pySuStaIn's plot_positional_var.
@@ -50,21 +52,44 @@ def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_
     return fig
 
 
-def plot_region_histograms(data, regions, n_cols=5, xlabel="value (e.g. SUVR)"):
+def left_right_layout(regions, max_cols=6):
+    """Panel order for region figures: a row of left regions with their right partners in the row
+    right below (same column), at most max_cols pairs per row; regions without a partner come last.
+    Returns (list of region names, None = empty panel; number of columns)."""
+    pairs = list(region_pairs(regions).values())
+    paired = {region for pair in pairs for region in pair}
+    others = [region for region in regions if region not in paired]
+    n_cols = min(len(pairs), max_cols) if pairs else min(len(regions), 5)
+    cells = []
+    for start in range(0, len(pairs), n_cols):
+        chunk = pairs[start:start + n_cols]
+        empty = [None] * (n_cols - len(chunk))
+        cells += [left for left, _ in chunk] + empty + [right for _, right in chunk] + empty
+    return cells + others, n_cols
+
+
+def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
     """One small histogram per region column - raw values in tab 1, z-scores in tab 2.
 
-    Shows the "normal" bump and the tau+ tail of each region, and makes outliers or odd extra
-    bumps easy to spot. xlabel is the label under each panel.
+    Left regions on top, each right region right below its left partner (same x-axis), so
+    left/right differences are easy to see. Shows the "normal" bump and the tau+ tail of each
+    region, and makes outliers or odd extra bumps easy to spot. xlabel is the label under each panel.
     """
     values = data[list(regions)].apply(pd.to_numeric, errors="coerce")   # text becomes missing
-    n_rows = max(1, int(np.ceil(len(regions) / n_cols)))
+    cells, n_cols = left_right_layout(list(regions))
+    n_rows = max(1, int(np.ceil(len(cells) / n_cols)))
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(3 * n_cols, 2.4 * n_rows), squeeze=False)
-    for ax, region in zip(axes.flat, regions):
+    pair_rows = 2 * int(np.ceil(len(region_pairs(list(regions))) / n_cols))
+    for col in range(n_cols):                             # left and right partner: same x-axis
+        for row in range(1, pair_rows, 2):
+            axes[row, col].sharex(axes[row - 1, col])
+    for ax, region in zip(axes.flat, cells + [None] * (axes.size - len(cells))):
+        if region is None:
+            ax.set_visible(False)                         # empty panel
+            continue
         ax.hist(values[region].dropna(), bins=40, color="#4C72B0")
         ax.set_title(region, fontsize=10)
         ax.set_xlabel(xlabel, fontsize=8)
-    for ax in axes.flat[len(regions):]:
-        ax.set_visible(False)                                             # hide unused panels
     fig.tight_layout()
     return fig
 

@@ -920,3 +920,11 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   list, run stopped + folder deleted when the visit ended; switched back off afterwards.
 - Not done (needs Rosa / data / installs): brain maps, longitudinal analyses, server deployment,
   license, checking the citations against the papers.
+
+## 2026-10-19 – Review with Rosa: tab 1 remarks
+
+- Region histograms (tabs 1 and 2) now show left regions on top and each right region below its
+  partner (shared x-axis); wraps after 6 pairs for big atlases. Rosa's request.
+- Explained: SUVR; the five column boxes are only for special jobs - all other columns (any number of
+  clinical features) are kept automatically for tab 5.
+- To fix after the review: empty cells in a category column show as "= nan, %" in Table 1.
