@@ -40,7 +40,7 @@ clinical = pd.DataFrame(index=data.index)
 clinical["education_years"] = np.clip(np.round(14 + noise(3)), 6, 22)
 clinical["APOE4_carrier"] = (rng.random(n) < np.where(amyloid == 1, 0.6, 0.25)).astype(int)
 clinical["MMSE"] = np.clip(np.round(29.5 - 0.3 * stage + 0.1 * (clinical["education_years"] - 14) + noise(1.2)), 0, 30)
-clinical["CDR_SB"] = np.clip(np.round((0.18 * stage + noise(0.6)) * 2) / 2, 0, 18) + 0.0   # + 0.0: no "-0.0"
+clinical["CDR_SB"] = np.clip(np.round((0.18 * stage + noise(0.6)) * 2) / 2, 0, 18)
 clinical["ADAS_Cog13"] = np.clip(np.round(9 + 1.1 * stage + noise(4), 1), 0, 85)
 clinical["memory_composite"] = np.round(0.3 - 0.06 * stage - weak_domain("S1_limbic") + noise(0.5), 2)
 clinical["executive_composite"] = np.round(0.3 - 0.05 * stage - weak_domain("S2_MTL_sparing") + noise(0.5), 2)
@@ -48,6 +48,7 @@ clinical["language_composite"] = np.round(0.3 - 0.05 * stage - weak_domain("S4_l
 clinical["visuospatial_composite"] = np.round(0.3 - 0.05 * stage - weak_domain("S3_posterior") + noise(0.5), 2)
 clinical["plasma_ptau217"] = np.round(np.where(amyloid == 1, 0.6, 0.3) * np.exp(0.06 * stage + noise(0.25)), 3)
 
+clinical = clinical + 0.0                                       # rounding can give -0.0; make it 0.0
 for column in clinical.columns.drop("education_years"):         # a few empty cells, as in real data
     clinical.loc[rng.random(n) < settings["clinical_missing_fraction"], column] = np.nan
 
