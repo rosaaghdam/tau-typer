@@ -21,7 +21,7 @@ main steps are in `steps/` (S0-S10). The app (`app/app.py`, step S10) uses the s
 | `01e_check_suvr.py` | 1 | Checks the simulated z-scores and SUVR values | done |
 | `01f_check_covariates.py` | 1 | Checks age, sex, diagnosis, amyloid | done |
 | `01g_make_toy_data.py` | 1 | Writes data/toy/toy_tau.csv and data/toy/toy_truth.csv | done in steps/S1-S2 instead |
-| `01h_make_toy_clinical.py` | 1 | Adds 10 invented clinical variables -> data/toy/toy_tau_clinical.csv (the app's Sample Data) | done |
+| `01h_make_toy_clinical.py` | 1 | Adds 10 invented clinical variables -> data/toy/toy_tau_clinical.csv (extra test file to upload in the app) | done |
 | `02_run_sustain_full.py` | 2 | Runs pySuStaIn with the paper's settings on the toy z-scores (results/toy/sustain_full) | done |
 
 Steps 0c (tables) and the notes were writing only – see notes/.

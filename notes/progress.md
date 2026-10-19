@@ -935,3 +935,4 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Review: new toy file data/toy/toy_tau_clinical.csv (10 invented clinical variables, 5% empty cells;
   code/01h) = the app's Sample Data now. Table 1 on the 4-subtype toy run finds the built-in weak
   domains (memory worst in Subtype 1 *, executive in Subtype 4 *). "= nan" rows fixed.
+- Sample Data set back to toy_tau.csv (Rosa: the clinical file is only for her own tests).
