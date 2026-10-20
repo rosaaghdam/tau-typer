@@ -372,39 +372,72 @@ def plot_asymmetry(table, asymmetry, subtype_titles):
     return fig
 
 
+DIAGNOSIS_COLORS = {"CN": "#11A0D9", "CU": "#11A0D9", "HC": "#11A0D9", "control": "#11A0D9",
+                    "SCD": "#9491D9", "MCI": "#F2B705", "AD": "#F24405", "dementia": "#F24405"}
+OTHER_COLORS = ["#3F8C61", "#8C2E62", "#332288", "#44AA99", "#DDCC77"]
+
+
+def group_colors(groups):
+    """One fixed color per diagnosis: blue for healthy, red for AD; other labels get the next free color."""
+    colors = {}
+    extra = 0
+    for g in groups:
+        if g in DIAGNOSIS_COLORS:
+            colors[g] = DIAGNOSIS_COLORS[g]
+        else:
+            colors[g] = OTHER_COLORS[extra % len(OTHER_COLORS)]
+            extra += 1
+    return colors
+
+
 def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4):
-    """One box plot per number column (MMSE, age, ...), one box per group (e.g. diagnosis)."""
+    """One box plot per number column (MMSE, age, ...), one colored box per group, with every person as a dot."""
     n_rows = int(np.ceil(len(numbers) / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.4 * n_cols, 2.8 * n_rows), squeeze=False)
     labels = groups if group_col else ["All"]
+    colors = group_colors(labels) if group_col else {"All": "#11A0D9"}
+    rng = np.random.default_rng(0)                                 # same dot positions every time
     for ax, col in zip(axes.flat, numbers):
         values = pd.to_numeric(data[col], errors="coerce")
-        boxes = []
-        for g in labels:
+        for i, g in enumerate(labels, start=1):
             in_group = data[group_col].astype(str) == g if group_col else values.notna()
-            boxes.append(values[in_group].dropna())
-        ax.boxplot(boxes)
+            group_values = values[in_group].dropna()
+            if len(group_values) == 0:
+                continue
+            box = ax.boxplot([group_values], positions=[i], widths=0.6, patch_artist=True, showfliers=False)
+            box["boxes"][0].set(facecolor=colors[g], alpha=0.35)
+            box["medians"][0].set(color="black")
+            x = i + rng.uniform(-0.2, 0.2, len(group_values))
+            ax.scatter(x, group_values, s=6, color=colors[g], alpha=0.7)
         ax.set_xticks(range(1, len(labels) + 1), labels, fontsize=8)
         ax.set_title(col, fontsize=10)
     for ax in axes.flat[len(numbers):]:
         ax.set_visible(False)
-    fig.tight_layout()
+    if group_col:                                                  # one legend for all panels
+        handles = [plt.Rectangle((0, 0), 1, 1, color=colors[g]) for g in labels]
+        fig.legend(handles, labels, loc="upper center", ncol=len(labels), frameon=False)
+        fig.tight_layout(rect=(0, 0, 1, 0.95))
+    else:
+        fig.tight_layout()
     return fig
 
 
 def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
-    """One bar chart per category column (sex, APOE4, ...): % of each value, per group."""
+    """One bar chart per category column (sex, APOE4, ...): % of each value, one bar per group
+    (same colors as the box plots, so no legend here)."""
     n_rows = int(np.ceil(len(categories) / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.4 * n_cols, 2.8 * n_rows), squeeze=False)
-    for i, (ax, col) in enumerate(zip(axes.flat, categories)):
+    for ax, col in zip(axes.flat, categories):
         values = data[col].dropna()
         values = values.map(lambda v: f"{v:g}" if isinstance(v, float) else str(v))
         if group_col:
             group = data.loc[values.index, group_col].astype(str)
             table = pd.crosstab(values, group, normalize="columns")[groups] * 100
+            colors = [group_colors(groups)[g] for g in groups]
         else:
             table = values.value_counts(normalize=True).to_frame("All") * 100
-        table.plot.bar(ax=ax, legend=(i == 0), rot=0)
+            colors = ["#11A0D9"]
+        table.plot.bar(ax=ax, legend=False, rot=0, color=colors)
         ax.set_title(col, fontsize=10)
         ax.set_xlabel("")
         ax.set_ylabel("%")
@@ -414,23 +447,12 @@ def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
     return fig
 
 
-def plot_missing(data, columns):
-    """% of people with an empty cell, per column."""
-    missing = data[columns].isna().mean().mul(100).sort_values()
-    fig, ax = plt.subplots(figsize=(7, 0.3 * len(columns) + 1.2))
-    ax.barh(missing.index, missing.values, color="#C62828")
-    ax.set_xlim(0, max(5, missing.max() * 1.15))
-    ax.set_xlabel("% missing")
-    fig.tight_layout()
-    return fig
-
-
 def plot_correlations(data, numbers):
     """Spearman correlation between all number columns. Red = rise together, blue = one falls."""
     values = data[numbers].apply(pd.to_numeric, errors="coerce")
     corr = values.corr(method="spearman")
-    size = 0.6 * len(numbers) + 3
-    fig, ax = plt.subplots(figsize=(size, size - 1))
+    size = 0.7 * len(numbers) + 4
+    fig, ax = plt.subplots(figsize=(size + 1, size))
     image = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
     ax.set_xticks(range(len(numbers)), numbers, rotation=45, ha="right")
     ax.set_yticks(range(len(numbers)), numbers)

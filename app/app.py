@@ -24,8 +24,8 @@ from src.app_runs import list_runs, prepare_run_folder, start_run
 from src.report import pysustain_info, report_zip
 from src.results import (load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order, subject_table,
                          subtype_summary)
-from src.figures import (plot_asymmetry, plot_category_bars, plot_correlations, plot_covariate_boxplots,
-                         plot_missing, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
+from src.figures import (group_colors, plot_asymmetry, plot_category_bars, plot_correlations,
+                         plot_covariate_boxplots, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
                          plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
                          plot_stages, plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.sustain_model import count_people_above, parse_cut_points, parse_z_max, sustain_inputs, z_max_table
@@ -396,7 +396,14 @@ def server(input, output, session):
 
     @render.data_frame
     def demographics():
-        return demographics_table(analysis_data(), chosen_columns())
+        table = demographics_table(analysis_data(), chosen_columns())
+        group_col, groups = diagnosis_groups()
+        if group_col:                                       # same order as the figures: CN, SCD, MCI, AD
+            table = table.set_index("Group").reindex(["All"] + groups).reset_index()
+        colors = group_colors([g for g in table["Group"] if g != "All"])
+        styles = [{"rows": [i], "cols": [0], "style": {"color": colors[g], "font-weight": "bold"}}
+                  for i, g in enumerate(table["Group"]) if g in colors]
+        return render.DataGrid(table, styles=styles)
 
     @reactive.calc
     def other_columns():
@@ -434,16 +441,18 @@ def server(input, output, session):
             ui.output_plot("covariate_boxplots", height=plot_height(len(numbers))),
             ui.h6("Category columns by diagnosis", class_="mt-4"),
             ui.output_plot("category_bars", height=plot_height(len(categories))),
-            ui.h6("Missing values", class_="mt-4"),
-            ui.output_plot("missing_plot", height=f"{30 * len(columns) + 120}px"),
             ui.h6("Correlations between number columns (and the mean of the regions)", class_="mt-4"),
-            ui.output_plot("correlation_plot", height=f"{45 * len(numbers) + 250}px"))
+            ui.output_plot("correlation_plot", height=f"{55 * len(numbers) + 400}px"))
 
     @render.data_frame
     def covariate_table():
         group_col, groups = diagnosis_groups()
         columns = [c for c in other_columns() if c != group_col]
-        return render.DataGrid(covariate_summary(analysis_data(), columns, group_col, groups), width="100%")
+        table = covariate_summary(analysis_data(), columns, group_col, groups)
+        colors = group_colors(groups) if group_col else {}
+        styles = [{"cols": [list(table.columns).index(g)], "style": {"color": colors[g], "font-weight": "bold"}}
+                  for g in colors]
+        return render.DataGrid(table, width="100%", styles=styles)
 
     @render.plot
     def covariate_boxplots():
@@ -458,10 +467,6 @@ def server(input, output, session):
         _, categories = number_and_category_columns(analysis_data(), [c for c in other_columns() if c != group_col])
         req(categories)
         return plot_category_bars(analysis_data(), categories, group_col, groups)
-
-    @render.plot
-    def missing_plot():
-        return plot_missing(analysis_data(), other_columns())
 
     @render.plot
     def correlation_plot():

@@ -942,3 +942,4 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Review: one Sample Data link only, now toy_tau_clinical.csv (Rosa).
 - Review: Sample Data now has 20 people the filtering rule removes (10 CN <= 40, 10 amyloid-negative MCI/AD) -> 480 kept.
 - Review: Demographics tab now summarizes all other columns (table, box plots by diagnosis, bars, missing values, correlations).
+- Review: Demographics colors = Rosa palette (healthy blue -> AD red) in all figures and tables; dots in box plots; missing plot removed.
