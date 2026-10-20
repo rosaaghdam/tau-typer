@@ -123,24 +123,29 @@ app_ui = ui.page_navbar(
                                               value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
                              ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
                                   "the one with the lowest mean is 'normal'. Paper: 2.", class_="text-muted small")),
-                         ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
-                                       value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
-                         ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
-                              class_="text-muted small"),
-                         ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
-                                                choices={"manual": "One value for all regions",
-                                                         "percentile": "Percentile per region"},
-                                                selected=CONFIG["normalization"]["z_max_method"]),
-                         ui.panel_conditional("input.z_max_method === 'manual'",
-                                              ui.input_text("z_max_manual", "Z_max",
-                                                            value=f"{CONFIG['sustain']['z_max']:g}")),
-                         ui.panel_conditional("input.z_max_method === 'percentile'",
-                                              ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
-                                                               value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
-                         ui.p("Not reported in the paper. Must be above the last cut-point.", class_="text-muted small"),
-                         ui.input_checkbox("per_region", "Different values per region", value=False),
-                         ui.p("Then set cut-points and Z_max for each region in the 'Per-region values' tab.",
-                              class_="text-muted small"),
+                         ui.input_checkbox("per_region", "Different cut-points / Z_max per region", value=False),
+                         ui.panel_conditional(                  # one set of values for all regions
+                             "!input.per_region",
+                             ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
+                                           value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
+                             ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
+                                  class_="text-muted small"),
+                             ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
+                                                    choices={"manual": "One value for all regions",
+                                                             "percentile": "Percentile per region"},
+                                                    selected=CONFIG["normalization"]["z_max_method"]),
+                             ui.panel_conditional("input.z_max_method === 'manual'",
+                                                  ui.input_text("z_max_manual", "Z_max",
+                                                                value=f"{CONFIG['sustain']['z_max']:g}")),
+                             ui.panel_conditional("input.z_max_method === 'percentile'",
+                                                  ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
+                                                                   value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
+                             ui.p("Not reported in the paper. Must be above the last cut-point.",
+                                  class_="text-muted small")),
+                         ui.panel_conditional(                  # values per region: in the main area
+                             "input.per_region",
+                             ui.p("Set the cut-points and Z_max of each region in the 'Per-region values' tab "
+                                  "(on the right).", class_="text-primary small")),
                          ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
                          width=320, open="always"),
                      ui.navset_tab(
@@ -169,7 +174,8 @@ app_ui = ui.page_navbar(
                                       ui.download_button("download_z", "Download z-scores (CSV)"),
                                       ui.download_button("download_reference", "Download normal reference (CSV)"),
                                       ui.p("Keep the normal reference: new people must be z-scored with "
-                                           "these same numbers.", class_="text-muted small mt-2"))))),
+                                           "these same numbers.", class_="text-muted small mt-2")),
+                         id="norm_tabs"))),
     ui.nav_panel("3. Run SuStaIn",
                  ui.layout_sidebar(
                      ui.sidebar(
@@ -664,6 +670,13 @@ def server(input, output, session):
             return parse_cut_points(input.cut_points())
         except ValueError as error:
             raise SafeException(str(error))              # shown to the user in the outputs
+
+    @reactive.effect
+    @reactive.event(input.per_region, ignore_init=True)
+    def _open_per_region_tab():
+        """Ticking 'Different cut-points / Z_max per region' opens the tab with the region rows."""
+        if input.per_region():
+            ui.update_navset("norm_tabs", selected="Per-region values")
 
     @render.ui
     def per_region_ui():
