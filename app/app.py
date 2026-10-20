@@ -30,7 +30,7 @@ from src.figures import (group_colors, plot_asymmetry, plot_category_bars, plot_
                          plot_stages, plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.sustain_model import count_people_above, parse_cut_points, parse_z_max, sustain_inputs, z_max_table
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
-from src.zscore import (amyloid_negative_cn, fit_gmm, reference_group_normal, zscore_regions,
+from src.zscore import (amyloid_negative_cn, covariate_adjustment, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
 
 NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group: amyloid-negative CN",
@@ -58,9 +58,11 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
 
 AN_HELP = {     # short help text in tab 5 (paper = Vogel et al. 2021)
     "table1": "Paper Table 1. Numbers: mean (SD); categories: %. p (subtypes): Kruskal-Wallis or chi-square "
-              "between the subtypes. Adjusted for stage: linear model variable ~ subtype + stage.",
+              "between the subtypes. Adjusted: linear model variable ~ subtype + stage + the covariates chosen "
+              "in 'Adjust tests for'. * = this subtype differs from the other tau+ people (FDR p < 0.05).",
     "regions": "Paper Fig. 1d. For each subtype and region: this subtype vs all other tau+ people, at the same "
-               "stage (linear model z ~ subtype + stage). Red = more tau, blue = less; * = FDR p < 0.05.",
+               "stage (linear model z ~ subtype + stage + 'Adjust tests for'). Red = more tau, blue = less; "
+               "* = FDR p < 0.05.",
     "stage": "Paper Fig. 3a/b. Spearman correlation between SuStaIn stage and the chosen variable (tau+ people), "
              "overall and per subtype; one line per subtype in the figure.",
     "asymmetry": "Paper Ext. Fig. 9. Asymmetry = mean over left/right region pairs of (L - R) / (|L| + |R|); "
@@ -107,6 +109,13 @@ app_ui = ui.page_navbar(
                          ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
                                                 choices=NORM_METHODS, selected="gmm"),
                          ui.output_ui("norm_method_note"),
+                         ui.input_checkbox("age_adjust", "Adjust for age first (W-score style)", value=False),
+                         ui.panel_conditional("input.age_adjust",
+                                              ui.input_checkbox("sex_adjust", "... and for sex", value=False),
+                                              ui.p("Normal ageing is learned in amyloid-negative CN people and "
+                                                   "removed from everyone's SUVR; then the method above runs as "
+                                                   "usual. Not in the paper - use it as a sensitivity analysis.",
+                                                   class_="text-muted small")),
                          ui.panel_conditional(
                              "input.norm_method === 'gmm'",
                              ui.input_numeric("gmm_components", "Number of GMM components",
@@ -133,6 +142,7 @@ app_ui = ui.page_navbar(
                          width=320, open="always"),
                      ui.navset_tab(
                          ui.nav_panel("Normal reference", ui.output_ui("norm_status"),
+                                      ui.output_ui("slopes_view"),
                                       ui.output_data_frame("norm_reference")),
                          ui.nav_panel("GMM fit per region", ui.output_ui("gmm_region_choice"),
                                       ui.output_plot("gmm_fit_plot", height="420px")),
@@ -230,6 +240,8 @@ app_ui = ui.page_navbar(
                          ui.input_selectize("an_variables", "Variables to compare (Table 1)", choices=[],
                                             multiple=True),
                          ui.input_select("an_stage_variable", "Variable against stage", choices=[]),
+                         ui.input_selectize("an_adjust", "Adjust tests for (paper: age, sex, education, ...)",
+                                            choices=[], multiple=True),
                          ui.p("Variables come from the other columns of your file (age, sex, MMSE, APOE4, ...). "
                               "Only tau+ people (stage > 0) are compared between subtypes.",
                               class_="text-muted small"),
@@ -510,6 +522,7 @@ def server(input, output, session):
         values = data[regions].apply(pd.to_numeric, errors="coerce")
         complete = values.dropna()                       # people with every region value
         method, n_components, n_reference = input.norm_method(), input.gmm_components(), None
+        complete, slopes, n_adjust_reference = adjust_for_age(data, complete, regions, method)
         if method == "gmm":
             z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
         elif method == "reference":
@@ -531,12 +544,37 @@ def server(input, output, session):
             z.index, complete.index = ids, ids
         return {"z": z, "reference": reference, "values": complete, "method": method,
                 "n_components": n_components, "n_reference": n_reference,
-                "n_left_out": len(values) - len(complete), "inputs": norm_inputs()}
+                "n_left_out": len(values) - len(complete), "inputs": norm_inputs(),
+                "slopes": slopes, "n_adjust_reference": n_adjust_reference}
+
+    def adjust_for_age(data, complete, regions, method):
+        """If the box is ticked: remove normal ageing (and sex) from the SUVR values, learned in
+        amyloid-negative CN people. Returns (values, slopes table or None, reference group size)."""
+        if not input.age_adjust() or method == "zscored":
+            return complete, None, None
+        columns = chosen_columns()
+        needed = ["age", "diagnosis", "amyloid"] + (["sex"] if input.sex_adjust() else [])
+        missing = [ROLE_LABELS[role] for role in needed if not columns.get(role)]
+        if missing:
+            raise SafeException(f"The age adjustment needs these columns (tab 1): {', '.join(missing)}.")
+        covariates = pd.DataFrame({"age": pd.to_numeric(data[columns["age"]], errors="coerce")})
+        if input.sex_adjust():
+            first_letter = data[columns["sex"]].astype(str).str.strip().str.upper().str[0]
+            covariates["sex (1 = female)"] = (first_letter == "F").astype(float)
+        covariates = covariates.loc[complete.index].dropna()       # people with a known age (and sex)
+        complete = complete.loc[covariates.index]
+        in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"], columns["amyloid"],
+                                           CONFIG["inclusion"]["cn_labels"])
+        if in_reference.sum() < 10:
+            raise SafeException("The age adjustment needs at least 10 amyloid-negative CN people.")
+        adjusted, slopes = covariate_adjustment(complete, regions, covariates, in_reference)
+        return adjusted, slopes, int(in_reference.sum())
 
     def norm_inputs():
         """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
         method = input.norm_method()
         return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
+                input.age_adjust(), input.sex_adjust(),
                 int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
 
     @reactive.calc
@@ -564,6 +602,10 @@ def server(input, output, session):
                       class_="fw-bold")]
         if result["method"] == "reference":
             lines.append(ui.p(f"Reference group: {result['n_reference']} amyloid-negative CN people."))
+        if result["slopes"] is not None:
+            lines.append(ui.p(f"Adjusted for {' and '.join(result['slopes'].columns)} first, learned in "
+                              f"{result['n_adjust_reference']} amyloid-negative CN people (slopes: table at "
+                              "the bottom).", class_="text-primary"))
         if result["method"] == "zscored":
             median = float(result["z"].median().median())
             lines.append(ui.p("No normal reference is computed: the uploaded values are used as z-scores."))
@@ -777,6 +819,8 @@ def server(input, output, session):
         s = sustain_input()
         return {"n_people": len(s["subjects"]), "regions": s["regions"],
                 "normalization": normalized()["method"], "cut_points": [float(c) for c in s["cut_points"]],
+                "age_adjustment": (None if normalized()["slopes"] is None else           # slopes per region
+                                   normalized()["slopes"].round(6).to_dict(orient="index")),
                 "z_max": [round(float(v), 4) for v in s["Z_max"]],
                 "n_subtypes_max": input.n_subtypes_max(), "n_startpoints": input.n_startpoints(),
                 "n_iterations_mcmc": input.n_mcmc(), "seed": input.run_seed(),
@@ -1121,6 +1165,12 @@ def server(input, output, session):
             return None, "the IDs in tab 1 do not match the people of this run"
         return others.reindex(people), "from the file in tab 1, matched by ID"
 
+    def adjust_for():
+        """The covariates chosen in "Adjust tests for" (none if the run has no covariates)."""
+        if an_covariates()[0] is None:
+            return []
+        return [c for c in (input.an_adjust() or []) if c in an_covariates()[0].columns]
+
     def covariates_or_stop():
         """The covariates table; stops the output quietly if there is none (req cannot test a table)."""
         covariates = an_covariates()[0]
@@ -1134,6 +1184,9 @@ def server(input, output, session):
         numeric = [c for c in columns if pd.to_numeric(covariates[c], errors="coerce").notna().mean() > 0.9]
         ui.update_selectize("an_variables", choices=columns, selected=columns)
         ui.update_select("an_stage_variable", choices=numeric)
+        roles = shown_settings().get("columns") or {}                     # saved with the run
+        default = [roles[r] for r in ("age", "sex") if roles.get(r) in columns]   # age and sex if present
+        ui.update_selectize("an_adjust", choices=columns, selected=default)
 
     @render.ui
     def an_status():
@@ -1146,12 +1199,13 @@ def server(input, output, session):
     @render.data_frame
     def an_table1():
         covariates = covariates_or_stop()
-        return render.DataGrid(group_table(an_data()["table"], covariates, list(input.an_variables() or [])))
+        return render.DataGrid(group_table(an_data()["table"], covariates, list(input.an_variables() or []),
+                                           adjust_for()))
 
     @render.plot
     def an_regions_plot():
         d = an_data()
-        t_values, p_fdr = regional_contrasts(d["z"], d["table"], d["regions"])
+        t_values, p_fdr = regional_contrasts(d["z"], d["table"], d["regions"], an_covariates()[0], adjust_for())
         return plot_regional_contrasts(t_values, p_fdr, subtype_titles(d["k"]))
 
     @render.data_frame
@@ -1232,7 +1286,7 @@ def server(input, output, session):
         likelihoods = model_likelihoods(folder, settings["dataset_name"])
         if cv_file.exists():
             likelihoods = likelihoods.join(pd.read_csv(cv_file, index_col="subtypes"))
-        t_values, p_fdr = regional_contrasts(d["z"], d["table"], d["regions"])
+        t_values, p_fdr = regional_contrasts(d["z"], d["table"], d["regions"], an_covariates()[0], adjust_for())
         figures = {
             "01_pvd": plot_pvd(d["result"], d["Z_vals"], d["regions"], titles, None,
                                subtype_order=pvd_order(d["result"], d["order"])),
@@ -1255,7 +1309,8 @@ def server(input, output, session):
                   "regional_differences_t": t_values, "regional_differences_p_fdr": p_fdr}
         covariates = an_covariates()[0]
         if covariates is not None:
-            tables["table1"] = group_table(d["table"], covariates, list(input.an_variables() or [])).set_index("variable")
+            tables["table1"] = group_table(d["table"], covariates, list(input.an_variables() or []),
+                                           adjust_for()).set_index("variable")
             stage_variable = input.an_stage_variable()
             if stage_variable:
                 tables[f"stage_vs_{stage_variable}"] = stage_association(d["table"], covariates[stage_variable])
@@ -1305,6 +1360,25 @@ def server(input, output, session):
                                      if private else "off - everyone using this app sees all saved runs."),
                  class_="fw-bold" if private else "text-muted"),
         )
+
+
+    @render.ui
+    def slopes_view():
+        if input.normalize() == 0 or normalized()["slopes"] is None:
+            return None
+        return ui.TagList(ui.h6("Age adjustment: change in SUVR per year of age (and female vs male)"),
+                          ui.output_data_frame("slopes_table"),
+                          ui.download_button("download_slopes", "Download age adjustment (CSV)"),
+                          ui.p("Keep this file too: new people must be adjusted with the same slopes.",
+                               class_="text-muted small"))
+
+    @render.data_frame
+    def slopes_table():
+        return normalized()["slopes"].round(4).reset_index(names="Region")
+
+    @render.download_button(filename="tau_typer_age_adjustment.csv")
+    def download_slopes():
+        yield normalized()["slopes"].round(6).to_csv(index_label="region")
 
 
 

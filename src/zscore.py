@@ -56,3 +56,27 @@ def reference_group_normal(data, regions, in_reference):
 def zscore_with_reference(data, regions, reference):
     """z = (value - normal mean) / normal SD, with a given reference table (any method)."""
     return (data[regions] - reference.loc["normal_mean"]) / reference.loc["normal_sd"]
+
+
+# ---------- Option: remove normal ageing (and sex) before normalization (W-score style) ----------
+
+def covariate_adjustment(data, regions, covariates, in_reference):
+    """Remove the effect of age (and sex) from each region, learned in the reference group only.
+
+    Per region: fit SUVR = a + b1*age (+ b2*sex) in the reference people (amyloid-negative CN,
+    i.e. normal ageing). Then for everyone: adjusted SUVR = SUVR - b * (covariate - reference mean),
+    so everyone is moved to the reference group's average age (and sex). The values stay on the
+    SUVR scale, so the GMM (or reference group) step after it works as before.
+    covariates: numbers only (sex as 1 = female, 0 = male), same rows as data, no empty cells.
+    Returns (adjusted values, table of slopes: one row per region, one column per covariate).
+    """
+    reference_x = covariates[in_reference]
+    centered = covariates - reference_x.mean()
+    design = np.column_stack([np.ones(len(reference_x)), reference_x.to_numpy()])
+    adjusted = data[regions].copy()
+    slopes = pd.DataFrame(index=regions, columns=covariates.columns, dtype=float)
+    for region in regions:
+        coefficients = np.linalg.lstsq(design, data.loc[in_reference, region].to_numpy(), rcond=None)[0]
+        slopes.loc[region] = coefficients[1:]                     # [0] is the intercept
+        adjusted[region] = data[region] - centered.to_numpy() @ coefficients[1:]
+    return adjusted, slopes

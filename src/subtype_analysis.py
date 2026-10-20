@@ -11,6 +11,26 @@ from scipy import stats
 from sklearn.metrics import adjusted_rand_score
 from statsmodels.stats.multitest import multipletests
 
+from src.qc import number_and_category_columns
+
+
+def covariate_terms(covariates, names):
+    """The chosen adjustment covariates (age, sex, education, ...) as a table + formula terms.
+    Columns are renamed cov0, cov1, ... so any column name works in a formula; numbers are used
+    as they are, categories as C(cov)."""
+    numbers, _ = number_and_category_columns(covariates, names)
+    data = pd.DataFrame(index=covariates.index)
+    terms = []
+    for i, name in enumerate(names):
+        col = f"cov{i}"
+        if name in numbers:
+            data[col] = pd.to_numeric(covariates[name], errors="coerce")
+            terms.append(col)
+        else:
+            data[col] = covariates[name]
+            terms.append(f"C({col})")
+    return data, terms
+
 
 def as_categories(values):
     """Category labels as text, empty cells left out; whole numbers without ".0" (APOE4 1.0 -> "1")."""
@@ -29,15 +49,17 @@ def one_vs_others_p(values, groups, tau_pos, subtype, numeric):
     return stats.chi2_contingency(counts).pvalue if counts.shape[0] > 1 and counts.shape[1] == 2 else np.nan
 
 
-def group_table(table, covariates, variables):
+def group_table(table, covariates, variables, adjust_for=()):
     """Table 1: each variable per group (S0, Subtype 1, ...) and tests between the subtypes (tau+ only).
 
-    Numbers: mean (SD); p (subtypes) = Kruskal-Wallis; p adjusted for stage = linear model
-    "variable ~ subtype + stage". Categories: % for every value; p (subtypes) = chi-square.
+    Numbers: mean (SD); p (subtypes) = Kruskal-Wallis; adjusted p = linear model
+    "variable ~ subtype + stage + adjust_for" (e.g. age, sex, education - as in the paper).
+    Categories: % for every value; p (subtypes) = chi-square.
     Like the paper, each subtype is also compared with all other tau+ people (Mann-Whitney or
     chi-square); * after a value = different from the other subtypes (FDR-corrected p < 0.05).
     """
     groups = table["subtype"]
+    adjusted_name = "p (subtypes, adjusted for " + ", ".join(["stage"] + list(adjust_for)) + ")"
     subtypes = sorted(g for g in groups.unique() if g != "S0")
     order = (["S0"] if (groups == "S0").any() else []) + subtypes
     tau_pos = table["ml_stage"] > 0
@@ -53,9 +75,11 @@ def group_table(table, covariates, variables):
             samples = [numeric_values[(groups == g) & tau_pos].dropna() for g in subtypes]
             if len(samples) > 1:
                 row["p (subtypes)"] = stats.kruskal(*samples).pvalue
-                data = pd.DataFrame({"y": numeric_values, "subtype": groups, "stage": table["ml_stage"]})[tau_pos].dropna()
-                fit = smf.ols("y ~ C(subtype) + stage", data=data).fit()      # ANOVA table -> p for subtype
-                row["p (subtypes, adjusted for stage)"] = sm.stats.anova_lm(fit, typ=2).loc["C(subtype)", "PR(>F)"]
+                extra, terms = covariate_terms(covariates, [a for a in adjust_for if a != var])
+                data = pd.DataFrame({"y": numeric_values, "subtype": groups, "stage": table["ml_stage"]})
+                data = pd.concat([data, extra], axis=1)[tau_pos].dropna()
+                fit = smf.ols(" + ".join(["y ~ C(subtype)", "stage"] + terms), data=data).fit()
+                row[adjusted_name] = sm.stats.anova_lm(fit, typ=2).loc["C(subtype)", "PR(>F)"]   # p for subtype
             new_rows = [row]
         else:
             labels = as_categories(values)                        # empty cells are not counted
@@ -83,28 +107,31 @@ def group_table(table, covariates, variables):
         for (row, g, _), q in zip(marks, corrected):
             if q < 0.05:
                 result.loc[row, g] += " *"
-    for col in ["p (subtypes)", "p (subtypes, adjusted for stage)"]:
+    for col in ["p (subtypes)", adjusted_name]:
         if col in result:
             result[col] = result[col].map(lambda p: "" if pd.isna(p) else f"{p:.3g}")
     return result
 
 
-def regional_contrasts(z, table, regions):
+def regional_contrasts(z, table, regions, covariates=None, adjust_for=()):
     """Paper Fig. 1d: where does each subtype have more (or less) tau than all other tau+ people?
 
-    Per subtype and region a linear model "z ~ this_subtype + stage" (tau+ people only), so the
-    comparison is at the same disease stage. Returns t-values and FDR-corrected p-values
+    Per subtype and region a linear model "z ~ this_subtype + stage + adjust_for" (tau+ people only),
+    so the comparison is at the same disease stage (and age, sex, ... if chosen). Returns t-values and FDR-corrected p-values
     (Benjamini-Hochberg over all subtypes x regions), each as a regions x subtypes table.
     """
     tau_pos = table["ml_stage"] > 0
     subtypes = sorted(table.loc[tau_pos, "ml_subtype"].unique())
+    extra, terms = covariate_terms(covariates, list(adjust_for)) if adjust_for else (pd.DataFrame(index=z.index), [])
+    formula = " + ".join(["z ~ this", "stage"] + terms)
     t_values = pd.DataFrame(index=regions, columns=subtypes, dtype=float)
     p_values = t_values.copy()
     for k in subtypes:
         for region in regions:
             data = pd.DataFrame({"z": z.loc[tau_pos, region], "this": (table.loc[tau_pos, "ml_subtype"] == k).astype(int),
                                  "stage": table.loc[tau_pos, "ml_stage"]})
-            fit = smf.ols("z ~ this + stage", data=data).fit()
+            data = pd.concat([data, extra.loc[data.index]], axis=1).dropna()
+            fit = smf.ols(formula, data=data).fit()
             t_values.loc[region, k], p_values.loc[region, k] = fit.tvalues["this"], fit.pvalues["this"]
     corrected = multipletests(p_values.to_numpy().ravel(), method="fdr_bh")[1].reshape(p_values.shape)
     return t_values, pd.DataFrame(corrected, index=regions, columns=subtypes)

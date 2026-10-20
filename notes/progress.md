@@ -943,3 +943,8 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Review: Sample Data now has 20 people the filtering rule removes (10 CN <= 40, 10 amyloid-negative MCI/AD) -> 480 kept.
 - Review: Demographics tab now summarizes all other columns (table, box plots by diagnosis, bars, missing values, correlations).
 - Review: Demographics colors = Rosa palette (healthy blue -> AD red) in all figures and tables; dots in box plots; missing plot removed.
+- Age: Vogel 2021 does not adjust tau for age (only choroid plexus regression before the GMM; age etc.
+  as covariates in the statistics). New: optional age (+ sex) adjustment before normalization (learned
+  in amyloid-negative CN, W-score style; Soleimani-Meigooni 2020 Brain, Iaccarino 2021 Cereb Cortex use
+  age-adjusted W-scores) - for sensitivity analyses; and "Adjust tests for" in tab 5.
+- Still open: choroid plexus regression (needs a choroid plexus column) - ask Jake for details.
