@@ -10,24 +10,51 @@ from pySuStaIn import ZscoreSustain
 from sklearn.model_selection import KFold
 
 
+def cuts_per_region(regions, z_events):
+    """z_events as {region: [cut-points]}. z_events is either one list for all regions (paper:
+    [2, 5, 10]) or already a {region: list} dictionary (different events per region)."""
+    if isinstance(z_events, dict):
+        return {region: list(z_events[region]) for region in regions}
+    return {region: list(z_events) for region in regions}
+
+
+def make_z_vals(regions, z_events):
+    """The regions x cut-points table ZscoreSustain needs. A region with fewer cut-points gets 0
+    in the empty places - pySuStaIn skips zeros, so regions can have different numbers of events."""
+    cuts = cuts_per_region(regions, z_events)
+    width = max(len(c) for c in cuts.values())
+    Z_vals = np.zeros((len(regions), width))
+    for row, region in enumerate(regions):
+        Z_vals[row, :len(cuts[region])] = cuts[region]
+    return Z_vals
+
+
 def sustain_inputs(z, regions, z_events, z_max):
     """Turn our z-score table + settings into the 3 inputs ZscoreSustain needs.
 
     Returns:
         data  - people x regions array of z-scores (plain numbers, no names)
-        Z_vals - regions x cut-points table, every row = z_events (e.g. [2, 5, 10])
+        Z_vals - regions x cut-points table (see make_z_vals)
         Z_max  - the z-score each region reaches at the very end (one per region)
-    z_max can be one number (same for every region) or one number per region.
+    z_events: one list for all regions, or {region: list}. z_max: one number, or one per region.
     """
     data = z[regions].to_numpy()
-    Z_vals = np.array([z_events] * len(regions), dtype=float)
+    Z_vals = make_z_vals(regions, z_events)
     Z_max = np.broadcast_to(np.asarray(z_max, dtype=float), (len(regions),)).copy()
     return data, Z_vals, Z_max
 
 
 def count_people_above(z, regions, z_events):
-    """How many people reach each cut-point in each region (rarely reached events are hard to place)."""
-    return pd.DataFrame({f"z>={cut:g}": (z[regions] >= cut).sum() for cut in z_events})   # :g -> "2", not "2.0"
+    """How many people reach each cut-point in each region (rarely reached events are hard to place).
+    Same cut-points everywhere: columns "z>=2", "z>=5", ...; different per region: columns
+    "event 1", "event 2", ... (empty where a region has fewer events)."""
+    cuts = cuts_per_region(regions, z_events)
+    if all(c == cuts[regions[0]] for c in cuts.values()):
+        return pd.DataFrame({f"z>={cut:g}": (z[regions] >= cut).sum() for cut in cuts[regions[0]]})
+    rows = {}
+    for region in regions:
+        rows[region] = {f"event {i + 1}": int((z[region] >= cut).sum()) for i, cut in enumerate(cuts[region])}
+    return pd.DataFrame(rows).T
 
 
 def parse_cut_points(text):
@@ -71,7 +98,8 @@ def z_max_table(z, method, manual_values, percentile, min_z):
     """
     rows = {}
     for region in z.columns:
-        high = z[region][z[region] >= min_z]
+        region_min = min_z[region] if isinstance(min_z, dict) else min_z     # first cut-point of the region
+        high = z[region][z[region] >= region_min]
         rows[region] = {"people with z >= min": len(high), "max": high.max(),
                         "p99": high.quantile(0.99), "p95": high.quantile(0.95),
                         "Z_max used": manual_values[region] if method == "manual" else high.quantile(percentile / 100)}

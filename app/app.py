@@ -28,7 +28,8 @@ from src.figures import (group_colors, plot_asymmetry, plot_category_bars, plot_
                          plot_covariate_boxplots, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
                          plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
                          plot_stages, plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
-from src.sustain_model import count_people_above, parse_cut_points, parse_z_max, sustain_inputs, z_max_table
+from src.sustain_model import (count_people_above, cuts_per_region, make_z_vals, parse_cut_points, parse_z_max,
+                               sustain_inputs, z_max_table)
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
 from src.zscore import (amyloid_negative_cn, covariate_adjustment, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
@@ -127,17 +128,19 @@ app_ui = ui.page_navbar(
                          ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
                               class_="text-muted small"),
                          ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
-                                                choices={"manual": "Manual: one value per region",
+                                                choices={"manual": "One value for all regions",
                                                          "percentile": "Percentile per region"},
                                                 selected=CONFIG["normalization"]["z_max_method"]),
                          ui.panel_conditional("input.z_max_method === 'manual'",
-                                              ui.input_text("z_max_manual", "Z_max per region (comma-separated)",
-                                                            value=f"{CONFIG['sustain']['z_max']:g}"),
-                                              ui.output_ui("z_max_order")),
+                                              ui.input_text("z_max_manual", "Z_max",
+                                                            value=f"{CONFIG['sustain']['z_max']:g}")),
                          ui.panel_conditional("input.z_max_method === 'percentile'",
                                               ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
                                                                value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
                          ui.p("Not reported in the paper. Must be above the last cut-point.", class_="text-muted small"),
+                         ui.input_checkbox("per_region", "Different values per region", value=False),
+                         ui.p("Then set cut-points and Z_max for each region in the 'Per-region values' tab.",
+                              class_="text-muted small"),
                          ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
                          width=320, open="always"),
                      ui.navset_tab(
@@ -156,6 +159,10 @@ app_ui = ui.page_navbar(
                                            class_="text-muted small"),
                                       ui.output_ui("events_status"),
                                       ui.output_data_frame("events_table")),
+                         ui.nav_panel("Per-region values", ui.output_ui("per_region_ui"),
+                                      ui.panel_conditional("input.per_region",
+                                                           ui.input_action_button("pr_reset", "Reset to sidebar values",
+                                                                                  class_="mt-2"))),
                          ui.nav_panel("Z_max", ui.output_ui("zmax_status"),
                                       ui.output_data_frame("zmax_table")),
                          ui.nav_panel("SuStaIn input", ui.output_ui("sustain_input_summary"),
@@ -639,7 +646,7 @@ def server(input, output, session):
         gmm = fit_gmm(values, result["n_components"], CONFIG["pipeline"]["seed"])   # same as Normalize
         reference = result["reference"]
         return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
-                            reference.loc["normal_sd", region], cut_points())
+                            reference.loc["normal_sd", region], region_cuts()[region])
 
     @render.data_frame
     def z_head():
@@ -658,18 +665,62 @@ def server(input, output, session):
         except ValueError as error:
             raise SafeException(str(error))              # shown to the user in the outputs
 
+    @render.ui
+    def per_region_ui():
+        """One row per region with its own cut-points and Z_max, pre-filled with the sidebar values.
+        Built again (back to the sidebar values) when the regions change or Reset is clicked."""
+        input.pr_reset()
+        regions = list(input.col_regions() or [])
+        if not input.per_region():
+            return ui.p("Tick 'Different values per region' in the sidebar to set values for each region.",
+                        class_="text-muted")
+        if not regions:
+            return ui.p("Choose the region columns in tab 1 first.", class_="text-muted")
+        with reactive.isolate():
+            cuts_text = input.cut_points()
+            try:
+                z_max = sidebar_z_max_values()["Z_max used"]
+            except Exception:                                  # not normalized yet
+                z_max = pd.Series(CONFIG["sustain"]["z_max"], index=regions)
+        header = ui.row(ui.column(3, ui.strong("Region")), ui.column(5, ui.strong("Cut-points")),
+                        ui.column(4, ui.strong("Z_max")))
+        rows = [header]
+        for i, region in enumerate(regions):
+            rows.append(ui.row(
+                ui.column(3, ui.p(region, class_="mt-2")),
+                ui.column(5, ui.input_text(f"pr_cuts_{i}", None, value=cuts_text)),
+                ui.column(4, ui.input_numeric(f"pr_zmax_{i}", None, value=round(float(z_max.get(region, 15)), 1)))))
+        return ui.TagList(
+            ui.p("Each region can have its own cut-points (e.g. 2, 5 or 2, 4, 6, 8) and Z_max. The checks in "
+                 "the Events, Z_max and SuStaIn input tabs use these values.", class_="text-muted small"),
+            *rows)
+
+    @reactive.calc
+    def region_cuts():
+        """{region: cut-points} - the sidebar cut-points for every region, or the per-region values."""
+        regions = list(normalized()["z"].columns)
+        if not input.per_region():
+            return cuts_per_region(regions, cut_points())
+        cuts = {}
+        for i, region in enumerate(regions):
+            try:
+                cuts[region] = parse_cut_points(input[f"pr_cuts_{i}"]())
+            except ValueError as error:
+                raise SafeException(f"{region}: {error}")
+        return cuts
+
     @reactive.calc
     def event_counts():
         """People reaching each cut-point (rows = regions, columns = cut-points)."""
         z = normalized()["z"]
-        return count_people_above(z, list(z.columns), cut_points())
+        return count_people_above(z, list(z.columns), region_cuts())
 
     @render.ui
     def events_status():
         if input.normalize() == 0:
             return ui.p("Click Normalize first.", class_="text-muted")
         minimum = CONFIG["normalization"]["min_people_per_event"]
-        n_rare = int((event_counts() < minimum).sum().sum())
+        n_rare = int((event_counts() < minimum).sum().sum())          # empty cells are not counted
         if n_rare == 0:
             return ui.p(f"All events are reached by at least {minimum} people.", class_="text-success fw-bold")
         return ui.p(f"{n_rare} event(s) are reached by fewer than {minimum} people (rows in red).",
@@ -680,12 +731,14 @@ def server(input, output, session):
         counts = event_counts()
         minimum = CONFIG["normalization"]["min_people_per_event"]
         rare_rows = [i for i, region in enumerate(counts.index) if (counts.loc[region] < minimum).any()]
+        if input.per_region():                                   # show each region's own cut-points
+            counts.insert(0, "Cut-points", [", ".join(f"{c:g}" for c in region_cuts()[r]) for r in counts.index])
         return render.DataGrid(counts.reset_index(names="Region"),
                                styles=[{"rows": rare_rows, "style": {"background-color": "#fde2e1"}}])
 
     @reactive.calc
-    def z_max_values():
-        """Z_max per region with the user's method, plus max/p99/p95 to help choose."""
+    def sidebar_z_max_values():
+        """Z_max per region with the sidebar method, plus max/p99/p95 to help choose."""
         z = normalized()["z"]
         manual = None
         if input.z_max_method() == "manual":
@@ -693,27 +746,33 @@ def server(input, output, session):
                 manual = parse_z_max(input.z_max_manual(), list(z.columns))
             except ValueError as error:
                 raise SafeException(str(error))
-        return z_max_table(z, input.z_max_method(), manual, input.z_max_percentile(), cut_points()[0])
+        first_cuts = {region: cuts[0] for region, cuts in region_cuts().items()}
+        return z_max_table(z, input.z_max_method(), manual, input.z_max_percentile(), first_cuts)
 
-    @render.ui
-    def z_max_order():
-        """Shows the region order the manual Z_max values must follow."""
-        regions = list(input.col_regions() or [])
-        if not regions:
-            return None
-        return ui.p(f"In this order ({len(regions)} values): {', '.join(regions)}. "
-                    "One number = the same for every region.", class_="text-muted small")
+    @reactive.calc
+    def z_max_values():
+        """The Z_max used: the sidebar method, or the numbers typed per region."""
+        if not input.per_region():
+            return sidebar_z_max_values()
+        z = normalized()["z"]
+        manual = {}
+        for i, region in enumerate(z.columns):
+            value = input[f"pr_zmax_{i}"]()
+            if value is None:
+                raise SafeException(f"{region}: type a Z_max in the 'Per-region values' tab.")
+            manual[region] = float(value)
+        first_cuts = {region: cuts[0] for region, cuts in region_cuts().items()}
+        return z_max_table(z, "manual", manual, input.z_max_percentile(), first_cuts)
 
     @render.ui
     def zmax_status():
         if input.normalize() == 0:
             return ui.p("Click Normalize first.", class_="text-muted")
-        last_cut = cut_points()[-1]
-        too_low = z_max_values().index[z_max_values()["Z_max used"] <= last_cut].tolist()
+        values = z_max_values()["Z_max used"]
+        too_low = [region for region, cuts in region_cuts().items() if values[region] <= cuts[-1]]
         if not too_low:
-            return ui.p(f"Z_max is above the last cut-point ({last_cut:g}) in every region.",
-                        class_="text-success fw-bold")
-        return ui.p(f"Z_max must be above the last cut-point ({last_cut:g}). Too low in: {', '.join(too_low)}",
+            return ui.p("Z_max is above the last cut-point in every region.", class_="text-success fw-bold")
+        return ui.p(f"Z_max must be above the region's last cut-point. Too low in: {', '.join(too_low)}",
                     class_="text-danger fw-bold")
 
     @render.data_frame
@@ -725,17 +784,25 @@ def server(input, output, session):
     @reactive.calc
     def sustain_input():
         """Exactly what tab 3 gives to pySuStaIn (data, Z_vals, Z_max) + names, IDs and checks."""
-        z, cuts = normalized()["z"], cut_points()
+        z, cuts = normalized()["z"], region_cuts()
         regions = list(z.columns)
         z_max = z_max_values().loc[regions, "Z_max used"].to_numpy()
         data, Z_vals, Z_max = sustain_inputs(z, regions, cuts, z_max)
         minimum = CONFIG["normalization"]["min_people_per_event"]
+        last_cuts = np.array([cuts[region][-1] for region in regions])
         checks = [("At least 2 regions", len(regions) >= 2),
-                  ("Z_max above the last cut-point in every region", bool((Z_max > cuts[-1]).all())),
+                  ("Z_max above the last cut-point in every region", bool((Z_max > last_cuts).all())),
                   (f"Every event reached by at least {minimum} people",
-                   bool((event_counts() >= minimum).all().all()))]
+                   bool((event_counts().fillna(minimum) >= minimum).all().all()))]
         return {"data": data, "Z_vals": Z_vals, "Z_max": Z_max, "regions": regions,
                 "subjects": list(z.index), "cut_points": cuts, "checks": checks}
+
+    def cuts_text(cuts):
+        """'2, 5, 10' if every region has the same cut-points, else 'different per region'."""
+        first = next(iter(cuts.values()))
+        if all(c == first for c in cuts.values()):
+            return ", ".join(f"{c:g}" for c in first)
+        return "different per region"
 
     @render.ui
     def sustain_input_summary():
@@ -747,9 +814,12 @@ def server(input, output, session):
                       else f"{s['Z_max'].min():.2f} - {s['Z_max'].max():.2f} (per region)")
         facts = [f"Normalization: {NORM_METHODS[normalized()['method']]}",
                  f"People x regions: {s['data'].shape[0]} x {s['data'].shape[1]}",
-                 f"Cut-points: {', '.join(f'{c:g}' for c in s['cut_points'])} -> {n_events} events, "
-                 f"SuStaIn stages 0-{n_events}",
+                 f"Cut-points: {cuts_text(s['cut_points'])} -> {n_events} events, SuStaIn stages 0-{n_events}",
                  f"Z_max: {z_max_text}"]
+        n_levels = len(np.unique(s["Z_vals"][s["Z_vals"] > 0]))
+        if n_levels > 6:
+            facts.append(f"Note: {n_levels} different cut-point values - SuStaIn runs, but its PVD figure can "
+                         "only show 6.")
         checks = [ui.tags.li(("✓ " if ok else "✗ ") + text, class_="text-success" if ok else "text-danger")
                   for text, ok in s["checks"]]
         ready = all(ok for _, ok in s["checks"])
@@ -818,7 +888,7 @@ def server(input, output, session):
         """Everything one run needs, in one dictionary (saved as settings.yaml in the run folder)."""
         s = sustain_input()
         return {"n_people": len(s["subjects"]), "regions": s["regions"],
-                "normalization": normalized()["method"], "cut_points": [float(c) for c in s["cut_points"]],
+                "normalization": normalized()["method"], "cut_points": {r: [float(c) for c in cuts] for r, cuts in s["cut_points"].items()},
                 "age_adjustment": (None if normalized()["slopes"] is None else           # slopes per region
                                    normalized()["slopes"].round(6).to_dict(orient="index")),
                 "z_max": [round(float(v), 4) for v in s["Z_max"]],
@@ -836,7 +906,7 @@ def server(input, output, session):
             st = run_settings()
         except Exception:                                   # no data yet, or not normalized
             return ui.p("Upload data (tab 1) and click Normalize (tab 2) first.", class_="text-muted")
-        n_events = len(st["regions"]) * len(st["cut_points"])
+        n_events = int((make_z_vals(st["regions"], st["cut_points"]) > 0).sum())
         facts = [f"Data: {st['n_people']} people x {len(st['regions'])} regions, {n_events} events "
                  f"(stages 0-{n_events}); normalization: {NORM_METHODS[st['normalization']]}",
                  "Models: " + ("1 subtype only" if st["n_subtypes_max"] == 1
@@ -1050,10 +1120,11 @@ def server(input, output, session):
         order = size_order(result)
         z = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str})   # IDs as text
         table = subject_table(result, z.index, CONFIG["results"]["poor_fit_threshold"], order)
-        n_events = len(settings["regions"]) * len(settings["cut_points"])
+        Z_vals = make_z_vals(settings["regions"], settings["cut_points"])   # list (old runs) or per region
+        n_events = int((Z_vals > 0).sum())
         edges = np.unique(np.linspace(1, n_events + 1, CONFIG["figures"]["n_stage_groups"] + 1).round().astype(int))
         return {"result": result, "order": order, "z": z, "table": table, "k": k, "edges": list(edges),
-                "regions": settings["regions"], "Z_vals": np.array([settings["cut_points"]] * len(settings["regions"]))}
+                "regions": settings["regions"], "Z_vals": Z_vals}
 
     def subtype_titles(k):
         """The subtype names typed in tab 4, or Subtype 1, 2, ... if the number does not match k."""
@@ -1071,6 +1142,10 @@ def server(input, output, session):
     @render.plot
     def fig_pvd():
         d = fig_data()
+        n_levels = len(np.unique(d["Z_vals"][d["Z_vals"] > 0]))
+        if n_levels > 6:                                         # pySuStaIn has colours for 6 values
+            raise SafeException(f"pySuStaIn's PVD can show at most 6 different cut-point values; this run uses "
+                                f"{n_levels}. The other figures still work.")
         return plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), None,
                         subtype_order=pvd_order(d["result"], d["order"]))
 
