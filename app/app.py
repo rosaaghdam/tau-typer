@@ -38,6 +38,7 @@ CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in co
 
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
+SAMPLE_CLINICAL = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # the same + 10 clinical variables + SCD
 FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Red = region "
            "reaches z 2, magenta = z 5, blue = z 10; dark = SuStaIn is sure the event happens at that stage.",
@@ -77,8 +78,10 @@ app_ui = ui.page_navbar(
                  ui.layout_sidebar(
                      ui.sidebar(
                          ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
-                         ui.download_link("download_sample", "Sample Data"),
-                         ui.p("Download simulated toy data (500 people) to see the expected format.",
+                         ui.div(ui.download_link("download_sample", "Sample Data")),
+                         ui.div(ui.download_link("download_sample_clinical", "Sample Data + 10 clinical variables")),
+                         ui.p("Download simulated toy data (500 people) to see the expected format. The second "
+                              "file adds 10 clinical variables (MMSE, CDR-SB, ...) and some SCD diagnoses.",
                               class_="text-muted small"),
                          ui.output_ui("column_matching"),           # filled in after an upload
                          width=320, open="always"),          # always visible, like CMiNet
@@ -310,11 +313,12 @@ def server(input, output, session):
     def inclusion_rule_ui():
         """The inclusion-rule checkbox - only when Age, Diagnosis and Amyloid columns are chosen."""
         missing = missing_roles(RULE_ROLES)
+        title = ui.h6("Filtering rule")
         if missing:
-            return ui.p(f"Paper's inclusion rule not available: it needs {', '.join(missing)}.",
-                        class_="text-muted small")
-        return ui.input_checkbox("apply_rule", "Apply the paper's inclusion rule "
-                                 "(CN older than 40, or MCI/AD amyloid-positive)", value=False)
+            return ui.TagList(title, ui.p(f"Paper's inclusion rule not available: it needs {', '.join(missing)}.",
+                                          class_="text-muted small"))
+        return ui.TagList(title, ui.input_checkbox("apply_rule", "Apply the paper's inclusion rule "
+                                                   "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False))
 
     @reactive.effect
     def _norm_method_choices():
@@ -648,6 +652,10 @@ def server(input, output, session):
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():
         return str(SAMPLE_DATA)
+
+    @render.download_link(filename="tau_typer_sample_data_clinical.csv")
+    def download_sample_clinical():
+        return str(SAMPLE_CLINICAL)
 
     # ---------------- Tab 3: Run SuStaIn ----------------
     @reactive.effect

@@ -5,7 +5,9 @@ writes data/toy/toy_tau_clinical.csv: the same people and columns + 10 clinical 
 The rules are INVENTED, only so tab 5 has realistic-looking differences to find:
 cognition gets worse with stage, and each subtype has its own weak domain (limbic -> memory,
 MTL-sparing -> executive, lateral temporal -> language, posterior -> visuospatial).
-A few values are left empty on purpose (config: toy_data.clinical_missing_fraction).
+A few values are left empty on purpose (config: toy_data.clinical_missing_fraction), and some
+cognitively normal people get the diagnosis "SCD" (subjective cognitive decline; config:
+toy_data.scd_fraction_of_cn) - the paper counts SCD as cognitively unimpaired.
 
 Run from the project folder:   python code/01h_make_toy_clinical.py
 """
@@ -52,8 +54,12 @@ clinical = clinical + 0.0                                       # rounding can g
 for column in clinical.columns.drop("education_years"):         # a few empty cells, as in real data
     clinical.loc[rng.random(n) < settings["clinical_missing_fraction"], column] = np.nan
 
+is_cn = data["diagnosis"] == "CN"
+data.loc[is_cn & (rng.random(n) < settings["scd_fraction_of_cn"]), "diagnosis"] = "SCD"
+
 regions = [col for col in data.columns if col[:2] in ("L_", "R_")]
 out = pd.concat([data.drop(columns=regions), clinical, data[regions]], axis=1)   # regions last
 out.to_csv(ROOT / "data/toy/toy_tau_clinical.csv", index=False)
 print(f"Saved data/toy/toy_tau_clinical.csv: {out.shape[0]} people x {out.shape[1]} columns")
 print(out.drop(columns=regions).describe().round(2).T[["count", "mean", "min", "max"]])
+print(out["diagnosis"].value_counts().to_string())
