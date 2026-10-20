@@ -83,7 +83,7 @@ qc:
 # ---------- App tab 1: the paper's inclusion rule (Vogel 2021, Methods) ----------
 inclusion:
   min_age_cn: 40                          # paper: cognitively normal people older than 40
-  cn_labels: [CN, CU, HC, control]        # diagnosis values meaning "cognitively normal"
+  cn_labels: [CN, CU, HC, control, SCD]   # diagnosis values meaning "cognitively normal" (paper: SCD counts as unimpaired)
   impaired_labels: [MCI, AD, dementia]    # diagnosis values meaning MCI or AD (must be amyloid+)
 
 # ---------- App tab 2: normalization checks ----------
