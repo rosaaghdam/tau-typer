@@ -67,6 +67,8 @@ AN_HELP = {     # short help text in tab 5 (paper = Vogel et al. 2021)
                "Cross-table of the groups, adjusted Rand index (1 = same subtypes) and stage correlation.",
 }
 
+RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the paper's inclusion rule needs
+REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group normalization needs
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
 
@@ -100,6 +102,7 @@ app_ui = ui.page_navbar(
                      ui.sidebar(
                          ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
                                                 choices=NORM_METHODS, selected="gmm"),
+                         ui.output_ui("norm_method_note"),
                          ui.panel_conditional(
                              "input.norm_method === 'gmm'",
                              ui.input_numeric("gmm_components", "Number of GMM components",
@@ -291,13 +294,42 @@ def server(input, output, session):
         columns = list(data.columns)
         guess = guess_columns(columns)
         choices = {"": "(not in file)", **{col: col for col in columns}}
-        selects = [ui.input_select(f"col_{role}", label, choices=choices, selected=guess[role] or "")
+        selects = [ui.input_select(f"col_{role}", f"{label} (optional)", choices=choices, selected=guess[role] or "")
                    for role, label in ROLE_LABELS.items()]
         regions = ui.input_selectize("col_regions", "Region columns (the SuStaIn features)",
                                      choices=columns, selected=guess["regions"], multiple=True)
-        rule = ui.input_checkbox("apply_rule", "Apply the paper's inclusion rule "
+        return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions, ui.hr(),
+                          ui.output_ui("inclusion_rule_ui"))
+
+    def missing_roles(roles):
+        """Names of the needed columns that are set to "(not in file)" in tab 1."""
+        columns = chosen_columns()
+        return [ROLE_LABELS[role] for role in roles if not columns.get(role)]
+
+    @render.ui
+    def inclusion_rule_ui():
+        """The inclusion-rule checkbox - only when Age, Diagnosis and Amyloid columns are chosen."""
+        missing = missing_roles(RULE_ROLES)
+        if missing:
+            return ui.p(f"Paper's inclusion rule not available: it needs {', '.join(missing)}.",
+                        class_="text-muted small")
+        return ui.input_checkbox("apply_rule", "Apply the paper's inclusion rule "
                                  "(CN older than 40, or MCI/AD amyloid-positive)", value=False)
-        return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions, ui.hr(), rule)
+
+    @reactive.effect
+    def _norm_method_choices():
+        """Tab 2 offers 'Reference group' only when Diagnosis and Amyloid columns are chosen."""
+        missing = missing_roles(REFERENCE_ROLES)
+        choices = {key: label for key, label in NORM_METHODS.items() if not (missing and key == "reference")}
+        with reactive.isolate():
+            current = input.norm_method()
+        ui.update_radio_buttons("norm_method", choices=choices, selected=current if current in choices else "gmm")
+
+    @render.ui
+    def norm_method_note():
+        missing = missing_roles(REFERENCE_ROLES)
+        if missing:
+            return ui.p(f"'Reference group' needs {', '.join(missing)} (tab 1).", class_="text-muted small")
 
     @reactive.calc
     def chosen_columns():
@@ -309,7 +341,7 @@ def server(input, output, session):
         """(people used from here on, reasons table or None). The rule runs only if the box is ticked."""
         data = uploaded_data()
         req(data is not None)
-        if not input.apply_rule():
+        if missing_roles(RULE_ROLES) or not input.apply_rule():
             return data, None
         rule = CONFIG["inclusion"]
         return apply_inclusion_rule(data, chosen_columns(), rule["min_age_cn"],
