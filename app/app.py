@@ -442,7 +442,7 @@ def server(input, output, session):
             ui.h6("Category columns by diagnosis", class_="mt-4"),
             ui.output_plot("category_bars", height=plot_height(len(categories))),
             ui.h6("Correlations between number columns (and the mean of the regions)", class_="mt-4"),
-            ui.output_plot("correlation_plot", height=f"{55 * len(numbers) + 400}px"))
+            ui.output_plot("correlation_plot", height=f"{35 * len(numbers) + 300}px", width="70%"))
 
     @render.data_frame
     def covariate_table():

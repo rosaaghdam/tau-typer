@@ -451,11 +451,11 @@ def plot_correlations(data, numbers):
     """Spearman correlation between all number columns. Red = rise together, blue = one falls."""
     values = data[numbers].apply(pd.to_numeric, errors="coerce")
     corr = values.corr(method="spearman")
-    size = 0.7 * len(numbers) + 4
+    size = 0.45 * len(numbers) + 3
     fig, ax = plt.subplots(figsize=(size + 1, size))
     image = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
-    ax.set_xticks(range(len(numbers)), numbers, rotation=45, ha="right")
-    ax.set_yticks(range(len(numbers)), numbers)
+    ax.set_xticks(range(len(numbers)), numbers, rotation=90, fontsize=8)
+    ax.set_yticks(range(len(numbers)), numbers, fontsize=8)
     for (row, col), r in np.ndenumerate(corr.to_numpy()):
         ax.text(col, row, f"{r:.2f}", ha="center", va="center", fontsize=7)
     fig.colorbar(image, ax=ax, label="Spearman r")
