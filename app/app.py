@@ -34,7 +34,7 @@ from src.zscore import (amyloid_negative_cn, covariate_adjustment, fit_gmm, refe
                         zscore_with_reference)
 
 NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group: amyloid-negative CN",
-                "zscored": "My data is already z-scored"}
+                "zscored": "The data is already normalized"}
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
@@ -767,7 +767,7 @@ def server(input, output, session):
     def download_reference():
         result = normalized()
         if result["reference"] is None:
-            yield "note\nNo normal reference: the uploaded data was already z-scored.\n"
+            yield "note\nNo normal reference: the uploaded data was already normalized.\n"
         else:
             table = result["reference"].T.round(4)
             table["method"] = NORM_METHODS[result["method"]]
@@ -1329,7 +1329,7 @@ def server(input, output, session):
         steps = ["1. Data & QC - upload a CSV (one row per person), match the columns, check the data, "
                  "optionally apply the paper's inclusion rule.",
                  "2. Normalization - turn regional tau values into z-scores (GMM as in the paper, an "
-                 "amyloid-negative CN reference group, or data already z-scored); choose cut-points and Z_max.",
+                 "amyloid-negative CN reference group, or data already normalized); choose cut-points and Z_max.",
                  "3. Run SuStaIn - fit the original pySuStaIn (ZscoreSustain) in the background, with "
                  "cross-validation to choose the number of subtypes; every run is saved in its own folder.",
                  "4. Figures - PVD, tau patterns, subtype probabilities, stages, choosing k, one person.",
