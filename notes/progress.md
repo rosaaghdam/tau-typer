@@ -940,3 +940,4 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Review: column boxes marked optional; inclusion rule / reference group hidden with a note when their columns are "(not in file)". Tested with Diagnosis removed.
 - Review: clinical sample now has SCD labels and its own download link; "Filtering rule" title.
 - Review: one Sample Data link only, now toy_tau_clinical.csv (Rosa).
+- Review: Sample Data now has 20 people the filtering rule removes (10 CN <= 40, 10 amyloid-negative MCI/AD) -> 480 kept.

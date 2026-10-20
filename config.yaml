@@ -41,6 +41,8 @@ toy_data:
   clinical_seed: 43
   clinical_missing_fraction: 0.05   # share of empty cells per clinical column
   scd_fraction_of_cn: 0.2          # share of CN people labelled SCD in that file
+  n_remove_young_cn: 10                    # CN people made younger than 40 (filtering rule removes them)
+  n_remove_amyloid_negative_impaired: 10   # amyloid-negative people relabelled MCI/AD (removed too)
 
 # ---------- Step 2: pipeline (the paper's method) ----------
 pipeline:

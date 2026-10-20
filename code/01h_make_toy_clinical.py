@@ -8,6 +8,9 @@ MTL-sparing -> executive, lateral temporal -> language, posterior -> visuospatia
 A few values are left empty on purpose (config: toy_data.clinical_missing_fraction), and some
 cognitively normal people get the diagnosis "SCD" (subjective cognitive decline; config:
 toy_data.scd_fraction_of_cn) - the paper counts SCD as cognitively unimpaired.
+Some tau-negative people are changed so the paper's filtering rule must REMOVE them
+(config: toy_data.n_remove_young_cn, n_remove_amyloid_negative_impaired):
+CN people younger than 40, and MCI/AD people who are amyloid-negative.
 
 Run from the project folder:   python code/01h_make_toy_clinical.py
 """
@@ -56,6 +59,14 @@ for column in clinical.columns.drop("education_years"):         # a few empty ce
 
 is_cn = data["diagnosis"] == "CN"
 data.loc[is_cn & (rng.random(n) < settings["scd_fraction_of_cn"]), "diagnosis"] = "SCD"
+
+# people the filtering rule must remove: picked among tau-negative (stage 0), amyloid-negative CN
+candidates = data.index[(stage == 0) & (data["diagnosis"] == "CN") & (data["amyloid_positive"] == 0)]
+picked = rng.choice(candidates, settings["n_remove_young_cn"] + settings["n_remove_amyloid_negative_impaired"],
+                    replace=False)
+young, impaired = picked[:settings["n_remove_young_cn"]], picked[settings["n_remove_young_cn"]:]
+data.loc[young, "age"] = rng.uniform(30, 39.9, len(young)).round(1)             # CN, 40 or younger
+data.loc[impaired, "diagnosis"] = rng.choice(["MCI", "AD"], len(impaired))        # MCI/AD, amyloid-negative
 
 regions = [col for col in data.columns if col[:2] in ("L_", "R_")]
 out = pd.concat([data.drop(columns=regions), clinical, data[regions]], axis=1)   # regions last
