@@ -370,3 +370,72 @@ def plot_asymmetry(table, asymmetry, subtype_titles):
     ax2.set_ylabel("asymmetry (left - right)")
     fig.tight_layout()
     return fig
+
+
+def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4):
+    """One box plot per number column (MMSE, age, ...), one box per group (e.g. diagnosis)."""
+    n_rows = int(np.ceil(len(numbers) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.4 * n_cols, 2.8 * n_rows), squeeze=False)
+    labels = groups if group_col else ["All"]
+    for ax, col in zip(axes.flat, numbers):
+        values = pd.to_numeric(data[col], errors="coerce")
+        boxes = []
+        for g in labels:
+            in_group = data[group_col].astype(str) == g if group_col else values.notna()
+            boxes.append(values[in_group].dropna())
+        ax.boxplot(boxes)
+        ax.set_xticks(range(1, len(labels) + 1), labels, fontsize=8)
+        ax.set_title(col, fontsize=10)
+    for ax in axes.flat[len(numbers):]:
+        ax.set_visible(False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
+    """One bar chart per category column (sex, APOE4, ...): % of each value, per group."""
+    n_rows = int(np.ceil(len(categories) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.4 * n_cols, 2.8 * n_rows), squeeze=False)
+    for i, (ax, col) in enumerate(zip(axes.flat, categories)):
+        values = data[col].dropna()
+        values = values.map(lambda v: f"{v:g}" if isinstance(v, float) else str(v))
+        if group_col:
+            group = data.loc[values.index, group_col].astype(str)
+            table = pd.crosstab(values, group, normalize="columns")[groups] * 100
+        else:
+            table = values.value_counts(normalize=True).to_frame("All") * 100
+        table.plot.bar(ax=ax, legend=(i == 0), rot=0)
+        ax.set_title(col, fontsize=10)
+        ax.set_xlabel("")
+        ax.set_ylabel("%")
+    for ax in axes.flat[len(categories):]:
+        ax.set_visible(False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_missing(data, columns):
+    """% of people with an empty cell, per column."""
+    missing = data[columns].isna().mean().mul(100).sort_values()
+    fig, ax = plt.subplots(figsize=(7, 0.3 * len(columns) + 1.2))
+    ax.barh(missing.index, missing.values, color="#C62828")
+    ax.set_xlim(0, max(5, missing.max() * 1.15))
+    ax.set_xlabel("% missing")
+    fig.tight_layout()
+    return fig
+
+
+def plot_correlations(data, numbers):
+    """Spearman correlation between all number columns. Red = rise together, blue = one falls."""
+    values = data[numbers].apply(pd.to_numeric, errors="coerce")
+    corr = values.corr(method="spearman")
+    size = 0.6 * len(numbers) + 3
+    fig, ax = plt.subplots(figsize=(size, size - 1))
+    image = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
+    ax.set_xticks(range(len(numbers)), numbers, rotation=45, ha="right")
+    ax.set_yticks(range(len(numbers)), numbers)
+    for (row, col), r in np.ndenumerate(corr.to_numpy()):
+        ax.text(col, row, f"{r:.2f}", ha="center", va="center", fontsize=7)
+    fig.colorbar(image, ax=ax, label="Spearman r")
+    fig.tight_layout()
+    return fig

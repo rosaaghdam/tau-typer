@@ -110,3 +110,44 @@ def apply_inclusion_rule(data, columns, min_age_cn, cn_labels, impaired_labels):
         ("Removed: other or missing diagnosis", (~is_cn & ~is_impaired).sum()),
     ], columns=["Reason", "N"])
     return data[keep_cn | keep_impaired], reasons
+
+
+def number_and_category_columns(data, columns):
+    """Split columns into numbers (e.g. MMSE, age) and categories (e.g. sex, APOE4 0/1).
+    A number column has almost only numbers and more than 2 different values."""
+    numbers, categories = [], []
+    for col in columns:
+        values = pd.to_numeric(data[col], errors="coerce")
+        if values.notna().mean() > 0.9 and data[col].nunique() > 2:
+            numbers.append(col)
+        else:
+            categories.append(col)
+    return numbers, categories
+
+
+def as_text(values):
+    """Values as text without empty cells; 1.0 becomes "1"."""
+    return values.dropna().map(lambda v: f"{v:g}" if isinstance(v, float) else str(v))
+
+
+def covariate_summary(data, columns, group_col=None, groups=None):
+    """One row per column: type, missing values, and mean (SD) for numbers or % per value for
+    categories - for everyone and (if group_col is given) for each group, e.g. each diagnosis."""
+    numbers, _ = number_and_category_columns(data, columns)
+    parts = [("All", data)]
+    if group_col:
+        parts += [(g, data[data[group_col].astype(str) == g]) for g in groups]
+    rows = []
+    for col in columns:
+        missing = data[col].isna().sum()
+        row = {"Column": col, "Type": "number" if col in numbers else "category",
+               "Missing": f"{missing} ({100 * missing / len(data):.0f}%)"}
+        for name, part in parts:
+            if col in numbers:
+                values = pd.to_numeric(part[col], errors="coerce")
+                row[name] = f"{values.mean():.1f} ({values.std():.1f})"
+            else:
+                shares = as_text(part[col]).value_counts(normalize=True)
+                row[name] = ", ".join(f"{value}: {100 * share:.0f}%" for value, share in shares.head(4).items())
+        rows.append(row)
+    return pd.DataFrame(rows)

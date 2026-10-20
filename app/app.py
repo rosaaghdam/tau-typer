@@ -18,12 +18,14 @@ from shiny.types import SafeException
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
-from src.qc import apply_inclusion_rule, demographics_table, guess_columns, qc_summary
+from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
+                    number_and_category_columns, qc_summary)
 from src.app_runs import list_runs, prepare_run_folder, start_run
 from src.report import pysustain_info, report_zip
 from src.results import (load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order, subject_table,
                          subtype_summary)
-from src.figures import (plot_asymmetry, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
+from src.figures import (plot_asymmetry, plot_category_bars, plot_correlations, plot_covariate_boxplots,
+                         plot_missing, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
                          plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
                          plot_stages, plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.sustain_model import count_people_above, parse_cut_points, parse_z_max, sustain_inputs, z_max_table
@@ -97,7 +99,8 @@ app_ui = ui.page_navbar(
                                       ui.output_plot("region_hist", height="520px")),
                          ui.nav_panel("Demographics",
                                       ui.p("Everyone, and per diagnosis group.", class_="text-muted small"),
-                                      ui.output_data_frame("demographics"))))),
+                                      ui.output_data_frame("demographics"),
+                                      ui.output_ui("covariates_view"))))),
     ui.nav_panel("2. Normalization",
                  ui.layout_sidebar(
                      ui.sidebar(
@@ -394,6 +397,82 @@ def server(input, output, session):
     @render.data_frame
     def demographics():
         return demographics_table(analysis_data(), chosen_columns())
+
+    @reactive.calc
+    def other_columns():
+        """All columns that are not regions and not the ID: age, sex, MMSE, ..."""
+        skip = set(input.col_regions() or []) | {chosen_columns().get("id")}
+        return [col for col in analysis_data().columns if col not in skip]
+
+    @reactive.calc
+    def diagnosis_groups():
+        """(diagnosis column, its values in a sensible order: CN, SCD, ..., MCI, AD) or (None, None)."""
+        col = chosen_columns().get("diagnosis")
+        if not col:
+            return None, None
+        present = list(analysis_data()[col].dropna().astype(str).unique())
+        known = CONFIG["inclusion"]["cn_labels"] + CONFIG["inclusion"]["impaired_labels"]
+        order = [g for g in known if g in present] + sorted(g for g in present if g not in known)
+        return col, order
+
+    def plot_height(n_panels, per_row=4, row_px=240):
+        """Height of a figure with n_panels small plots, per_row in each row."""
+        n_rows = max(1, int(np.ceil(n_panels / per_row)))
+        return f"{n_rows * row_px}px"
+
+    @render.ui
+    def covariates_view():
+        columns = [c for c in other_columns() if c != diagnosis_groups()[0]]
+        if not columns:
+            return None
+        numbers, categories = number_and_category_columns(analysis_data(), columns)
+        return ui.TagList(
+            ui.h6("All other columns", class_="mt-4"),
+            ui.p("Numbers: mean (SD). Categories: % of each value (the 4 most common).", class_="text-muted small"),
+            ui.output_data_frame("covariate_table"),
+            ui.h6("Number columns by diagnosis", class_="mt-4"),
+            ui.output_plot("covariate_boxplots", height=plot_height(len(numbers))),
+            ui.h6("Category columns by diagnosis", class_="mt-4"),
+            ui.output_plot("category_bars", height=plot_height(len(categories))),
+            ui.h6("Missing values", class_="mt-4"),
+            ui.output_plot("missing_plot", height=f"{30 * len(columns) + 120}px"),
+            ui.h6("Correlations between number columns (and the mean of the regions)", class_="mt-4"),
+            ui.output_plot("correlation_plot", height=f"{45 * len(numbers) + 250}px"))
+
+    @render.data_frame
+    def covariate_table():
+        group_col, groups = diagnosis_groups()
+        columns = [c for c in other_columns() if c != group_col]
+        return render.DataGrid(covariate_summary(analysis_data(), columns, group_col, groups), width="100%")
+
+    @render.plot
+    def covariate_boxplots():
+        group_col, groups = diagnosis_groups()
+        numbers, _ = number_and_category_columns(analysis_data(), [c for c in other_columns() if c != group_col])
+        req(numbers)
+        return plot_covariate_boxplots(analysis_data(), numbers, group_col, groups)
+
+    @render.plot
+    def category_bars():
+        group_col, groups = diagnosis_groups()
+        _, categories = number_and_category_columns(analysis_data(), [c for c in other_columns() if c != group_col])
+        req(categories)
+        return plot_category_bars(analysis_data(), categories, group_col, groups)
+
+    @render.plot
+    def missing_plot():
+        return plot_missing(analysis_data(), other_columns())
+
+    @render.plot
+    def correlation_plot():
+        numbers, _ = number_and_category_columns(analysis_data(), other_columns())
+        regions = list(input.col_regions() or [])
+        data = analysis_data().copy()
+        if regions:
+            data["mean of regions"] = data[regions].apply(pd.to_numeric, errors="coerce").mean(axis=1)
+            numbers = numbers + ["mean of regions"]
+        req(len(numbers) > 1)
+        return plot_correlations(data, numbers)
 
     @render.plot
     def region_hist():
