@@ -37,8 +37,7 @@ NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group:
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
-SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau.csv"    # simulated toy data, safe to share
-SAMPLE_CLINICAL = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # the same + 10 clinical variables + SCD
+SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy data + 10 clinical variables + SCD
 FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Red = region "
            "reaches z 2, magenta = z 5, blue = z 10; dark = SuStaIn is sure the event happens at that stage.",
@@ -78,10 +77,9 @@ app_ui = ui.page_navbar(
                  ui.layout_sidebar(
                      ui.sidebar(
                          ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
-                         ui.div(ui.download_link("download_sample", "Sample Data")),
-                         ui.div(ui.download_link("download_sample_clinical", "Sample Data + 10 clinical variables")),
-                         ui.p("Download simulated toy data (500 people) to see the expected format. The second "
-                              "file adds 10 clinical variables (MMSE, CDR-SB, ...) and some SCD diagnoses.",
+                         ui.download_link("download_sample", "Sample Data"),
+                         ui.p("Download simulated toy data (500 people, 10 regions, 10 clinical variables) to see "
+                              "the expected format.",
                               class_="text-muted small"),
                          ui.output_ui("column_matching"),           # filled in after an upload
                          width=320, open="always"),          # always visible, like CMiNet
@@ -652,10 +650,6 @@ def server(input, output, session):
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():
         return str(SAMPLE_DATA)
-
-    @render.download_link(filename="tau_typer_sample_data_clinical.csv")
-    def download_sample_clinical():
-        return str(SAMPLE_CLINICAL)
 
     # ---------------- Tab 3: Run SuStaIn ----------------
     @reactive.effect
