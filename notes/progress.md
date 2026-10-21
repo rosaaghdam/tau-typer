@@ -957,3 +957,11 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   education in 1 of 10 regions). An FDR option could be added if wanted.
 - Review: Rosa found that "diagnosis" could be chosen as a covariate (no warning) -> fixed: diagnosis/amyloid not offered, warning for disease-like names, constant covariates skipped.
 - Review: sidebar shortened (notes removed); p-value limit box; reference group set in config.yaml only (cn_scd) until Jake answers.
+
+## 2026-10-21 - review of tabs 3-4 (Rosa's comments 1-9)
+- Quick result: "event order" column per subtype.
+- Saved runs: Delete (asks first), Download this run (ZIP), Upload a saved run (ZIP); status "stopped"
+  when the app was closed during a run (pid.txt); failed/cancelled/stopped listed last.
+- Safety: uploaded pickles are read with NumbersOnlyUnpickler (src/results.py); ZIP names checked.
+- PVD legend + spacing; probabilities figure with n/% and poor-fit box; stages without S0 bar;
+  tree with n/%.

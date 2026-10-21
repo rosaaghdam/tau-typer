@@ -7,9 +7,11 @@ import re
 import secrets
 import shutil
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
@@ -20,10 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent          # project folder (one lev
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
                     number_and_category_columns, qc_summary)
-from src.app_runs import list_runs, prepare_run_folder, start_run
+from src.app_runs import list_runs, prepare_run_folder, start_run, unzip_run, zip_run
 from src.report import pysustain_info, report_zip
-from src.results import (load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order, subject_table,
-                         subtype_summary)
+from src.results import (event_order, load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order,
+                         subject_table, subtype_summary)
 from src.figures import (group_colors, plot_asymmetry, plot_category_bars, plot_correlations,
                          plot_covariate_boxplots, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
                          plot_region_histograms, plot_regional_contrasts, plot_stage_progression, plot_stage_vs,
@@ -42,14 +44,16 @@ CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in co
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy data + 10 clinical variables + SCD
 FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
-    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Red = region "
-           "reaches z 2, magenta = z 5, blue = z 10; dark = SuStaIn is sure the event happens at that stage.",
+    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages; colours: see "
+           "the legend. Dark = SuStaIn is sure the event happens at that stage, pale = unsure.",
     "patterns": "Top: average z-score per region in each subtype, tau+ people (paper Fig. 1a/c). Bottom: the "
                 "same per stage group - read left to right to see tau spread (paper Fig. 1e).",
-    "probs": "Left: each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b). "
-             "Right: highest subtype probability; below the dashed line = poor fit (paper Ext. Fig. 2).",
-    "stages": "Left: people per stage and subtype; grey = S0 (paper Ext. Fig. 2). Right: how sure SuStaIn is "
-              "about each person's stage (spread of the stage probabilities).",
+    "probs": "Each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b): near a corner "
+             "= surely that subtype. Corners: people per subtype. Middle box: poor fit = highest subtype "
+             "probability below 0.5 (grey crosses; also counted in their subtype). Dots are jittered a little "
+             "so people on the same spot can be seen.",
+    "stages": "Left: tau+ people per stage and subtype (paper Ext. Fig. 2); S0 is given in the title only. "
+              "Right: how sure SuStaIn is about each person's stage (spread of the stage probabilities).",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
               "best; paper Ext. Fig. 1c-e). Bottom: subtype tree - where people go when one more subtype is "
               "allowed (paper Ext. Fig. 1f).",
@@ -215,11 +219,19 @@ app_ui = ui.page_navbar(
                                       ui.download_button("download_subjects", "Download subtype + stage per person (CSV)")),
                          ui.nav_panel("Saved runs",
                                       ui.p("Every run has its own folder. Load a finished run to see it in "
-                                           "Model choice and Quick result (and later in tabs 4-5).",
-                                           class_="text-muted small"),
+                                           "Model choice and Quick result (and later in tabs 4-5). Stopped = "
+                                           "the app was closed while it ran.", class_="text-muted small"),
                                       ui.output_data_frame("saved_runs_table"),
-                                      ui.input_select("saved_run", "Finished run", choices=[]),
-                                      ui.input_action_button("load_run", "Load this run"))))),
+                                      ui.input_select("saved_run", "Run", choices=[]),
+                                      ui.div(ui.input_action_button("load_run", "Load this run"),
+                                             ui.download_button("download_run", "Download this run (ZIP)"),
+                                             ui.input_action_button("delete_run", "Delete this run",
+                                                                    class_="btn-outline-danger"),
+                                             class_="d-flex gap-2 mb-3"),
+                                      ui.input_file("upload_run", "Upload a saved run (ZIP)", accept=[".zip"]),
+                                      ui.p("On a shared server your runs are deleted when you close the page: "
+                                           "download a run to keep it, and upload it here later to see it again.",
+                                           class_="text-muted small"))))),
     ui.nav_panel("4. Figures",
                  ui.layout_sidebar(
                      ui.sidebar(
@@ -234,12 +246,12 @@ app_ui = ui.page_navbar(
                          width=320, open="always"),
                      ui.navset_tab(
                          ui.nav_panel("PVD", ui.p(FIG_HELP["pvd"], class_="text-muted small"),
-                                      ui.output_plot("fig_pvd", height="520px")),
+                                      ui.output_image("fig_pvd", height="auto")),
                          ui.nav_panel("Tau patterns", ui.p(FIG_HELP["patterns"], class_="text-muted small"),
                                       ui.output_plot("fig_patterns", height="520px"),
                                       ui.output_plot("fig_progression", height="460px")),
                          ui.nav_panel("Subtype probabilities", ui.p(FIG_HELP["probs"], class_="text-muted small"),
-                                      ui.output_plot("fig_probs", height="480px")),
+                                      ui.output_plot("fig_probs", height="560px")),
                          ui.nav_panel("Stages", ui.p(FIG_HELP["stages"], class_="text-muted small"),
                                       ui.output_plot("fig_stages", height="440px")),
                          ui.nav_panel("Choosing k", ui.p(FIG_HELP["choice"], class_="text-muted small"),
@@ -1117,22 +1129,34 @@ def server(input, output, session):
         if shown_run() is None:
             return no_run_yet()
         return ui.p(f"Run {shown_run().name}. S0 = no abnormal tau (stage 0, no subtype). Poor fit = subtype "
-                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). "
+                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). Event order = the "
+                    "subtype's events from first to last (average MCMC order, as in the PVD). "
                     "All figures are in tab 4.", class_="text-muted small")
 
     @render.data_frame
     def subtype_summary_table():
-        return render.DataGrid(subtype_summary(shown_table()).reset_index())
+        summary = subtype_summary(shown_table())            # first: it waits until a run and model are chosen
+        folder, settings = shown_run(), shown_settings()
+        result = load_sustain_result(folder, settings["dataset_name"], int(input.result_model()))
+        Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
+        orders = event_order(result, Z_vals, settings["regions"], size_order(result))
+        orders = {f"Subtype {n}": text for n, text in enumerate(orders, start=1)}
+        summary["event order"] = [orders.get(group, "") for group in summary.index]      # S0: none
+        return render.DataGrid(summary.reset_index(), width="100%",
+                               styles=[{"cols": [5], "style": {"white-space": "normal", "min-width": "40em"}}])
 
     @render.download_button(filename=lambda: f"{shown_run().name}_subtypes_stages.csv")
     def download_subjects():
         yield shown_table().to_csv(index_label="subject")
 
+    runs_changed = reactive.value(0)    # +1 after a delete or upload, so the run list refreshes at once
+
     @reactive.calc
     def saved_runs():
         run_state()                                         # refresh when a run starts or ends ...
+        runs_changed()
         reactive.invalidate_later(10)                       # ... and every 10 s (runs from other visits)
-        return list_runs(runs_folder)
+        return list_runs(runs_folder).set_index("run", drop=False)
 
     @reactive.calc
     def finished_runs():
@@ -1145,18 +1169,68 @@ def server(input, output, session):
 
     @reactive.effect
     def _saved_run_choices():
+        runs = saved_runs()
         with reactive.isolate():                            # keep the user's choice when the list refreshes
             keep = input.saved_run()
-        ui.update_select("saved_run", choices=finished_runs(),
-                         selected=keep if keep in finished_runs() else None)
+        ui.update_select("saved_run", choices={run: f"{run} ({status})" for run, status in runs["status"].items()},
+                         selected=keep if keep in runs.index else None)
+
+    def chosen_saved_run():
+        """Name of the run chosen in the list (only real run folders), and its status."""
+        name, runs = input.saved_run(), saved_runs()
+        req(name in runs.index)
+        return name, runs.loc[name, "status"]
 
     @reactive.effect
     @reactive.event(input.load_run)
     def _load_saved_run():
-        name = input.saved_run()
-        req(name in finished_runs())                        # only real, finished run folders
+        name, status = chosen_saved_run()
+        if status != "finished":
+            ui.notification_show(f"Run {name} is {status}: only finished runs can be loaded.", type="warning")
+            return
         shown_run.set(runs_folder / name)
         ui.notification_show(f"Showing run {name} in Model choice and Quick result.")
+
+    @render.download_button(filename=lambda: f"{input.saved_run()}.zip")
+    def download_run():
+        name, _ = chosen_saved_run()
+        yield zip_run(runs_folder / name)
+
+    @reactive.effect
+    @reactive.event(input.delete_run)
+    def _ask_delete_run():
+        name, status = chosen_saved_run()
+        if status == "running":
+            ui.notification_show("This run is still running: cancel it first.", type="warning")
+            return
+        ui.modal_show(ui.modal(f"Delete run {name}? Its folder and all its results are removed for good.",
+                               title="Delete run",
+                               footer=ui.TagList(ui.input_action_button("confirm_delete", "Delete",
+                                                                        class_="btn-danger"),
+                                                 ui.modal_button("Keep it"))))
+
+    @reactive.effect
+    @reactive.event(input.confirm_delete)
+    def _delete_run():
+        name, _ = chosen_saved_run()
+        ui.modal_remove()
+        if shown_run() == runs_folder / name:
+            shown_run.set(None)
+        shutil.rmtree(runs_folder / name)
+        runs_changed.set(runs_changed() + 1)
+        ui.notification_show(f"Run {name} deleted.")
+
+    @reactive.effect
+    @reactive.event(input.upload_run)
+    def _upload_run():
+        file = input.upload_run()[0]
+        try:
+            folder = unzip_run(file["datapath"], runs_folder, Path(file["name"]).stem)
+        except Exception as error:                          # not a ZIP, or not a Tau-typer run
+            ui.notification_show(f"Could not use this file: {error}", type="error", duration=10)
+            return
+        runs_changed.set(runs_changed() + 1)
+        ui.notification_show(f"Run uploaded as {folder.name}. Choose it in the list and load it.")
 
     # ---------------- Tab 4: Figures ----------------
     @render.ui
@@ -1199,15 +1273,19 @@ def server(input, output, session):
     def fig_titles():
         return subtype_titles(fig_data()["k"])
 
-    @render.plot
+    @render.image(delete_file=True)
     def fig_pvd():
+        """Saved as a picture at its own size (a resized plot squeezes the labels together)."""
         d = fig_data()
         n_levels = len(np.unique(d["Z_vals"][d["Z_vals"] > 0]))
         if n_levels > 6:                                         # pySuStaIn has colours for 6 values
             raise SafeException(f"pySuStaIn's PVD can show at most 6 different cut-point values; this run uses "
                                 f"{n_levels}. The other figures still work.")
-        return plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), None,
-                        subtype_order=pvd_order(d["result"], d["order"]))
+        path = Path(tempfile.gettempdir()) / f"tau_typer_pvd_{secrets.token_hex(8)}"   # deleted after showing
+        fig = plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), str(path),
+                       subtype_order=pvd_order(d["result"], d["order"]))
+        plt.close(fig)
+        return {"src": f"{path}.png", "width": "100%"}
 
     @render.plot
     def fig_patterns():

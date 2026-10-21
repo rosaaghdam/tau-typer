@@ -6,6 +6,17 @@ import numpy as np
 import pandas as pd
 
 
+class NumbersOnlyUnpickler(pickle.Unpickler):
+    """Reads pySuStaIn's result files but refuses anything except numbers and numpy arrays.
+    (A normal pickle file can run any code when it is opened - an uploaded run must not.)"""
+    ALLOWED = {"_reconstruct", "ndarray", "dtype", "scalar", "_frombuffer"}
+
+    def find_class(self, module, name):
+        if module.split(".")[0] == "numpy" and name in self.ALLOWED:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"not allowed in a result file: {module}.{name}")
+
+
 def load_sustain_result(output_folder, dataset_name, n_subtypes):
     """Load pySuStaIn's saved result for the model with n_subtypes subtypes.
 
@@ -13,7 +24,7 @@ def load_sustain_result(output_folder, dataset_name, n_subtypes):
     """
     path = os.path.join(output_folder, "pickle_files", f"{dataset_name}_subtype{n_subtypes - 1}.pickle")
     with open(path, "rb") as f:
-        return pickle.load(f)
+        return NumbersOnlyUnpickler(f).load()
 
 
 def size_order(result):
@@ -37,6 +48,25 @@ def pvd_order(result, order):
     """
     by_f = np.argsort(np.mean(result["samples_f"], axis=1))[::-1]
     return by_f[np.asarray(order)]
+
+
+def event_names(Z_vals, regions):
+    """Names of the events in pySuStaIn's own order ("L_MTL z2", ...): all regions at the first
+    cut-point, then all at the second, ...; empty places (0) are skipped, as pySuStaIn does."""
+    return [f"{regions[i]} z{Z_vals[i, j]:g}" for j in range(Z_vals.shape[1]) for i in range(len(regions))
+            if Z_vals[i, j] > 0]
+
+
+def event_order(result, Z_vals, regions, order):
+    """For each subtype (Subtype 1 first): its events from first to last, as one text.
+    Events are sorted by their average position over the MCMC samples - the order the PVD shows."""
+    names = event_names(Z_vals, regions)
+    texts = []
+    for s in pvd_order(result, order):
+        sequences = result["samples_sequence"][s]                 # positions x samples: event at each position
+        position = np.argsort(sequences, axis=0).mean(axis=1)     # average position of each event
+        texts.append(" → ".join(names[e] for e in np.argsort(position)))
+    return texts
 
 
 def subject_table(result, subject_ids, poor_fit_threshold, order=None):

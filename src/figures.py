@@ -13,16 +13,29 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
 
     Rows = regions, columns = SuStaIn stages. Red = region reaches z 2, magenta = z 5,
     blue = z 10. Dark square = SuStaIn is sure the event happens at that stage; pale = unsure.
-    save_path is given without ".png"; pySuStaIn adds "_all-subtypes.png" itself (None = do not save).
+    save_path is given without ".png" (None = do not save).
     subtype_order: which of pySuStaIn's subtypes to draw first, second, ... (None = pySuStaIn's choice).
     """
+    k = len(subtype_titles)
+    n_rows, n_cols = (1, k) if k < 3 else (2, int(np.ceil(k / 2)))     # pySuStaIn's own grid (up to 6)
+    n_events = int((Z_vals > 0).sum())
+    panel_height = 7 / n_cols * len(regions) / n_events + 1.2          # cells are square in the PVD
     figs, _ = ZscoreSustain.plot_positional_var(
         result["samples_sequence"], result["samples_f"], np.inf, Z_vals,
         biomarker_labels=regions, subtype_titles=subtype_titles,
-        figsize=(14, 8), title_font_size=14, label_font_size=11, stage_font_size=10,
-        stage_interval=stage_interval, save_path=save_path, subtype_order=subtype_order,
-        save_kwargs={"dpi": 150, "bbox_inches": "tight"})
-    return figs[0]
+        figsize=(14, n_rows * panel_height), title_font_size=13, label_font_size=10, stage_font_size=9,
+        stage_interval=stage_interval, subtype_order=subtype_order)
+    fig = figs[0]
+    fig.subplots_adjust(hspace=0.45, wspace=0.08)                     # room for titles and stage labels
+    # one legend for the colours (pySuStaIn's colours: 1st cut-point red, 2nd magenta, 3rd blue, ...)
+    colours = ["red", "magenta", "blue", "#8000ff", "cyan", "#00ff80"]
+    levels = np.unique(Z_vals[Z_vals > 0])
+    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
+    fig.legend(handles, [f"reaches z {z:g}" for z in levels], loc="lower center", ncol=len(levels),
+               bbox_to_anchor=(0.5, -0.33 / fig.get_figheight()), frameon=False, fontsize=11)
+    if save_path is not None:
+        fig.savefig(f"{save_path}.png", dpi=150, bbox_inches="tight")
+    return fig
 
 
 def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12):
@@ -148,41 +161,49 @@ def subtype_colors(k):
     return plt.cm.tab10(np.arange(k) % 10)
 
 
-def plot_subtype_probabilities(prob_subtype, table, subtype_titles, threshold):
-    """Left: every tau+ person inside a polygon with one subtype at each corner (paper Fig. 1b).
-    Close to a corner = surely that subtype; near the middle = a mix. Right: histogram of each
-    person's highest subtype probability; left of the dashed line = poor fit (paper Ext. Fig. 2).
+def plot_subtype_probabilities(prob_subtype, table, subtype_titles, threshold, seed=0):
+    """Every tau+ person inside a polygon with one subtype at each corner (paper Fig. 1b).
+    Close to a corner = surely that subtype; towards the middle = a mix of subtypes.
+    Corners: number (and %) of tau+ people in each subtype. Inner box: people whose highest subtype
+    probability is below the threshold (poor fit, grey crosses; also counted in their subtype). A little random jitter spreads
+    the many people who sit exactly on a corner.
 
     prob_subtype: people x subtypes, columns already in the app's order (Subtype 1 first).
     """
     k = prob_subtype.shape[1]
     tau_pos = (table["ml_stage"] > 0).to_numpy()
-    colors = subtype_colors(k)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.5))
+    n_tau = tau_pos.sum()
+    poor = table["poor_fit"].to_numpy()[tau_pos]
+    subtype = table["ml_subtype"].to_numpy()[tau_pos]
+    fig, ax = plt.subplots(figsize=(7, 6.5))
     angles = np.pi / 2 + 2 * np.pi * np.arange(k) / k
     corners = np.column_stack([np.cos(angles), np.sin(angles)])
     xy = prob_subtype[tau_pos] @ corners                  # weighted average of the corners
-    ax1.scatter(xy[:, 0], xy[:, 1], c=colors[table["ml_subtype"].to_numpy()[tau_pos] - 1], s=14, alpha=0.6)
-    ax1.plot(*np.vstack([corners, corners[:1]]).T, color="gray", lw=1)
-    for (x, y), title in zip(corners, subtype_titles):
-        ax1.text(1.15 * x, 1.15 * y, title, ha="center", va="center", fontsize=11)
-    ax1.set_xlim(-1.4, 1.4)
-    ax1.set_ylim(-1.4, 1.4)
-    ax1.set_aspect("equal")
-    ax1.axis("off")
-    ax1.set_title("Subtype probabilities of tau+ people")
-    best = table.loc[tau_pos, "prob_subtype"]
-    ax2.hist(best, bins=np.linspace(0, 1, 41), color="#4C72B0")
-    ax2.axvline(threshold, ls="--", color="black")
-    ax2.set_xlabel("highest subtype probability")
-    ax2.set_ylabel("people (tau+)")
-    ax2.set_title(f"Poor fit (< {threshold:g}): {(best < threshold).sum()} of {len(best)} tau+ people")
+    xy = xy + np.random.default_rng(seed).normal(0, 0.025, xy.shape)
+    ax.scatter(xy[~poor, 0], xy[~poor, 1], c=subtype_colors(k)[subtype[~poor] - 1], s=14, alpha=0.5)
+    ax.scatter(xy[poor, 0], xy[poor, 1], marker="x", color="dimgray", s=22)
+    ax.plot(*np.vstack([corners, corners[:1]]).T, color="gray", lw=1)
+    for n, ((x, y), title) in enumerate(zip(corners, subtype_titles), start=1):
+        count = (subtype == n).sum()                      # as in the Quick result table
+        side = np.sign(round(x, 6)) * 0.3                   # side corners: label away from the dots
+        ax.text(1.12 * x + side, 1.17 * y, f"{title}\nn = {count} ({100 * count / n_tau:.0f}%)",
+                ha="center", va="center", fontsize=10, color=subtype_colors(k)[n - 1], fontweight="bold")
+    ax.add_patch(plt.Rectangle((-0.3, -0.13), 0.6, 0.26, facecolor="white", edgecolor="dimgray", lw=1,
+                               alpha=0.85))
+    ax.text(0, 0, f"Poor fit (< {threshold:g})\nn = {poor.sum()} ({100 * poor.sum() / n_tau:.0f}%)",
+            ha="center", va="center", fontsize=9, color="dimgray")
+    ax.text(0, 1.55, f"Subtype probabilities of the {n_tau} tau+ people", ha="center", fontsize=12)
+    ax.set_xlim(-1.75, 1.75)
+    ax.set_ylim(-1.45, 1.7)
+    ax.set_aspect("equal")
+    ax.axis("off")
     fig.tight_layout()
     return fig
 
 
 def plot_stages(table, prob_stage, subtype_titles):
-    """Left: how many people are at each SuStaIn stage, per subtype (stage 0 = S0, paper Ext. Fig. 2).
+    """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
+    (S0) is only counted in the title, so its large bar does not squash the others.
     Right: how sure SuStaIn is about each person's stage - the spread (SD) of the stage
     probabilities against the most likely stage. Low = sure; high = the stage could be several values.
     """
@@ -192,14 +213,16 @@ def plot_stages(table, prob_stage, subtype_titles):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.8))
     bottom = np.zeros(len(stages))
     s0 = (table["ml_stage"] == 0).sum()
-    ax1.bar(0, s0, color="lightgray", label=f"S0 (n={s0})")
     for n, title in enumerate(subtype_titles, start=1):
         counts = table.loc[(table["ml_subtype"] == n) & (table["ml_stage"] > 0), "ml_stage"]
         heights = counts.value_counts().reindex(stages, fill_value=0).to_numpy()
         ax1.bar(stages, heights, bottom=bottom, color=colors[n - 1], label=f"{title} (n={len(counts)})")
         bottom += heights
     ax1.set_xlabel("most likely SuStaIn stage")
-    ax1.set_ylabel("people")
+    ax1.set_ylabel("people (tau+)")
+    ax1.set_xlim(0.4, stages[-1] + 0.6)
+    ax1.set_title(f"Stage 0 (S0, no abnormal tau): {s0} people ({100 * s0 / len(table):.0f}%) - not shown",
+                  fontsize=10)
     ax1.legend(fontsize=8)
     prob_stage = prob_stage / prob_stage.sum(axis=1, keepdims=True)      # each row sums to 1
     mean = prob_stage @ stages
@@ -262,8 +285,9 @@ def plot_subtype_tree(subtypes_by_k):
         counts = subtypes_by_k[k][subtypes_by_k[k] > 0].value_counts().sort_index()
         y = 0
         for subtype, count in counts.items():
-            ax.add_patch(plt.Rectangle((x - 0.08, y), 0.16, count, color=subtype_colors(k)[subtype - 1]))
-            ax.text(x, y + count / 2, str(subtype), ha="center", va="center", fontsize=9, color="white")
+            ax.add_patch(plt.Rectangle((x - 0.13, y), 0.26, count, color=subtype_colors(k)[subtype - 1]))
+            ax.text(x, y + count / 2, f"{subtype}\n{count} ({100 * count / counts.sum():.0f}%)",
+                    ha="center", va="center", fontsize=8, color="white")
             tops[(k, subtype)] = y
             y += count + gap
     for x, (k1, k2) in enumerate(zip(ks[:-1], ks[1:])):
@@ -276,7 +300,7 @@ def plot_subtype_tree(subtypes_by_k):
                 n = flows.loc[a, b]
                 if n == 0:
                     continue
-                ax.fill_between([x + 0.08, x + 0.92], [left[a], right[b]], [left[a] + n, right[b] + n],
+                ax.fill_between([x + 0.13, x + 0.87], [left[a], right[b]], [left[a] + n, right[b] + n],
                                 color=subtype_colors(k1)[a - 1], alpha=0.35, lw=0)
                 left[a] += n
                 right[b] += n
