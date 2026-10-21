@@ -118,29 +118,23 @@ app_ui = ui.page_navbar(
                              "input.adjust_cov",
                              ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
                              ui.output_ui("adjust_warning"),
-                             ui.input_checkbox("adjust_only_sig", "Remove only where significant (p < "
-                                               f"{CONFIG['normalization']['covariate_alpha']:g})", value=True),
-                             ui.p("Tested and learned in the healthy reference group only, then removed from "
-                                  "everyone's SUVR; the method above runs after it. Choose non-disease factors "
-                                  "(age, sex, education, APOE4, site) - never MMSE, CDR, diagnosis or amyloid. "
-                                  "Not in the paper - use it as a sensitivity analysis.", class_="text-muted small")),
-                         ui.panel_conditional(
-                             "input.norm_method === 'reference' || input.adjust_cov",
-                             ui.input_radio_buttons("ref_group", "Healthy reference group", choices=REFERENCE_GROUPS,
-                                                    selected=CONFIG["normalization"]["reference_group"])),
+                             ui.input_checkbox("adjust_only_sig", "Remove only where significant", value=True),
+                             ui.panel_conditional(
+                                 "input.adjust_only_sig",
+                                 ui.input_numeric("adjust_alpha", "p-value limit",
+                                                  value=CONFIG["normalization"]["covariate_alpha"],
+                                                  min=0.001, max=0.5, step=0.01))),
                          ui.panel_conditional(
                              "input.norm_method === 'gmm'",
                              ui.input_numeric("gmm_components", "Number of GMM components",
                                               value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
                              ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
-                                  "the one with the lowest mean is 'normal'. Paper: 2.", class_="text-muted small")),
+                                  "the one with the lowest mean is 'normal'.", class_="text-muted small")),
                          ui.input_checkbox("per_region", "Different cut-points / Z_max per region", value=False),
                          ui.panel_conditional(                  # one set of values for all regions
                              "!input.per_region",
                              ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
                                            value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
-                             ui.p("z-scores at which a region counts as 'reaching an event'. Paper: 2, 5, 10.",
-                                  class_="text-muted small"),
                              ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
                                                     choices={"manual": "One value for all regions",
                                                              "percentile": "Percentile per region"},
@@ -151,8 +145,7 @@ app_ui = ui.page_navbar(
                              ui.panel_conditional("input.z_max_method === 'percentile'",
                                                   ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
                                                                    value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
-                             ui.p("Not reported in the paper. Must be above the last cut-point.",
-                                  class_="text-muted small")),
+                             ),
                          ui.panel_conditional(                  # values per region: in the main area
                              "input.per_region",
                              ui.p("Set the cut-points and Z_max of each region in the 'Per-region values' tab "
@@ -378,7 +371,7 @@ def server(input, output, session):
     def reference_labels():
         """Diagnosis labels of the healthy reference group (always used together with amyloid = 0)."""
         labels = list(CONFIG["normalization"]["reference_labels_cn"])
-        if input.ref_group() == "cn_scd":
+        if CONFIG["normalization"]["reference_group"] == "cn_scd":
             labels += CONFIG["normalization"]["reference_labels_scd"]
         return labels
 
@@ -614,7 +607,7 @@ def server(input, output, session):
                                            reference_labels())
         if in_reference.sum() < 10:
             raise SafeException("The covariate adjustment needs at least 10 people in the healthy reference group.")
-        alpha = CONFIG["normalization"]["covariate_alpha"]
+        alpha = input.adjust_alpha() or CONFIG["normalization"]["covariate_alpha"]
         try:
             adjusted, p_values, estimates, slopes = covariate_adjustment(complete, regions, covariates,
                                                                          in_reference, input.adjust_only_sig(), alpha)
@@ -625,14 +618,14 @@ def server(input, output, session):
                           "n_reference": int(in_reference.sum()),
                           "skipped": skipped,
                           "only_significant": input.adjust_only_sig(), "alpha": alpha,
-                          "group": REFERENCE_GROUPS[input.ref_group()]}
+                          "group": REFERENCE_GROUPS[CONFIG["normalization"]["reference_group"]]}
 
     def norm_inputs():
         """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
         method = input.norm_method()
         return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
                 input.adjust_cov(), tuple(input.adjust_candidates() or []), input.adjust_only_sig(),
-                input.ref_group(),
+                input.adjust_alpha(),
                 int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
 
     @reactive.calc
@@ -661,7 +654,7 @@ def server(input, output, session):
                       class_="fw-bold")]
         if result["method"] == "reference":
             lines.append(ui.p(f"Reference group: {result['n_reference']} people "
-                              f"({REFERENCE_GROUPS[input.ref_group()]})."))
+                              f"({REFERENCE_GROUPS[CONFIG['normalization']['reference_group']]})."))
         adjustment = result["adjustment"]
         if adjustment is not None:
             used = (adjustment["slopes"] != 0).sum()
@@ -958,7 +951,7 @@ def server(input, output, session):
                 "normalization": normalized()["method"], "cut_points": {r: [float(c) for c in cuts] for r, cuts in s["cut_points"].items()},
                 "covariate_adjustment": (None if normalized()["adjustment"] is None else  # slopes per region
                                          normalized()["adjustment"]["slopes"].round(6).to_dict(orient="index")),
-                "reference_group": REFERENCE_GROUPS[input.ref_group()],
+                "reference_group": REFERENCE_GROUPS[CONFIG["normalization"]["reference_group"]],
                 "z_max": [round(float(v), 4) for v in s["Z_max"]],
                 "n_subtypes_max": input.n_subtypes_max(), "n_startpoints": input.n_startpoints(),
                 "n_iterations_mcmc": input.n_mcmc(), "seed": input.run_seed(),

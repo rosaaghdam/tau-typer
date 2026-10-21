@@ -956,3 +956,4 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Note: with many regions x covariates, about 5% of tests are significant by chance (toy data:
   education in 1 of 10 regions). An FDR option could be added if wanted.
 - Review: Rosa found that "diagnosis" could be chosen as a covariate (no warning) -> fixed: diagnosis/amyloid not offered, warning for disease-like names, constant covariates skipped.
+- Review: sidebar shortened (notes removed); p-value limit box; reference group set in config.yaml only (cn_scd) until Jake answers.
