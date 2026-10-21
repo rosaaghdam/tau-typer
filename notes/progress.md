@@ -950,3 +950,8 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Still open: choroid plexus regression (needs a choroid plexus column) - ask Jake for details.
 - Review: per-region cut-points + Z_max (checkbox + tab). Paper: same events (2, 5, 10) for all regions in the main analysis; data-driven per-region events (GMM 1-5 components, AIC) as replication - not built yet.
 - TODO before sharing the repo: remove the "Co-Authored-By: Claude" lines from the old commit messages (rewrite the commit log + force push, backup first). New commits no longer have them (Rosa, 2026-10-21).
+- Review: covariate adjustment = choose candidates from the file, tested per region in the healthy
+  reference group, only significant ones removed (Young 2018). Reference group choice: CN + SCD
+  (default) or CN only. ASK JAKE: should the normal reference group include amyloid-negative SCD?
+- Note: with many regions x covariates, about 5% of tests are significant by chance (toy data:
+  education in 1 of 10 regions). An FDR option could be added if wanted.

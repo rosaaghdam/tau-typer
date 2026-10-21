@@ -31,7 +31,7 @@ from src.figures import (group_colors, plot_asymmetry, plot_category_bars, plot_
 from src.sustain_model import (count_people_above, cuts_per_region, make_z_vals, parse_cut_points, parse_z_max,
                                sustain_inputs, z_max_table)
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
-from src.zscore import (amyloid_negative_cn, covariate_adjustment, fit_gmm, reference_group_normal, zscore_regions,
+from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
 
 NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group: amyloid-negative CN",
@@ -74,6 +74,7 @@ AN_HELP = {     # short help text in tab 5 (paper = Vogel et al. 2021)
 
 RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the paper's inclusion rule needs
 REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group normalization needs
+REFERENCE_GROUPS = {"cn_scd": "Amyloid-negative CN + SCD", "cn": "Amyloid-negative CN only"}
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
 
@@ -110,13 +111,20 @@ app_ui = ui.page_navbar(
                          ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
                                                 choices=NORM_METHODS, selected="gmm"),
                          ui.output_ui("norm_method_note"),
-                         ui.input_checkbox("age_adjust", "Adjust for age first (W-score style)", value=False),
-                         ui.panel_conditional("input.age_adjust",
-                                              ui.input_checkbox("sex_adjust", "... and for sex", value=False),
-                                              ui.p("Normal ageing is learned in amyloid-negative CN people and "
-                                                   "removed from everyone's SUVR; then the method above runs as "
-                                                   "usual. Not in the paper - use it as a sensitivity analysis.",
-                                                   class_="text-muted small")),
+                         ui.input_checkbox("adjust_cov", "Adjust for covariates first (W-score style)", value=False),
+                         ui.panel_conditional(
+                             "input.adjust_cov",
+                             ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
+                             ui.input_checkbox("adjust_only_sig", "Remove only where significant (p < "
+                                               f"{CONFIG['normalization']['covariate_alpha']:g})", value=True),
+                             ui.p("Tested and learned in the healthy reference group only, then removed from "
+                                  "everyone's SUVR; the method above runs after it. Choose non-disease factors "
+                                  "(age, sex, education, APOE4, site) - never MMSE, CDR, diagnosis or amyloid. "
+                                  "Not in the paper - use it as a sensitivity analysis.", class_="text-muted small")),
+                         ui.panel_conditional(
+                             "input.norm_method === 'reference' || input.adjust_cov",
+                             ui.input_radio_buttons("ref_group", "Healthy reference group", choices=REFERENCE_GROUPS,
+                                                    selected=CONFIG["normalization"]["reference_group"])),
                          ui.panel_conditional(
                              "input.norm_method === 'gmm'",
                              ui.input_numeric("gmm_components", "Number of GMM components",
@@ -347,6 +355,21 @@ def server(input, output, session):
                                                    "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False))
 
     @reactive.effect
+    def _adjust_candidate_choices():
+        """'Covariates to test' offers every non-region, non-ID column; age and sex are pre-selected."""
+        columns = other_columns()
+        roles = chosen_columns()
+        default = [roles[r] for r in ("age", "sex") if roles.get(r) in columns]
+        ui.update_selectize("adjust_candidates", choices=columns, selected=default)
+
+    def reference_labels():
+        """Diagnosis labels of the healthy reference group (always used together with amyloid = 0)."""
+        labels = list(CONFIG["normalization"]["reference_labels_cn"])
+        if input.ref_group() == "cn_scd":
+            labels += CONFIG["normalization"]["reference_labels_scd"]
+        return labels
+
+    @reactive.effect
     def _norm_method_choices():
         """Tab 2 offers 'Reference group' only when Diagnosis and Amyloid columns are chosen."""
         missing = missing_roles(REFERENCE_ROLES)
@@ -535,7 +558,7 @@ def server(input, output, session):
         values = data[regions].apply(pd.to_numeric, errors="coerce")
         complete = values.dropna()                       # people with every region value
         method, n_components, n_reference = input.norm_method(), input.gmm_components(), None
-        complete, slopes, n_adjust_reference = adjust_for_age(data, complete, regions, method)
+        complete, adjustment = adjust_for_covariates(data, complete, regions, method)
         if method == "gmm":
             z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
         elif method == "reference":
@@ -543,7 +566,7 @@ def server(input, output, session):
             if not (columns.get("diagnosis") and columns.get("amyloid")):
                 raise SafeException("The reference group needs the diagnosis and amyloid columns (tab 1).")
             in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"],
-                                               columns["amyloid"], CONFIG["inclusion"]["cn_labels"])
+                                               columns["amyloid"], reference_labels())
             n_reference = int(in_reference.sum())
             if n_reference < 2:
                 raise SafeException("No amyloid-negative CN people found for the reference group.")
@@ -558,36 +581,39 @@ def server(input, output, session):
         return {"z": z, "reference": reference, "values": complete, "method": method,
                 "n_components": n_components, "n_reference": n_reference,
                 "n_left_out": len(values) - len(complete), "inputs": norm_inputs(),
-                "slopes": slopes, "n_adjust_reference": n_adjust_reference}
+                "adjustment": adjustment}
 
-    def adjust_for_age(data, complete, regions, method):
-        """If the box is ticked: remove normal ageing (and sex) from the SUVR values, learned in
-        amyloid-negative CN people. Returns (values, slopes table or None, reference group size)."""
-        if not input.age_adjust() or method == "zscored":
-            return complete, None, None
+    def adjust_for_covariates(data, complete, regions, method):
+        """If the box is ticked: test the chosen covariates in the healthy reference group and remove
+        them (only the significant ones, if that box is ticked) from everyone's SUVR.
+        Returns (values, None) or (adjusted values, dict with p-values, slopes and details)."""
+        names = list(input.adjust_candidates() or [])
+        if not input.adjust_cov() or method == "zscored":
+            return complete, None
+        if not names:
+            raise SafeException("Choose at least one covariate to test (or untick 'Adjust for covariates').")
         columns = chosen_columns()
-        needed = ["age", "diagnosis", "amyloid"] + (["sex"] if input.sex_adjust() else [])
-        missing = [ROLE_LABELS[role] for role in needed if not columns.get(role)]
-        if missing:
-            raise SafeException(f"The age adjustment needs these columns (tab 1): {', '.join(missing)}.")
-        covariates = pd.DataFrame({"age": pd.to_numeric(data[columns["age"]], errors="coerce")})
-        if input.sex_adjust():
-            first_letter = data[columns["sex"]].astype(str).str.strip().str.upper().str[0]
-            covariates["sex (1 = female)"] = (first_letter == "F").astype(float)
-        covariates = covariates.loc[complete.index].dropna()       # people with a known age (and sex)
+        if not (columns.get("diagnosis") and columns.get("amyloid")):
+            raise SafeException("The covariate adjustment needs the diagnosis and amyloid columns (tab 1).")
+        covariates = covariate_matrix(data.loc[complete.index], names).dropna()   # known values only
         complete = complete.loc[covariates.index]
         in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"], columns["amyloid"],
-                                           CONFIG["inclusion"]["cn_labels"])
+                                           reference_labels())
         if in_reference.sum() < 10:
-            raise SafeException("The age adjustment needs at least 10 amyloid-negative CN people.")
-        adjusted, slopes = covariate_adjustment(complete, regions, covariates, in_reference)
-        return adjusted, slopes, int(in_reference.sum())
+            raise SafeException("The covariate adjustment needs at least 10 people in the healthy reference group.")
+        alpha = CONFIG["normalization"]["covariate_alpha"]
+        adjusted, p_values, slopes = covariate_adjustment(complete, regions, covariates, in_reference,
+                                                          input.adjust_only_sig(), alpha)
+        return adjusted, {"p_values": p_values, "slopes": slopes, "n_reference": int(in_reference.sum()),
+                          "only_significant": input.adjust_only_sig(), "alpha": alpha,
+                          "group": REFERENCE_GROUPS[input.ref_group()]}
 
     def norm_inputs():
         """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
         method = input.norm_method()
         return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
-                input.age_adjust(), input.sex_adjust(),
+                input.adjust_cov(), tuple(input.adjust_candidates() or []), input.adjust_only_sig(),
+                input.ref_group(),
                 int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
 
     @reactive.calc
@@ -611,14 +637,20 @@ def server(input, output, session):
         result = normalized()
         lines = [outdated_warning()] if norm_outdated() else []
         lines += [ui.p(f"{NORM_METHODS[result['method']]}: {len(result['z'])} people in {result['z'].shape[1]} "
-                      f"regions ({result['n_left_out']} left out because of missing region values).",
+                      f"regions ({result['n_left_out']} left out because of missing region"
+                       f"{' or covariate' if result['adjustment'] is not None else ''} values).",
                       class_="fw-bold")]
         if result["method"] == "reference":
-            lines.append(ui.p(f"Reference group: {result['n_reference']} amyloid-negative CN people."))
-        if result["slopes"] is not None:
-            lines.append(ui.p(f"Adjusted for {' and '.join(result['slopes'].columns)} first, learned in "
-                              f"{result['n_adjust_reference']} amyloid-negative CN people (slopes: table at "
-                              "the bottom).", class_="text-primary"))
+            lines.append(ui.p(f"Reference group: {result['n_reference']} people "
+                              f"({REFERENCE_GROUPS[input.ref_group()]})."))
+        adjustment = result["adjustment"]
+        if adjustment is not None:
+            used = (adjustment["slopes"] != 0).sum()
+            lines.append(ui.p(f"Covariates tested in {adjustment['n_reference']} people "
+                              f"({adjustment['group']}); removed where "
+                              f"{'p < ' + format(adjustment['alpha'], 'g') if adjustment['only_significant'] else 'chosen'}"
+                              f": {', '.join(f'{c} in {n} region(s)' for c, n in used.items())}. "
+                              "Details: table at the bottom.", class_="text-primary"))
         if result["method"] == "zscored":
             median = float(result["z"].median().median())
             lines.append(ui.p("No normal reference is computed: the uploaded values are used as z-scores."))
@@ -902,8 +934,9 @@ def server(input, output, session):
         s = sustain_input()
         return {"n_people": len(s["subjects"]), "regions": s["regions"],
                 "normalization": normalized()["method"], "cut_points": {r: [float(c) for c in cuts] for r, cuts in s["cut_points"].items()},
-                "age_adjustment": (None if normalized()["slopes"] is None else           # slopes per region
-                                   normalized()["slopes"].round(6).to_dict(orient="index")),
+                "covariate_adjustment": (None if normalized()["adjustment"] is None else  # slopes per region
+                                         normalized()["adjustment"]["slopes"].round(6).to_dict(orient="index")),
+                "reference_group": REFERENCE_GROUPS[input.ref_group()],
                 "z_max": [round(float(v), 4) for v in s["Z_max"]],
                 "n_subtypes_max": input.n_subtypes_max(), "n_startpoints": input.n_startpoints(),
                 "n_iterations_mcmc": input.n_mcmc(), "seed": input.run_seed(),
@@ -1452,21 +1485,43 @@ def server(input, output, session):
 
     @render.ui
     def slopes_view():
-        if input.normalize() == 0 or normalized()["slopes"] is None:
+        if input.normalize() == 0 or normalized()["adjustment"] is None:
             return None
-        return ui.TagList(ui.h6("Age adjustment: change in SUVR per year of age (and female vs male)"),
+        return ui.TagList(ui.h6("Covariate adjustment: p-value per region (bold = removed) and slope"),
+                          ui.p("Slope = change in SUVR per unit of the covariate (per year of age, per year of "
+                               "education, or vs the first category). 0 = not removed.", class_="text-muted small"),
                           ui.output_data_frame("slopes_table"),
-                          ui.download_button("download_slopes", "Download age adjustment (CSV)"),
+                          ui.download_button("download_slopes", "Download covariate adjustment (CSV)"),
                           ui.p("Keep this file too: new people must be adjusted with the same slopes.",
                                class_="text-muted small"))
 
+    def adjustment_table():
+        """One row per region: p-value and slope of every covariate."""
+        adjustment = normalized()["adjustment"]
+        table = pd.DataFrame(index=adjustment["p_values"].index)
+        for col in adjustment["p_values"].columns:
+            table[f"{col}: p"] = adjustment["p_values"][col]
+            table[f"{col}: slope"] = adjustment["slopes"][col]
+        return table
+
     @render.data_frame
     def slopes_table():
-        return normalized()["slopes"].round(4).reset_index(names="Region")
+        table = adjustment_table()
+        slopes = normalized()["adjustment"]["slopes"]
+        styles = []
+        for j, col in enumerate(slopes.columns):
+            rows = [i for i, region in enumerate(slopes.index) if slopes.loc[region, col] != 0]
+            if rows:
+                styles.append({"rows": rows, "cols": [1 + 2 * j], "style": {"font-weight": "bold",
+                                                                          "background-color": "#e3f2fd"}})
+        shown = table.copy()
+        for col in shown.columns:
+            shown[col] = shown[col].map(lambda v: f"{v:.3g}")
+        return render.DataGrid(shown.reset_index(names="Region"), styles=styles, width="100%")
 
-    @render.download_button(filename="tau_typer_age_adjustment.csv")
+    @render.download_button(filename="tau_typer_covariate_adjustment.csv")
     def download_slopes():
-        yield normalized()["slopes"].round(6).to_csv(index_label="region")
+        yield adjustment_table().to_csv(index_label="region")
 
 
 

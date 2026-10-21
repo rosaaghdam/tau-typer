@@ -5,7 +5,10 @@ z = (SUVR - normal mean) / normal SD, so z = 2 means "2 SD above normal".
 """
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from sklearn.mixture import GaussianMixture
+
+from src.qc import number_and_category_columns
 
 
 def fit_gmm(values, n_components, seed):
@@ -58,25 +61,50 @@ def zscore_with_reference(data, regions, reference):
     return (data[regions] - reference.loc["normal_mean"]) / reference.loc["normal_sd"]
 
 
-# ---------- Option: remove normal ageing (and sex) before normalization (W-score style) ----------
+# ---------- Option: remove covariate effects (age, sex, ...) before normalization (W-score style) ----------
 
-def covariate_adjustment(data, regions, covariates, in_reference):
-    """Remove the effect of age (and sex) from each region, learned in the reference group only.
+def covariate_matrix(data, names):
+    """The chosen covariates as numbers: number columns as they are, category columns (sex, APOE4,
+    site, ...) as 0/1 columns, one per value except the first (e.g. "sex=M")."""
+    numbers, _ = number_and_category_columns(data, names)
+    parts = []
+    for name in names:
+        if name in numbers:
+            parts.append(pd.to_numeric(data[name], errors="coerce").rename(name))
+        else:
+            values = data[name].map(lambda v: v if pd.isna(v) else (f"{v:g}" if isinstance(v, float) else str(v)))
+            dummies = pd.get_dummies(values, prefix=name, prefix_sep="=", drop_first=True, dtype=float)
+            dummies.loc[values.isna()] = np.nan                  # unknown stays unknown
+            parts.append(dummies)
+    return pd.concat(parts, axis=1)
 
-    Per region: fit SUVR = a + b1*age (+ b2*sex) in the reference people (amyloid-negative CN,
-    i.e. normal ageing). Then for everyone: adjusted SUVR = SUVR - b * (covariate - reference mean),
-    so everyone is moved to the reference group's average age (and sex). The values stay on the
-    SUVR scale, so the GMM (or reference group) step after it works as before.
-    covariates: numbers only (sex as 1 = female, 0 = male), same rows as data, no empty cells.
-    Returns (adjusted values, table of slopes: one row per region, one column per covariate).
+
+def covariate_adjustment(data, regions, covariates, in_reference, only_significant=True, alpha=0.05):
+    """Remove covariate effects (age, sex, ...) from each region, learned in the reference group only.
+
+    Per region:
+    1. In the reference people (amyloid-negative, cognitively normal = normal ageing), fit
+       SUVR = a + b1*cov1 + b2*cov2 + ... and keep the p-value of every covariate.
+    2. Keep the covariates with p < alpha (or all of them if only_significant is False) and fit
+       again with only those.
+    3. For everyone: adjusted SUVR = SUVR - sum of b * (covariate - reference mean), so everyone is
+       moved to the reference group's average. The values stay on the SUVR scale.
+    covariates: from covariate_matrix, same rows as data, no empty cells.
+    Returns (adjusted values, p-value table, slope table) - regions x covariates; slope 0 = not used.
     """
     reference_x = covariates[in_reference]
     centered = covariates - reference_x.mean()
-    design = np.column_stack([np.ones(len(reference_x)), reference_x.to_numpy()])
     adjusted = data[regions].copy()
-    slopes = pd.DataFrame(index=regions, columns=covariates.columns, dtype=float)
+    p_values = pd.DataFrame(index=regions, columns=covariates.columns, dtype=float)
+    slopes = pd.DataFrame(0.0, index=regions, columns=covariates.columns)
     for region in regions:
-        coefficients = np.linalg.lstsq(design, data.loc[in_reference, region].to_numpy(), rcond=None)[0]
-        slopes.loc[region] = coefficients[1:]                     # [0] is the intercept
-        adjusted[region] = data[region] - centered.to_numpy() @ coefficients[1:]
-    return adjusted, slopes
+        y = data.loc[in_reference, region]
+        fit = sm.OLS(y, sm.add_constant(reference_x, has_constant="add")).fit()
+        p_values.loc[region] = fit.pvalues[covariates.columns]
+        used = [c for c in covariates.columns if fit.pvalues[c] < alpha] if only_significant else list(covariates.columns)
+        if not used:
+            continue                                              # nothing to remove in this region
+        fit = sm.OLS(y, sm.add_constant(reference_x[used], has_constant="add")).fit()
+        slopes.loc[region, used] = fit.params[used]
+        adjusted[region] = data[region] - centered[used].to_numpy() @ fit.params[used].to_numpy()
+    return adjusted, p_values, slopes
