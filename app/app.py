@@ -616,12 +616,13 @@ def server(input, output, session):
             raise SafeException("The covariate adjustment needs at least 10 people in the healthy reference group.")
         alpha = CONFIG["normalization"]["covariate_alpha"]
         try:
-            adjusted, p_values, slopes = covariate_adjustment(complete, regions, covariates, in_reference,
-                                                              input.adjust_only_sig(), alpha)
+            adjusted, p_values, estimates, slopes = covariate_adjustment(complete, regions, covariates,
+                                                                         in_reference, input.adjust_only_sig(), alpha)
         except ValueError as error:
             raise SafeException(str(error))
         skipped = [c for c in covariates.columns if c not in p_values.columns]
-        return adjusted, {"p_values": p_values, "slopes": slopes, "n_reference": int(in_reference.sum()),
+        return adjusted, {"p_values": p_values, "estimates": estimates, "slopes": slopes,
+                          "n_reference": int(in_reference.sum()),
                           "skipped": skipped,
                           "only_significant": input.adjust_only_sig(), "alpha": alpha,
                           "group": REFERENCE_GROUPS[input.ref_group()]}
@@ -1508,36 +1509,39 @@ def server(input, output, session):
     def slopes_view():
         if input.normalize() == 0 or normalized()["adjustment"] is None:
             return None
-        return ui.TagList(ui.h6("Covariate adjustment: p-value per region (bold = removed) and slope"),
-                          ui.p("Slope = change in SUVR per unit of the covariate (per year of age, per year of "
-                               "education, or vs the first category). 0 = not removed.", class_="text-muted small"),
+        return ui.TagList(ui.h6("Covariate adjustment per region: slope (p-value)"),
+                          ui.p("Slope = change in SUVR per unit of the covariate in the healthy reference group "
+                               "(per year of age, per year of education, or vs the first category). "
+                               "Bold with ✓ = removed from everyone's SUVR.", class_="text-muted small"),
                           ui.output_data_frame("slopes_table"),
                           ui.download_button("download_slopes", "Download covariate adjustment (CSV)"),
                           ui.p("Keep this file too: new people must be adjusted with the same slopes.",
                                class_="text-muted small"))
 
     def adjustment_table():
-        """One row per region: p-value and slope of every covariate."""
+        """For the download: per region and covariate the estimated slope, its p-value and removed (yes/no)."""
         adjustment = normalized()["adjustment"]
         table = pd.DataFrame(index=adjustment["p_values"].index)
         for col in adjustment["p_values"].columns:
+            table[f"{col}: slope"] = adjustment["estimates"][col]
             table[f"{col}: p"] = adjustment["p_values"][col]
-            table[f"{col}: slope"] = adjustment["slopes"][col]
+            table[f"{col}: removed"] = adjustment["slopes"][col] != 0
         return table
 
     @render.data_frame
     def slopes_table():
-        table = adjustment_table()
-        slopes = normalized()["adjustment"]["slopes"]
+        """One column per covariate: 'slope (p = ...)', bold with ✓ where it was removed."""
+        adjustment = normalized()["adjustment"]
+        removed = adjustment["slopes"] != 0
+        shown = pd.DataFrame(index=adjustment["p_values"].index)
         styles = []
-        for j, col in enumerate(slopes.columns):
-            rows = [i for i, region in enumerate(slopes.index) if slopes.loc[region, col] != 0]
+        for j, col in enumerate(adjustment["p_values"].columns):
+            shown[col] = [f"{adjustment['estimates'].loc[r, col]:+.4f} (p = {adjustment['p_values'].loc[r, col]:.2g})"
+                          + (" ✓ removed" if removed.loc[r, col] else "") for r in shown.index]
+            rows = [i for i, region in enumerate(shown.index) if removed.loc[region, col]]
             if rows:
-                styles.append({"rows": rows, "cols": [1 + 2 * j], "style": {"font-weight": "bold",
-                                                                          "background-color": "#e3f2fd"}})
-        shown = table.copy()
-        for col in shown.columns:
-            shown[col] = shown[col].map(lambda v: f"{v:.3g}")
+                styles.append({"rows": rows, "cols": [1 + j], "style": {"font-weight": "bold",
+                                                                      "background-color": "#e3f2fd"}})
         return render.DataGrid(shown.reset_index(names="Region"), styles=styles, width="100%")
 
     @render.download_button(filename="tau_typer_covariate_adjustment.csv")

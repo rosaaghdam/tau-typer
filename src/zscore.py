@@ -91,7 +91,8 @@ def covariate_adjustment(data, regions, covariates, in_reference, only_significa
        moved to the reference group's average. The values stay on the SUVR scale.
     covariates: from covariate_matrix, same rows as data, no empty cells.
     Covariates that do not vary in the reference group are skipped (not in the tables).
-    Returns (adjusted values, p-value table, slope table) - regions x covariates; slope 0 = not used.
+    Returns (adjusted values, p-values, estimated slopes, removed slopes) - tables of regions x
+    covariates. Estimated = from the test with all covariates; removed = 0 where not removed.
     """
     reference_x = covariates[in_reference]
     varies = reference_x.std() > 0                                # a covariate the same for everyone
@@ -105,15 +106,17 @@ def covariate_adjustment(data, regions, covariates, in_reference, only_significa
     centered = covariates - reference_x.mean()
     adjusted = data[regions].copy()
     p_values = pd.DataFrame(index=regions, columns=covariates.columns, dtype=float)
+    estimates = p_values.copy()
     slopes = pd.DataFrame(0.0, index=regions, columns=covariates.columns)
     for region in regions:
         y = data.loc[in_reference, region]
         fit = sm.OLS(y, sm.add_constant(reference_x, has_constant="add")).fit()
         p_values.loc[region] = fit.pvalues[covariates.columns]
+        estimates.loc[region] = fit.params[covariates.columns]
         used = [c for c in covariates.columns if fit.pvalues[c] < alpha] if only_significant else list(covariates.columns)
         if not used:
             continue                                              # nothing to remove in this region
         fit = sm.OLS(y, sm.add_constant(reference_x[used], has_constant="add")).fit()
         slopes.loc[region, used] = fit.params[used]
         adjusted[region] = data[region] - centered[used].to_numpy() @ fit.params[used].to_numpy()
-    return adjusted, p_values, slopes
+    return adjusted, p_values, estimates, slopes
