@@ -949,3 +949,4 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   age-adjusted W-scores) - for sensitivity analyses; and "Adjust tests for" in tab 5.
 - Still open: choroid plexus regression (needs a choroid plexus column) - ask Jake for details.
 - Review: per-region cut-points + Z_max (checkbox + tab). Paper: same events (2, 5, 10) for all regions in the main analysis; data-driven per-region events (GMM 1-5 components, AIC) as replication - not built yet.
+- TODO before sharing the repo: remove the "Co-Authored-By: Claude" lines from the old commit messages (rewrite the commit log + force push, backup first). New commits no longer have them (Rosa, 2026-10-21).
