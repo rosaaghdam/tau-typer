@@ -49,9 +49,9 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
     "patterns": "Top: average z-score per region in each subtype, tau+ people (paper Fig. 1a/c). Bottom: the "
                 "same per stage group - read left to right to see tau spread (paper Fig. 1e).",
     "probs": "Each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b): near a corner "
-             "= surely that subtype. Corners: people per subtype. Middle box: poor fit = highest subtype "
-             "probability below 0.5 (grey crosses; also counted in their subtype). Dots are jittered a little "
-             "so people on the same spot can be seen.",
+             "= surely that subtype, in the middle = a mix. Corners: people per subtype. Dashed box: the middle "
+             "of the polygon; legend = % of people inside and outside it. Dots are jittered a little so people "
+             "on the same spot can be seen.",
     "stages": "Left: tau+ people per stage and subtype (paper Ext. Fig. 2); S0 is given in the title only. "
               "Right: how sure SuStaIn is about each person's stage (spread of the stage probabilities).",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
@@ -1301,8 +1301,7 @@ def server(input, output, session):
     @render.plot
     def fig_probs():
         d = fig_data()
-        return plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]], d["table"], fig_titles(),
-                                          CONFIG["results"]["poor_fit_threshold"])
+        return plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]], d["table"], fig_titles())
 
     @render.plot
     def fig_stages():
@@ -1507,8 +1506,7 @@ def server(input, output, session):
             "03_stage_progression": plot_stage_progression(d["z"], d["table"], d["regions"], titles, d["edges"],
                                                            None, vmax=vmax),
             "04_subtype_probabilities": plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]],
-                                                                   d["table"], titles,
-                                                                   CONFIG["results"]["poor_fit_threshold"]),
+                                                                   d["table"], titles),
             "05_stages": plot_stages(d["table"], d["result"]["prob_stage"], titles),
             "06_model_choice": plot_model_choice(likelihoods[["mean log-likelihood"]],
                                                  likelihoods[["CVIC"]] if "CVIC" in likelihoods else None),

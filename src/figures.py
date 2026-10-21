@@ -161,37 +161,36 @@ def subtype_colors(k):
     return plt.cm.tab10(np.arange(k) % 10)
 
 
-def plot_subtype_probabilities(prob_subtype, table, subtype_titles, threshold, seed=0):
+def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
     """Every tau+ person inside a polygon with one subtype at each corner (paper Fig. 1b).
     Close to a corner = surely that subtype; towards the middle = a mix of subtypes.
-    Corners: number (and %) of tau+ people in each subtype. Inner box: people whose highest subtype
-    probability is below the threshold (poor fit, grey crosses; also counted in their subtype). A little random jitter spreads
-    the many people who sit exactly on a corner.
+    Corners: number (and %) of tau+ people in each subtype. Dashed box (as in the paper): the middle
+    of the polygon, half its size; the legend gives the % of people inside and outside it.
+    A little random jitter spreads the many people who sit exactly on a corner.
 
     prob_subtype: people x subtypes, columns already in the app's order (Subtype 1 first).
     """
     k = prob_subtype.shape[1]
     tau_pos = (table["ml_stage"] > 0).to_numpy()
     n_tau = tau_pos.sum()
-    poor = table["poor_fit"].to_numpy()[tau_pos]
     subtype = table["ml_subtype"].to_numpy()[tau_pos]
     fig, ax = plt.subplots(figsize=(7, 6.5))
     angles = np.pi / 2 + 2 * np.pi * np.arange(k) / k
     corners = np.column_stack([np.cos(angles), np.sin(angles)])
     xy = prob_subtype[tau_pos] @ corners                  # weighted average of the corners
-    xy = xy + np.random.default_rng(seed).normal(0, 0.025, xy.shape)
-    ax.scatter(xy[~poor, 0], xy[~poor, 1], c=subtype_colors(k)[subtype[~poor] - 1], s=14, alpha=0.5)
-    ax.scatter(xy[poor, 0], xy[poor, 1], marker="x", color="dimgray", s=22)
-    ax.plot(*np.vstack([corners, corners[:1]]).T, color="gray", lw=1)
+    inside = (np.abs(xy) <= 0.5).all(axis=1)             # inside the dashed box (before the jitter)
+    xy = xy + np.random.default_rng(seed).normal(0, 0.02, xy.shape)
+    ax.plot(*np.vstack([corners, corners[:1]]).T, color="gray", lw=2, zorder=1)
+    ax.scatter(xy[:, 0], xy[:, 1], c=subtype_colors(k)[subtype - 1], s=30, edgecolors="black", linewidths=0.5,
+               zorder=2)
+    box = ax.add_patch(plt.Rectangle((-0.5, -0.5), 1, 1, fill=False, ls="--", lw=2, color="black", zorder=3))
     for n, ((x, y), title) in enumerate(zip(corners, subtype_titles), start=1):
-        count = (subtype == n).sum()                      # as in the Quick result table
+        count = (subtype == n).sum()
         side = np.sign(round(x, 6)) * 0.3                   # side corners: label away from the dots
         ax.text(1.12 * x + side, 1.17 * y, f"{title}\nn = {count} ({100 * count / n_tau:.0f}%)",
                 ha="center", va="center", fontsize=10, color=subtype_colors(k)[n - 1], fontweight="bold")
-    ax.add_patch(plt.Rectangle((-0.3, -0.13), 0.6, 0.26, facecolor="white", edgecolor="dimgray", lw=1,
-                               alpha=0.85))
-    ax.text(0, 0, f"Poor fit (< {threshold:g})\nn = {poor.sum()} ({100 * poor.sum() / n_tau:.0f}%)",
-            ha="center", va="center", fontsize=9, color="dimgray")
+    ax.legend([box], [f"Inside: {100 * inside.mean():.0f}%\nOutside: {100 * (1 - inside.mean()):.0f}%"],
+              loc="upper right", bbox_to_anchor=(1, 0.92), frameon=False, handlelength=1.5, handleheight=2.5)
     ax.text(0, 1.55, f"Subtype probabilities of the {n_tau} tau+ people", ha="center", fontsize=12)
     ax.set_xlim(-1.75, 1.75)
     ax.set_ylim(-1.45, 1.7)
