@@ -187,7 +187,6 @@ app_ui = ui.page_navbar(
                                                 choices={"paper": "Paper settings", "fast": "Fast test (rough results)"}),
                          ui.input_numeric("n_subtypes_max", "Max number of subtypes",
                                           value=CONFIG["sustain"]["n_subtypes_max"], min=1, max=8),
-                         ui.p("pySuStaIn fits 1, 2, ... up to this number. Paper: 4.", class_="text-muted small"),
                          ui.input_numeric("n_startpoints", "Start points", value=CONFIG["sustain"]["n_startpoints"], min=1),
                          ui.input_numeric("n_mcmc", "MCMC iterations", value=CONFIG["sustain"]["n_iterations_mcmc"], min=100),
                          ui.input_numeric("run_seed", "Random seed", value=CONFIG["pipeline"]["seed"]),
