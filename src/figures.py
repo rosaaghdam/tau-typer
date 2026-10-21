@@ -273,7 +273,8 @@ def plot_subtype_tree(subtypes_by_k):
 
     subtypes_by_k: {k: Series of subtype numbers per person (0 = S0)}, same people for every k.
     Each column = one model; boxes = subtypes (height = people); bands = people moving from a subtype
-    in model k to a subtype in model k+1. S0 (no tau) is left out.
+    in model k to a subtype in model k+1, labelled with the % of the subtype that goes there.
+    S0 (no tau) is left out.
     """
     ks = sorted(subtypes_by_k)
     fig, ax = plt.subplots(figsize=(2.6 * len(ks) + 1, 5.5))
@@ -301,6 +302,9 @@ def plot_subtype_tree(subtypes_by_k):
                     continue
                 ax.fill_between([x + 0.13, x + 0.87], [left[a], right[b]], [left[a] + n, right[b] + n],
                                 color=subtype_colors(k1)[a - 1], alpha=0.35, lw=0)
+                # % of subtype a (model k1) that goes to subtype b (model k2), at the start of the band
+                ax.text(x + 0.15, left[a] + n / 2, f"→ {b}: {100 * n / flows.loc[a].sum():.0f}%",
+                        ha="left", va="center", fontsize=8)
                 left[a] += n
                 right[b] += n
     ax.set_xticks(range(len(ks)), [f"{k} subtype(s)" for k in ks])
