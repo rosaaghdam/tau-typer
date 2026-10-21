@@ -75,6 +75,8 @@ AN_HELP = {     # short help text in tab 5 (paper = Vogel et al. 2021)
 RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the paper's inclusion rule needs
 REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group normalization needs
 REFERENCE_GROUPS = {"cn_scd": "Amyloid-negative CN + SCD", "cn": "Amyloid-negative CN only"}
+DISEASE_WORDS = ["mmse", "moca", "cdr", "adas", "cognit", "memory", "executive", "language", "visuo",
+                 "tau", "amyloid", "abeta", "diagnos", "dx"]   # covariate names that look like disease measures
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
 
@@ -115,6 +117,7 @@ app_ui = ui.page_navbar(
                          ui.panel_conditional(
                              "input.adjust_cov",
                              ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
+                             ui.output_ui("adjust_warning"),
                              ui.input_checkbox("adjust_only_sig", "Remove only where significant (p < "
                                                f"{CONFIG['normalization']['covariate_alpha']:g})", value=True),
                              ui.p("Tested and learned in the healthy reference group only, then removed from "
@@ -356,11 +359,21 @@ def server(input, output, session):
 
     @reactive.effect
     def _adjust_candidate_choices():
-        """'Covariates to test' offers every non-region, non-ID column; age and sex are pre-selected."""
-        columns = other_columns()
+        """'Covariates to test' offers every non-region, non-ID column except diagnosis and amyloid
+        (they define the reference group and are the disease itself); age and sex are pre-selected."""
         roles = chosen_columns()
+        columns = [c for c in other_columns() if c not in (roles.get("diagnosis"), roles.get("amyloid"))]
         default = [roles[r] for r in ("age", "sex") if roles.get(r) in columns]
         ui.update_selectize("adjust_candidates", choices=columns, selected=default)
+
+    @render.ui
+    def adjust_warning():
+        """Red note if a chosen covariate looks like a disease measure (MMSE, CDR, p-tau, ...)."""
+        risky = [c for c in (input.adjust_candidates() or []) if any(w in c.lower() for w in DISEASE_WORDS)]
+        if risky:
+            verb = "looks like a disease measure" if len(risky) == 1 else "look like disease measures"
+            return ui.p(f"Careful: {', '.join(risky)} {verb}. Removing it would remove the disease signal "
+                        "SuStaIn should find.", class_="text-danger small fw-bold")
 
     def reference_labels():
         """Diagnosis labels of the healthy reference group (always used together with amyloid = 0)."""
@@ -602,9 +615,14 @@ def server(input, output, session):
         if in_reference.sum() < 10:
             raise SafeException("The covariate adjustment needs at least 10 people in the healthy reference group.")
         alpha = CONFIG["normalization"]["covariate_alpha"]
-        adjusted, p_values, slopes = covariate_adjustment(complete, regions, covariates, in_reference,
-                                                          input.adjust_only_sig(), alpha)
+        try:
+            adjusted, p_values, slopes = covariate_adjustment(complete, regions, covariates, in_reference,
+                                                              input.adjust_only_sig(), alpha)
+        except ValueError as error:
+            raise SafeException(str(error))
+        skipped = [c for c in covariates.columns if c not in p_values.columns]
         return adjusted, {"p_values": p_values, "slopes": slopes, "n_reference": int(in_reference.sum()),
+                          "skipped": skipped,
                           "only_significant": input.adjust_only_sig(), "alpha": alpha,
                           "group": REFERENCE_GROUPS[input.ref_group()]}
 
@@ -651,6 +669,9 @@ def server(input, output, session):
                               f"{'p < ' + format(adjustment['alpha'], 'g') if adjustment['only_significant'] else 'chosen'}"
                               f": {', '.join(f'{c} in {n} region(s)' for c, n in used.items())}. "
                               "Details: table at the bottom.", class_="text-primary"))
+            if adjustment["skipped"]:
+                lines.append(ui.p(f"Skipped (the same for everyone in the reference group): "
+                                  f"{', '.join(adjustment['skipped'])}.", class_="text-muted small"))
         if result["method"] == "zscored":
             median = float(result["z"].median().median())
             lines.append(ui.p("No normal reference is computed: the uploaded values are used as z-scores."))

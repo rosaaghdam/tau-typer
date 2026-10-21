@@ -90,9 +90,18 @@ def covariate_adjustment(data, regions, covariates, in_reference, only_significa
     3. For everyone: adjusted SUVR = SUVR - sum of b * (covariate - reference mean), so everyone is
        moved to the reference group's average. The values stay on the SUVR scale.
     covariates: from covariate_matrix, same rows as data, no empty cells.
+    Covariates that do not vary in the reference group are skipped (not in the tables).
     Returns (adjusted values, p-value table, slope table) - regions x covariates; slope 0 = not used.
     """
     reference_x = covariates[in_reference]
+    varies = reference_x.std() > 0                                # a covariate the same for everyone
+    if not varies.all():                                          # in the reference group cannot be tested
+        covariates, reference_x = covariates.loc[:, varies], reference_x.loc[:, varies]
+    if covariates.shape[1] == 0:
+        raise ValueError("None of the chosen covariates varies in the healthy reference group.")
+    if np.linalg.matrix_rank(sm.add_constant(reference_x, has_constant="add")) < reference_x.shape[1] + 1:
+        raise ValueError("Some chosen covariates are fully determined by each other in the reference group "
+                         "(e.g. two codings of the same thing) - remove one of them.")
     centered = covariates - reference_x.mean()
     adjusted = data[regions].copy()
     p_values = pd.DataFrame(index=regions, columns=covariates.columns, dtype=float)

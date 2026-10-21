@@ -955,3 +955,4 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   (default) or CN only. ASK JAKE: should the normal reference group include amyloid-negative SCD?
 - Note: with many regions x covariates, about 5% of tests are significant by chance (toy data:
   education in 1 of 10 regions). An FDR option could be added if wanted.
+- Review: Rosa found that "diagnosis" could be chosen as a covariate (no warning) -> fixed: diagnosis/amyloid not offered, warning for disease-like names, constant covariates skipped.
