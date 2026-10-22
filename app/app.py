@@ -300,8 +300,12 @@ app_ui = ui.page_navbar(
                                       ui.output_ui("an_asymmetry_status"),
                                       ui.output_plot("an_asymmetry_plot", height="440px")),
                          ui.nav_panel("Compare runs", ui.p(AN_HELP["compare"], class_="text-muted small"),
-                                      ui.input_select("an_other_run", "Other finished run", choices=[]),
-                                      ui.input_numeric("an_other_k", "Its number of subtypes", value=4, min=1),
+                                      ui.layout_columns(
+                                          ui.input_select("an_other_run", "Other finished run", choices=[]),
+                                          ui.input_select("an_other_k", "Its model (number of subtypes)", choices=[]),
+                                          ui.input_file("compare_upload", "... or upload a run to compare (ZIP)",
+                                                        accept=[".zip"]),
+                                          col_widths=[4, 3, 5]),
                                       ui.output_ui("an_compare_summary"),
                                       ui.output_data_frame("an_compare_table")),
                          ui.nav_panel("Download",
@@ -1276,14 +1280,19 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.upload_run)
     def _upload_run():
-        file = input.upload_run()[0]
+        folder = save_uploaded_run(input.upload_run()[0])
+        if folder is not None:
+            ui.notification_show(f"Run uploaded as {folder.name}. Choose it in the list and load it.")
+
+    def save_uploaded_run(file):
+        """Save an uploaded run ZIP as a new saved run; returns its folder (None if the file is not a run)."""
         try:
             folder = unzip_run(file["datapath"], runs_folder, Path(file["name"]).stem)
         except Exception as error:                          # not a ZIP, or not a Tau-typer run
             ui.notification_show(f"Could not use this file: {error}", type="error", duration=10)
-            return
+            return None
         runs_changed.set(runs_changed() + 1)
-        ui.notification_show(f"Run uploaded as {folder.name}. Choose it in the list and load it.")
+        return folder
 
     # ---------------- Tab 4: Figures ----------------
     @render.ui
@@ -1535,12 +1544,38 @@ def server(input, output, session):
         req(asymmetry is not None)
         return plot_asymmetry(d["table"], asymmetry, subtype_titles(d["k"]))
 
+    compare_pick = reactive.value(None)  # a run just uploaded in Compare runs: select it in the list
+
     @reactive.effect
     def _an_other_runs():
         others = [run for run in finished_runs() if shown_run() is None or run != shown_run().name]
         with reactive.isolate():
-            keep = input.an_other_run()
+            keep = compare_pick() or input.an_other_run()
+            compare_pick.set(None)
         ui.update_select("an_other_run", choices=others, selected=keep if keep in others else None)
+
+    @reactive.effect
+    @reactive.event(input.compare_upload)
+    def _compare_upload():
+        """Upload a downloaded run here; it is saved like in tab 3 (Saved runs) and chosen as run B."""
+        folder = save_uploaded_run(input.compare_upload()[0])
+        if folder is None:
+            return
+        if (folder / "status.txt").exists() and (folder / "status.txt").read_text().strip() == "finished":
+            compare_pick.set(folder.name)
+            ui.notification_show(f"Run uploaded as {folder.name} and chosen for the comparison.")
+        else:
+            ui.notification_show(f"Run uploaded as {folder.name}, but it is not finished - it cannot be compared.",
+                                 type="warning")
+
+    @reactive.effect
+    def _an_other_k_choices():
+        """The other run's models only (1 ... its max number of subtypes)."""
+        name = req(input.an_other_run())
+        req(name in finished_runs())
+        k_max = yaml.safe_load(open(runs_folder / name / "settings.yaml"))["n_subtypes_max"]
+        ui.update_select("an_other_k", choices={str(k): f"{k} subtype(s)" for k in range(1, k_max + 1)},
+                         selected=str(min(k_max, CONFIG["results"]["n_subtypes"])))
 
     @reactive.calc
     def an_comparison():
@@ -1549,7 +1584,8 @@ def server(input, output, session):
         req(name in finished_runs())                        # only real, finished run folders
         folder = runs_folder / name
         settings = yaml.safe_load(open(folder / "settings.yaml"))
-        k = min(int(input.an_other_k() or 1), settings["n_subtypes_max"])
+        k = int(req(input.an_other_k()))
+        req(k <= settings["n_subtypes_max"])               # wait until the model list fits the chosen run
         other = load_sustain_result(folder, settings["dataset_name"], k)
         ids = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str}).index
         other_table = subject_table(other, ids, CONFIG["results"]["poor_fit_threshold"], size_order(other))
