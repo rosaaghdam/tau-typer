@@ -204,16 +204,17 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
     return fig
 
 
-def plot_stages(table, prob_stage, subtype_titles):
+def plot_stages(table, subtype_titles, sd_limit=None, person=None):
     """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
     (S0) is only counted in the legend, so its large bar does not squash the others.
-    Right: how sure SuStaIn is about each person's stage - the spread (SD) of the stage
-    probabilities against the most likely stage. Low = sure; high = the stage could be several values.
-    """
+    Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
+    stage; black line = average per stage (high where events overlap - the pale squares of the PVD).
+    Right: the same uncertainty per subtype. Dashed red line = sd_limit (above = uncertain stage).
+    person: this person's dot gets a black ring (the person chosen in the Person tab)."""
     k = len(subtype_titles)
     colors = subtype_colors(k)
-    stages = np.arange(prob_stage.shape[1])
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.8))
+    stages = np.arange(table["ml_stage"].max() + 1)
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(17, 4.8), gridspec_kw={"width_ratios": [1.2, 1.2, 0.6]})
     bottom = np.zeros(len(stages))
     s0 = (table["ml_stage"] == 0).sum()
     for n, title in enumerate(subtype_titles, start=1):
@@ -226,14 +227,33 @@ def plot_stages(table, prob_stage, subtype_titles):
     ax1.set_xlim(0.4, stages[-1] + 0.6)
     ax1.bar(0, 0, color="white", label=f"S0 (no abnormal tau): {s0} ({100 * s0 / len(table):.0f}%), not shown")
     ax1.legend(fontsize=8)
-    prob_stage = prob_stage / prob_stage.sum(axis=1, keepdims=True)      # each row sums to 1
-    mean = prob_stage @ stages
-    spread = np.sqrt(prob_stage @ stages ** 2 - mean ** 2)
-    tau_pos = (table["ml_stage"] > 0).to_numpy()
-    ax2.scatter(table["ml_stage"][tau_pos], spread[tau_pos], s=12, alpha=0.6,
-                c=colors[table["ml_subtype"].to_numpy()[tau_pos] - 1])
+
+    tau = table[table["ml_stage"] > 0]
+    ax2.scatter(tau["ml_stage"], tau["stage_sd"], s=14, alpha=0.7, c=colors[tau["ml_subtype"].to_numpy() - 1])
+    average = tau.groupby("ml_stage")["stage_sd"].mean()
+    ax2.plot(average.index, average, color="black", lw=1.5, label="average per stage")
+    if person is not None and person in tau.index:
+        ax2.scatter(tau.loc[person, "ml_stage"], tau.loc[person, "stage_sd"], s=150, facecolors="none",
+                    edgecolors="black", linewidths=2, label=str(person))
     ax2.set_xlabel("most likely SuStaIn stage")
     ax2.set_ylabel("uncertainty (SD of stage, in stages)")
+
+    ax3.boxplot([tau.loc[tau["ml_subtype"] == n, "stage_sd"] for n in range(1, k + 1)], widths=0.6,
+                patch_artist=True, boxprops={"alpha": 0.6}, medianprops={"color": "black"})
+    for patch, color in zip(ax3.patches, colors):
+        patch.set_facecolor(color)
+    ax3.set_xticks(range(1, k + 1), subtype_titles, rotation=30, ha="right")
+    ax3.set_ylabel("uncertainty (SD of stage)")
+    ax3.set_ylim(ax2.get_ylim())
+    if sd_limit is not None:
+        for ax in (ax2, ax3):
+            ax.axhline(sd_limit, ls="--", color="#C62828", lw=1.2)
+        n_above = (tau["stage_sd"] > sd_limit).sum()
+        ax2.plot([], [], ls="--", color="#C62828", label=f"limit {sd_limit:g}: {n_above} above")
+        top = max(ax2.get_ylim()[1], sd_limit * 1.1)
+        ax2.set_ylim(top=top)
+        ax3.set_ylim(ax2.get_ylim())
+    ax2.legend(fontsize=8, loc="upper right")
     fig.tight_layout()
     return fig
 

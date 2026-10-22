@@ -55,8 +55,11 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
              "it. In the paper most people were clearly one subtype.",
     "stages": "Left: how many tau+ people are at each SuStaIn stage, coloured by subtype (paper Ext. Fig. 2); "
-              "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Right: how sure SuStaIn is "
-              "about each person's stage - low = sure, high = the stage could be one of several.",
+              "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Middle: how sure SuStaIn is "
+              "about each person's stage (SD of their stage probabilities) - low = sure, high = the stage could "
+              "be one of several; black line = average per stage (high where events overlap, the pale squares "
+              "of the PVD); ringed dot = the person chosen in the Person tab. Right: the same per subtype. "
+              "Dashed red line = your limit; the people above it are listed below.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
               "best; paper Ext. Fig. 1c-e). Bottom: subtype tree - where people go when one more subtype is "
               "allowed (paper Ext. Fig. 1f).",
@@ -258,7 +261,11 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Subtype probabilities", ui.p(FIG_HELP["probs"], class_="text-muted small"),
                                       ui.output_plot("fig_probs", height="560px")),
                          ui.nav_panel("Stages", ui.p(FIG_HELP["stages"], class_="text-muted small"),
-                                      ui.output_plot("fig_stages", height="440px")),
+                                      ui.input_numeric("sd_limit", "Uncertain stage: SD above (stages)",
+                                                       value=CONFIG["results"]["stage_sd_limit"], min=0, step=0.1),
+                                      ui.output_plot("fig_stages", height="440px"),
+                                      ui.output_ui("uncertain_status"),
+                                      ui.output_data_frame("uncertain_people")),
                          ui.nav_panel("Choosing k", ui.p(FIG_HELP["choice"], class_="text-muted small"),
                                       ui.output_plot("fig_choice", height="380px"),
                                       ui.output_plot("fig_tree", height="480px")),
@@ -1350,7 +1357,27 @@ def server(input, output, session):
     @render.plot
     def fig_stages():
         d = fig_data()
-        return plot_stages(d["table"], d["result"]["prob_stage"], fig_titles())
+        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.fig_person() or None)
+
+    def uncertain_table():
+        """Tau+ people whose stage SD is above the limit, most uncertain first."""
+        table, limit = fig_data()["table"], req(input.sd_limit())
+        above = table[(table["ml_stage"] > 0) & (table["stage_sd"] > limit)]
+        return above[["subtype", "ml_stage", "stage_sd", "prob_stage"]].sort_values("stage_sd", ascending=False)
+
+    @render.ui
+    def uncertain_status():
+        table, above = fig_data()["table"], uncertain_table()
+        n_tau = int((table["ml_stage"] > 0).sum())
+        return ui.p(f"{len(above)} of {n_tau} tau+ people ({100 * len(above) / max(n_tau, 1):.0f}%) have a stage "
+                    f"SD above {input.sd_limit():g}. Their stage is uncertain - check them, or leave them out of "
+                    "stage analyses.", class_="small mt-2")
+
+    @render.data_frame
+    def uncertain_people():
+        above = uncertain_table().rename(columns={"ml_stage": "stage", "stage_sd": "stage SD",
+                                                  "prob_stage": "probability of this stage"})
+        return render.DataGrid(above.round(3).reset_index(names="person"))
 
     @render.plot
     def fig_choice():
@@ -1551,7 +1578,7 @@ def server(input, output, session):
                                                            None, vmax=vmax),
             "04_subtype_probabilities": plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]],
                                                                    d["table"], titles),
-            "05_stages": plot_stages(d["table"], d["result"]["prob_stage"], titles),
+            "05_stages": plot_stages(d["table"], titles, input.sd_limit()),
             "06_model_choice": plot_model_choice(likelihoods[["mean log-likelihood"]],
                                                  likelihoods[["CVIC"]] if "CVIC" in likelihoods else None),
             "07_subtype_tree": plot_subtype_tree(subtypes_by_k(d["z"].index)),

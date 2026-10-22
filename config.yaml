@@ -72,6 +72,7 @@ results:
   sustain_folder: results/toy/sustain_fast_test   # which SuStaIn run to look at
   n_subtypes: 4                # which model to read (paper: 4, chosen by cross-validation)
   poor_fit_threshold: 0.5      # paper: subtype probability < 0.5 = does not fit any subtype well
+  stage_sd_limit: 1.0          # tab 4 Stages: stage called uncertain if its SD (in stages) is above this
   # Our names for the subtypes of THIS run, in SuStaIn's order (Subtype 1 = largest group).
   # Chosen by looking at the average z-score table and the PVD (S6). Re-check after every new run!
   subtype_names: [limbic, posterior, lateral temporal, MTL-sparing]

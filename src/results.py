@@ -79,6 +79,15 @@ def event_orders(result, Z_vals, regions, order, min_share=0.05):
     return orders
 
 
+def stage_sd(prob_stage):
+    """How sure SuStaIn is about each person's stage: the SD (in stages) of their stage probabilities.
+    SD = sqrt(sum(stage^2 * p) - mean^2), mean = sum(stage * p). 0 = sure; larger = could be several stages."""
+    prob = prob_stage / prob_stage.sum(axis=1, keepdims=True)          # each person's row sums to 1
+    stages = np.arange(prob.shape[1])
+    mean = prob @ stages
+    return np.sqrt(np.clip(prob @ stages ** 2 - mean ** 2, 0, None))
+
+
 def subject_table(result, subject_ids, poor_fit_threshold, order=None):
     """One row per person: subtype, stage and their probabilities.
 
@@ -96,6 +105,7 @@ def subject_table(result, subject_ids, poor_fit_threshold, order=None):
         "ml_stage": result["ml_stage"].ravel().astype(int),
         "prob_stage": result["prob_ml_stage"].ravel(),
     }, index=subject_ids)
+    table["stage_sd"] = stage_sd(result["prob_stage"]).round(3)
     table["subtype"] = np.where(table["ml_stage"] == 0, "S0", "Subtype " + table["ml_subtype"].astype(str))
     table["poor_fit"] = (table["ml_stage"] > 0) & (table["prob_subtype"] < poor_fit_threshold)
     return table
