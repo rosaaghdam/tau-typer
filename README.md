@@ -3,7 +3,7 @@
 Automated tau-PET subtyping with **SuStaIn**, following Vogel et al. 2021 (*Nature Medicine*).
 A Shiny for Python app takes a table of regional tau-PET values, normalizes it, runs the
 **original pySuStaIn** (never changed or copied) and shows the subtypes, stages, figures and
-analyses of the paper.
+analyses.
 
 ## Install (once)
 
@@ -31,8 +31,8 @@ Then open the address it prints (usually http://127.0.0.1:8000).
 | Tab | What you do there |
 |---|---|
 | 1. Data & QC | Upload a CSV (one row per person), match the columns, check the data, optional inclusion rule |
-| 2. Normalization | z-scores (GMM as in the paper, amyloid-negative CN reference, or already normalized), cut-points, Z_max |
-| 3. Run SuStaIn | Run pySuStaIn in the background (fast test or paper settings), cross-validation, saved runs |
+| 2. Normalization | z-scores (GMM, amyloid-negative CN reference, or already normalized), cut-points, Z_max |
+| 3. Run SuStaIn | Run pySuStaIn in the background (fast test or full run), cross-validation, saved runs |
 | 4. Figures | PVD, tau patterns, subtype probabilities, stages, choosing k, one person |
 | 5. Subtype analysis | Table 1, regional differences, stage vs age/cognition, asymmetry, compare runs, report (ZIP) |
 | About | pySuStaIn version + commit, papers to cite, privacy |

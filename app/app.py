@@ -36,7 +36,7 @@ from src.subtype_analysis import asymmetry_index, compare_runs, group_table, reg
 from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm, reference_group_normal, zscore_regions,
                         zscore_with_reference)
 
-NORM_METHODS = {"gmm": "GMM on everyone (paper)", "reference": "Reference group: amyloid-negative CN",
+NORM_METHODS = {"gmm": "GMM on everyone", "reference": "Reference group: amyloid-negative CN",
                 "zscored": "The data is already normalized"}
 
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
@@ -80,7 +80,7 @@ AN_HELP = {     # short help text in tab 5
                "Cross-table of the groups, adjusted Rand index (1 = same subtypes) and stage correlation.",
 }
 
-RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the paper's inclusion rule needs
+RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the inclusion rule needs
 REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group normalization needs
 REFERENCE_GROUPS = {"cn_scd": "Amyloid-negative CN + SCD", "cn": "Amyloid-negative CN only"}
 DISEASE_WORDS = ["mmse", "moca", "cdr", "adas", "cognit", "memory", "executive", "language", "visuo",
@@ -192,7 +192,7 @@ app_ui = ui.page_navbar(
                  ui.layout_sidebar(
                      ui.sidebar(
                          ui.input_radio_buttons("run_preset", "Preset", selected="paper",
-                                                choices={"paper": "Paper settings", "fast": "Fast test (rough results)"}),
+                                                choices={"paper": "Full run (recommended)", "fast": "Fast test (rough results)"}),
                          ui.input_numeric("n_subtypes_max", "Max number of subtypes",
                                           value=CONFIG["sustain"]["n_subtypes_max"], min=1, max=8),
                          ui.input_numeric("n_startpoints", "Start points", value=CONFIG["sustain"]["n_startpoints"], min=1),
@@ -278,7 +278,7 @@ app_ui = ui.page_navbar(
                          ui.input_selectize("an_variables", "Variables to compare (Table 1)", choices=[],
                                             multiple=True),
                          ui.input_select("an_stage_variable", "Variable against stage", choices=[]),
-                         ui.input_selectize("an_adjust", "Adjust tests for (paper: age, sex, education, ...)",
+                         ui.input_selectize("an_adjust", "Adjust tests for (e.g. age, sex, education)",
                                             choices=[], multiple=True),
                          ui.p("Variables come from the other columns of your file (age, sex, MMSE, APOE4, ...). "
                               "Only tau+ people (stage > 0) are compared between subtypes.",
@@ -366,9 +366,9 @@ def server(input, output, session):
         missing = missing_roles(RULE_ROLES)
         title = ui.h6("Filtering rule")
         if missing:
-            return ui.TagList(title, ui.p(f"Paper's inclusion rule not available: it needs {', '.join(missing)}.",
+            return ui.TagList(title, ui.p(f"Inclusion rule not available: it needs {', '.join(missing)}.",
                                           class_="text-muted small"))
-        return ui.TagList(title, ui.input_checkbox("apply_rule", "Apply the paper's inclusion rule "
+        return ui.TagList(title, ui.input_checkbox("apply_rule", "Apply the inclusion rule "
                                                    "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False))
 
     @reactive.effect
@@ -1091,7 +1091,7 @@ def server(input, output, session):
         if cv_file.exists():
             best = pd.read_csv(cv_file, index_col="subtypes")["CVIC"].idxmin()
             return ui.p(f"Run {shown_run().name}. Cross-validation: the lowest CVIC is for {best} subtype(s) - "
-                        "that is the number the data supports best (paper's method). Second figure: "
+                        "that is the number the data supports best. Second figure: "
                         "pySuStaIn's test log-likelihood per fold.", class_="text-success small")
         return ui.p(f"Run {shown_run().name}. Higher log-likelihood = fits this data better, but it rises "
                     "with every extra subtype - use cross-validation (CVIC) to choose the number. "
@@ -1139,7 +1139,7 @@ def server(input, output, session):
         if shown_run() is None:
             return no_run_yet()
         return ui.p(f"Run {shown_run().name}. S0 = no abnormal tau (stage 0, no subtype). Poor fit = subtype "
-                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). Stage [Q1, median, Q3]: a quarter "
+                    f"probability below {CONFIG['results']['poor_fit_threshold']}. Stage [Q1, median, Q3]: a quarter "
                     "of the group is at or below Q1, half at or below the median, three quarters at or below Q3. "
                     "Last event = the last event reached at that stage (MCMC order below). All figures are in "
                     "tab 4.", class_="text-muted small")
@@ -1607,8 +1607,8 @@ def server(input, output, session):
         info = pysustain_info()
         commit = info["commit"] or "unknown (not installed from git)"
         steps = ["1. Data & QC - upload a CSV (one row per person), match the columns, check the data, "
-                 "optionally apply the paper's inclusion rule.",
-                 "2. Normalization - turn regional tau values into z-scores (GMM as in the paper, an "
+                 "optionally apply the inclusion rule.",
+                 "2. Normalization - turn regional tau values into z-scores (GMM, an "
                  "amyloid-negative CN reference group, or data already normalized); choose cut-points and Z_max.",
                  "3. Run SuStaIn - fit the original pySuStaIn (ZscoreSustain) in the background, with "
                  "cross-validation to choose the number of subtypes; every run is saved in its own folder.",
