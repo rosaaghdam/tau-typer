@@ -26,13 +26,15 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
         figsize=(14, n_rows * panel_height), title_font_size=13, label_font_size=10, stage_font_size=9,
         stage_interval=stage_interval, subtype_order=subtype_order)
     fig = figs[0]
-    fig.subplots_adjust(hspace=0.45, wspace=0.08)                     # room for titles and stage labels
+    for ax in fig.axes:
+        ax.set_xlabel("")                                       # columns = stages (said in the app's help text)
+    fig.subplots_adjust(hspace=0.35, wspace=0.08)                     # room for titles and stage labels
     # one legend for the colours (pySuStaIn's colours: 1st cut-point red, 2nd magenta, 3rd blue, ...)
     colours = ["red", "magenta", "blue", "#8000ff", "cyan", "#00ff80"]
     levels = np.unique(Z_vals[Z_vals > 0])
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
     fig.legend(handles, [f"reaches z {z:g}" for z in levels], loc="lower center", ncol=len(levels),
-               bbox_to_anchor=(0.5, -0.33 / fig.get_figheight()), frameon=False, fontsize=11)
+               bbox_to_anchor=(0.5, -0.1 / fig.get_figheight()), frameon=False, fontsize=11)
     if save_path is not None:
         fig.savefig(f"{save_path}.png", dpi=150, bbox_inches="tight")
     return fig

@@ -44,8 +44,8 @@ CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in co
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy data + 10 clinical variables + SCD
 FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
-    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages; colours: see "
-           "the legend. Dark = SuStaIn is sure the event happens at that stage, pale = unsure.",
+    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Dark = SuStaIn "
+           "is sure the event happens at that stage, pale = unsure.",
     "patterns": "Top: average z-score per region in each subtype, tau+ people (paper Fig. 1a/c). Bottom: the "
                 "same per stage group - read left to right to see tau spread (paper Fig. 1e).",
     "probs": "Each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b): near a corner "
