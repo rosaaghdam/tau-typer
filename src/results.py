@@ -57,16 +57,18 @@ def event_names(Z_vals, regions):
             if Z_vals[i, j] > 0]
 
 
-def event_order(result, Z_vals, regions, order):
-    """For each subtype (Subtype 1 first): its events from first to last, as one text.
-    Events are sorted by their average position over the MCMC samples - the order the PVD shows."""
+def event_orders(result, Z_vals, regions, order):
+    """For each subtype (Subtype 1 first): (EM order, MCMC order), each a list of event names from
+    first to last. EM order = the single best order EM found (ml_sequence_EM; the MCMC starts there).
+    MCMC order = events sorted by their average position over all MCMC samples (what the PVD shows)."""
     names = event_names(Z_vals, regions)
-    texts = []
-    for s in pvd_order(result, order):
+    orders = []
+    for s in pvd_order(result, order):                      # same subtype numbers as samples_sequence
+        em = result["ml_sequence_EM"][s].astype(int)
         sequences = result["samples_sequence"][s]                 # positions x samples: event at each position
         position = np.argsort(sequences, axis=0).mean(axis=1)     # average position of each event
-        texts.append(" → ".join(names[e] for e in np.argsort(position)))
-    return texts
+        orders.append(([names[e] for e in em], [names[e] for e in np.argsort(position)]))
+    return orders
 
 
 def subject_table(result, subject_ids, poor_fit_threshold, order=None):

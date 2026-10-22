@@ -24,7 +24,7 @@ from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table,
                     number_and_category_columns, qc_summary)
 from src.app_runs import list_runs, prepare_run_folder, start_run, unzip_run, zip_run
 from src.report import pysustain_info, report_zip
-from src.results import (event_order, load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order,
+from src.results import (event_orders, load_sustain_result, mcmc_traces, model_likelihoods, pvd_order, size_order,
                          subject_table, subtype_summary)
 from src.figures import (group_colors, plot_asymmetry, plot_category_bars, plot_correlations,
                          plot_covariate_boxplots, plot_gmm_fit, plot_model_choice, plot_person, plot_pvd,
@@ -216,7 +216,8 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                       ui.input_select("result_model", "Model to look at", choices=[]),
                                       ui.output_data_frame("subtype_summary_table"),
-                                      ui.download_button("download_subjects", "Download subtype + stage per person (CSV)")),
+                                      ui.download_button("download_subjects", "Download subtype + stage per person (CSV)"),
+                                      ui.output_ui("event_order_view")),
                          ui.nav_panel("Saved runs",
                                       ui.p("Every run has its own folder. Load a finished run to see it in "
                                            "Model choice and Quick result (and later in tabs 4-5). Stopped = "
@@ -1129,21 +1130,47 @@ def server(input, output, session):
         if shown_run() is None:
             return no_run_yet()
         return ui.p(f"Run {shown_run().name}. S0 = no abnormal tau (stage 0, no subtype). Poor fit = subtype "
-                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). Event order = the "
-                    "subtype's events from first to last (average MCMC order, as in the PVD). "
-                    "All figures are in tab 4.", class_="text-muted small")
+                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). Median stage = the middle "
+                    "SuStaIn stage of the people in that group. All figures are in tab 4.", class_="text-muted small")
 
     @render.data_frame
     def subtype_summary_table():
-        summary = subtype_summary(shown_table())            # first: it waits until a run and model are chosen
+        return render.DataGrid(subtype_summary(shown_table()).reset_index())
+
+    @render.ui
+    def event_order_view():
+        """EM order and MCMC order of each subtype; events at a different place are red."""
+        shown_table()                                       # waits until a run and model are chosen
         folder, settings = shown_run(), shown_settings()
         result = load_sustain_result(folder, settings["dataset_name"], int(input.result_model()))
         Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
-        orders = event_order(result, Z_vals, settings["regions"], size_order(result))
-        orders = {f"Subtype {n}": text for n, text in enumerate(orders, start=1)}
-        summary["event order"] = [orders.get(group, "") for group in summary.index]      # S0: none
-        return render.DataGrid(summary.reset_index(), width="100%",
-                               styles=[{"cols": [5], "style": {"white-space": "normal", "min-width": "40em"}}])
+        orders = event_orders(result, Z_vals, settings["regions"], size_order(result))
+
+        def show(events, other):
+            """Events joined by arrows; red where the other order has a different event at that place."""
+            parts = []
+            for i, event in enumerate(events):
+                if i > 0:
+                    parts.append(" → ")
+                parts.append(ui.tags.span(event, style="color: #C62828; font-weight: bold;")
+                             if event != other[i] else event)
+            return ui.TagList(*parts)
+
+        rows = []
+        for n, (em, mcmc) in enumerate(orders, start=1):
+            n_diff = sum(a != b for a, b in zip(em, mcmc))
+            note = "same order" if n_diff == 0 else f"{n_diff} of {len(em)} places differ"
+            rows.append(ui.tags.tr(ui.tags.td(ui.strong(f"Subtype {n}"), ui.br(), ui.tags.small(note), rowspan=2),
+                                   ui.tags.td("EM"), ui.tags.td(show(em, mcmc))))
+            rows.append(ui.tags.tr(ui.tags.td("MCMC"), ui.tags.td(show(mcmc, em))))
+        return ui.TagList(
+            ui.h6("Event order of each subtype", class_="mt-4"),
+            ui.p("EM = the single best order SuStaIn found (the MCMC starts from it). MCMC = events sorted by "
+                 "their average place over all MCMC samples - what the PVD shows. Red = a different event at "
+                 "that place in the other order.", class_="text-muted small"),
+            ui.tags.table(ui.tags.thead(ui.tags.tr(ui.tags.th("subtype"), ui.tags.th("from"),
+                                                   ui.tags.th("event order (first → last)"))),
+                          ui.tags.tbody(*rows), class_="table table-sm table-bordered small"))
 
     @render.download_button(filename=lambda: f"{shown_run().name}_subtypes_stages.csv")
     def download_subjects():
