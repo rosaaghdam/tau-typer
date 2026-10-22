@@ -58,8 +58,7 @@ def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_
         image = ax.imshow(means, cmap="Reds", vmin=0, vmax=vmax, aspect="auto")
         ax.set_xticks(range(len(labels)), [f"{lab}\nn={n}" for lab, n in zip(labels, counts)], fontsize=9)
         ax.set_yticks(range(len(regions)), regions if k == 1 else [])   # region names only on the left
-        ax.set_title(title)
-        ax.set_xlabel("SuStaIn stage")
+        ax.set_title(title)                               # columns = stage groups (said in the help text)
     fig.colorbar(image, cax=colorbar_ax, label="average z-score")
     fig.tight_layout()
     if save_path:                                         # the app shows the figure without saving
