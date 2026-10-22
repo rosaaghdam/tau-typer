@@ -57,7 +57,7 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
     "stages": "Left: how many tau+ people are at each SuStaIn stage, coloured by subtype (paper Ext. Fig. 2); "
               "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Middle: how sure SuStaIn is "
               "about each person's stage (SD of their stage probabilities) - low = sure, high = the stage could "
-              "be one of several; black line = average per stage (high where events overlap, the pale squares "
+              "be one of several (often higher in the middle stages, where events overlap - the pale squares "
               "of the PVD); ringed dot = the person chosen in the Person tab. Right: the same per subtype. "
               "Dashed red line = your limit; the people above it are listed below.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "

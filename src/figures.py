@@ -208,7 +208,7 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None):
     """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
     (S0) is only counted in the legend, so its large bar does not squash the others.
     Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
-    stage; black line = average per stage (high where events overlap - the pale squares of the PVD).
+    stage (high where events overlap - the pale squares of the PVD).
     Right: the same uncertainty per subtype. Dashed red line = sd_limit (above = uncertain stage).
     person: this person's dot gets a black ring (the person chosen in the Person tab)."""
     k = len(subtype_titles)
@@ -230,13 +230,14 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None):
 
     tau = table[table["ml_stage"] > 0]
     ax2.scatter(tau["ml_stage"], tau["stage_sd"], s=14, alpha=0.7, c=colors[tau["ml_subtype"].to_numpy() - 1])
-    average = tau.groupby("ml_stage")["stage_sd"].mean()
-    ax2.plot(average.index, average, color="black", lw=1.5, label="average per stage")
     if person is not None and person in tau.index:
         ax2.scatter(tau.loc[person, "ml_stage"], tau.loc[person, "stage_sd"], s=150, facecolors="none",
                     edgecolors="black", linewidths=2, label=str(person))
     ax2.set_xlabel("most likely SuStaIn stage")
     ax2.set_ylabel("uncertainty (SD of stage, in stages)")
+    for ax in (ax1, ax2):                                 # every stage number on the x-axis
+        ax.set_xticks(stages[1:], stages[1:], fontsize=7)
+        ax.set_xlim(0.4, stages[-1] + 0.6)
 
     ax3.boxplot([tau.loc[tau["ml_subtype"] == n, "stage_sd"] for n in range(1, k + 1)], widths=0.6,
                 patch_artist=True, boxprops={"alpha": 0.6}, medianprops={"color": "black"})
