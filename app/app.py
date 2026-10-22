@@ -1142,7 +1142,7 @@ def server(input, output, session):
         result = load_sustain_result(folder, settings["dataset_name"], int(input.result_model()))
         Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
         orders = event_orders(result, Z_vals, settings["regions"], size_order(result))
-        mcmc = {f"Subtype {n}": mcmc_order for n, (_, mcmc_order) in enumerate(orders, start=1)}
+        mcmc = {f"Subtype {n}": mcmc_order for n, (_, mcmc_order, _) in enumerate(orders, start=1)}
         return render.DataGrid(subtype_summary(table, mcmc).reset_index(), width="100%")
 
     @render.ui
@@ -1154,28 +1154,33 @@ def server(input, output, session):
         Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
         orders = event_orders(result, Z_vals, settings["regions"], size_order(result))
 
-        def show(events, other):
-            """Events joined by arrows; red where the other order has a different event at that place."""
+        def show(events, other, ranges=None):
+            """Events joined by arrows; red where the other order has a different event at that place;
+            grey (9-11) after an event = the stages it takes in the MCMC samples."""
             parts = []
             for i, event in enumerate(events):
                 if i > 0:
                     parts.append(" → ")
                 parts.append(ui.tags.span(event, style="color: #C62828; font-weight: bold;")
                              if event != other[i] else event)
+                if ranges and ranges[i]:
+                    parts.append(ui.tags.span(f" ({ranges[i]})", class_="text-muted"))
             return ui.TagList(*parts)
 
         rows = []
-        for n, (em, mcmc) in enumerate(orders, start=1):
+        for n, (em, mcmc, ranges) in enumerate(orders, start=1):
             n_diff = sum(a != b for a, b in zip(em, mcmc))
             note = "same order" if n_diff == 0 else f"{n_diff} of {len(em)} places differ"
             rows.append(ui.tags.tr(ui.tags.td(ui.strong(f"Subtype {n}"), ui.br(), ui.tags.small(note), rowspan=2),
                                    ui.tags.td("EM"), ui.tags.td(show(em, mcmc))))
-            rows.append(ui.tags.tr(ui.tags.td("MCMC"), ui.tags.td(show(mcmc, em))))
+            rows.append(ui.tags.tr(ui.tags.td("MCMC"), ui.tags.td(show(mcmc, em, ranges))))
         return ui.TagList(
             ui.h6("Event order of each subtype", class_="mt-4"),
             ui.p("EM = the single best order SuStaIn found (the MCMC starts from it). MCMC = events sorted by "
                  "their average place over all MCMC samples - what the PVD shows. Red = a different event at "
-                 "that place in the other order.", class_="text-muted small"),
+                 "that place in the other order. (9-11) = the event is at stage 9 to 11 in the MCMC samples "
+                 "(stages in at least 5% of samples); no range = always the same stage.",
+                 class_="text-muted small"),
             ui.tags.table(ui.tags.thead(ui.tags.tr(ui.tags.th("subtype"), ui.tags.th("from"),
                                                    ui.tags.th("event order (first → last)"))),
                           ui.tags.tbody(*rows), class_="table table-sm table-bordered small"))

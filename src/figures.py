@@ -33,7 +33,7 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     colours = ["red", "magenta", "blue", "#8000ff", "cyan", "#00ff80"]
     levels = np.unique(Z_vals[Z_vals > 0])
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
-    fig.legend(handles, [f"reaches z {z:g}" for z in levels], loc="lower center", ncol=len(levels),
+    fig.legend(handles, [f"z-score {z:g}" for z in levels], loc="lower center", ncol=len(levels),
                bbox_to_anchor=(0.5, -0.1 / fig.get_figheight()), frameon=False, fontsize=11)
     if save_path is not None:
         fig.savefig(f"{save_path}.png", dpi=150, bbox_inches="tight")
