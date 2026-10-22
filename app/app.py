@@ -46,8 +46,10 @@ SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy d
 FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 2021)
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Dark = SuStaIn "
            "is sure the event happens at that stage, pale = unsure.",
-    "patterns": "Top: average z-score per region in each subtype, tau+ people (paper Fig. 1a/c). Bottom: the "
-                "same per stage group - read left to right to see tau spread (paper Fig. 1e).",
+    "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people "
+                "(number in each cell; paper Fig. 1a/c). Bottom: the same, split into stage groups (early stages "
+                "on the left, late on the right), so you can see where tau spreads as the stage rises (paper "
+                "Fig. 1e). n = number of people.",
     "probs": "Each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b): near a corner "
              "= surely that subtype, in the middle = a mix. Corners: people per subtype. Dashed box: the middle "
              "of the polygon; legend = % of people inside and outside it. Dots are jittered a little so people "

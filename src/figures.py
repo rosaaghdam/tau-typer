@@ -153,7 +153,6 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
         ax.text(col, row, f"{value:.1f}", ha="center", va="center", fontsize=8,
                 color="white" if value > 0.6 * vmax else "black")
     fig.colorbar(image, ax=ax, label="average z-score")
-    ax.set_title("Average tau (z-score) per subtype - tau+ people (stage > 0)")
     fig.tight_layout()
     return fig
 
