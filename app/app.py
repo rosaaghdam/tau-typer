@@ -1130,12 +1130,20 @@ def server(input, output, session):
         if shown_run() is None:
             return no_run_yet()
         return ui.p(f"Run {shown_run().name}. S0 = no abnormal tau (stage 0, no subtype). Poor fit = subtype "
-                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). Median stage = the middle "
-                    "SuStaIn stage of the people in that group. All figures are in tab 4.", class_="text-muted small")
+                    f"probability below {CONFIG['results']['poor_fit_threshold']} (paper). Stage [Q1, median, Q3]: a quarter "
+                    "of the group is at or below Q1, half at or below the median, three quarters at or below Q3. "
+                    "Last event = the last event reached at that stage (MCMC order below). All figures are in "
+                    "tab 4.", class_="text-muted small")
 
     @render.data_frame
     def subtype_summary_table():
-        return render.DataGrid(subtype_summary(shown_table()).reset_index())
+        table = shown_table()                               # first: it waits until a run and model are chosen
+        folder, settings = shown_run(), shown_settings()
+        result = load_sustain_result(folder, settings["dataset_name"], int(input.result_model()))
+        Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
+        orders = event_orders(result, Z_vals, settings["regions"], size_order(result))
+        mcmc = {f"Subtype {n}": mcmc_order for n, (_, mcmc_order) in enumerate(orders, start=1)}
+        return render.DataGrid(subtype_summary(table, mcmc).reset_index(), width="100%")
 
     @render.ui
     def event_order_view():

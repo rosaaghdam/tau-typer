@@ -116,10 +116,24 @@ def mcmc_traces(output_folder, dataset_name):
     return traces
 
 
-def subtype_summary(table):
-    """People per group (S0, Subtype 1, ...): number, %, how many fit poorly, median stage."""
-    groups = table.groupby("subtype")
-    summary = pd.DataFrame({"people": groups.size(), "poor fit": groups["poor_fit"].sum(),
-                            "median stage": groups["ml_stage"].median()})
-    summary.insert(1, "%", (100 * summary["people"] / len(table)).round(1))
-    return summary
+def stage_quartiles(stages):
+    """Q1, median and Q3 of the stages, always a real stage (no 12.5): the stage of the person there."""
+    return [int(np.quantile(stages, q, method="inverted_cdf")) for q in (0.25, 0.5, 0.75)]
+
+
+def subtype_summary(table, orders=None):
+    """People per group (S0, Subtype 1, ...): number, %, how many fit poorly, and the stage
+    [Q1, median, Q3]. With orders {"Subtype 1": [event names, first to last], ...}: also the last event
+    reached at each of these stages (stage k = the first k events of the subtype have happened)."""
+    rows = {}
+    for group, people in table.groupby("subtype"):
+        quartiles = stage_quartiles(people["ml_stage"])
+        row = {"people": len(people), "%": round(100 * len(people) / len(table), 1),
+               "poor fit": int(people["poor_fit"].sum()),
+               "stage [Q1, median, Q3]": "[" + ", ".join(str(q) for q in quartiles) + "]"}
+        if orders is not None:
+            events = orders.get(group)                  # S0 has no events
+            row["last event at Q1, median, Q3"] = ("" if events is None else
+                                                    "[" + ", ".join(events[q - 1] for q in quartiles) + "]")
+        rows[group] = row
+    return pd.DataFrame(rows).T.rename_axis("subtype")
