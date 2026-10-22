@@ -335,7 +335,6 @@ def plot_subtype_tree(subtypes_by_k):
     ax.set_ylim(0, None)
     ax.set_yticks([])
     ax.set_ylabel("tau+ people")
-    ax.set_title("Subtype tree: where do people go when one more subtype is allowed?")
     fig.tight_layout()
     return fig
 
