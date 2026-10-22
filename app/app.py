@@ -54,8 +54,9 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
              "it. In the paper most people were clearly one subtype.",
-    "stages": "Left: tau+ people per stage and subtype (paper Ext. Fig. 2); S0 is given in the title only. "
-              "Right: how sure SuStaIn is about each person's stage (spread of the stage probabilities).",
+    "stages": "Left: how many tau+ people are at each SuStaIn stage, coloured by subtype (paper Ext. Fig. 2); "
+              "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Right: how sure SuStaIn is "
+              "about each person's stage - low = sure, high = the stage could be one of several.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
               "best; paper Ext. Fig. 1c-e). Bottom: subtype tree - where people go when one more subtype is "
               "allowed (paper Ext. Fig. 1f).",
@@ -242,8 +243,9 @@ app_ui = ui.page_navbar(
                          ui.input_select("fig_model", "Model (number of subtypes)", choices=[]),
                          ui.input_text("subtype_names", "Subtype names (optional)",
                                        placeholder="e.g. limbic, posterior, ..."),
-                         ui.p("Comma-separated, Subtype 1 first. Subtypes are numbered by size "
-                              "(1 = largest), as in the PVD.", class_="text-muted small"),
+                         ui.p("Comma-separated, Subtype 1 first. Subtype 1 = the subtype with the most "
+                              "tau+ people, Subtype 2 the next, ... (the same numbers in every figure and table).",
+                              class_="text-muted small"),
                          ui.input_numeric("fig_vmax", "Colour scale maximum (z)",
                                           value=CONFIG["figures"]["heatmap_vmax"], min=1),
                          width=320, open="always"),

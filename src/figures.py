@@ -202,7 +202,7 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
 
 def plot_stages(table, prob_stage, subtype_titles):
     """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
-    (S0) is only counted in the title, so its large bar does not squash the others.
+    (S0) is only counted in the legend, so its large bar does not squash the others.
     Right: how sure SuStaIn is about each person's stage - the spread (SD) of the stage
     probabilities against the most likely stage. Low = sure; high = the stage could be several values.
     """
@@ -220,8 +220,7 @@ def plot_stages(table, prob_stage, subtype_titles):
     ax1.set_xlabel("most likely SuStaIn stage")
     ax1.set_ylabel("people (tau+)")
     ax1.set_xlim(0.4, stages[-1] + 0.6)
-    ax1.set_title(f"Stage 0 (S0, no abnormal tau): {s0} people ({100 * s0 / len(table):.0f}%) - not shown",
-                  fontsize=10)
+    ax1.bar(0, 0, color="white", label=f"S0 (no abnormal tau): {s0} ({100 * s0 / len(table):.0f}%), not shown")
     ax1.legend(fontsize=8)
     prob_stage = prob_stage / prob_stage.sum(axis=1, keepdims=True)      # each row sums to 1
     mean = prob_stage @ stages
@@ -231,7 +230,6 @@ def plot_stages(table, prob_stage, subtype_titles):
                 c=colors[table["ml_subtype"].to_numpy()[tau_pos] - 1])
     ax2.set_xlabel("most likely SuStaIn stage")
     ax2.set_ylabel("uncertainty (SD of stage, in stages)")
-    ax2.set_title("How sure is the stage? (tau+ people)")
     fig.tight_layout()
     return fig
 
