@@ -157,8 +157,9 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
     return fig
 
 
-# Subtype colours: different from the diagnosis colours (blue CN, lavender SCD, yellow MCI, red AD)
-SUBTYPE_COLORS = ["#117733", "#882255", "#44AA99", "#332288", "#999933", "#AA4499", "#8C510A", "#777777"]
+# Subtype colours: different from the diagnosis colours (blue CN, lavender SCD, yellow MCI, red AD):
+# green, brown, pink, dark grey, ochre, black, olive, light grey - no purple, only one green
+SUBTYPE_COLORS = ["#1B7837", "#8C510A", "#E7298A", "#4D4D4D", "#A6761D", "#000000", "#808000", "#B0B0B0"]
 
 
 def subtype_colors(k):
@@ -231,7 +232,7 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None)
 
     tau = table[table["ml_stage"] > 0]
     if subtype is None:
-        ax2.scatter(tau["ml_stage"], tau["stage_sd"], s=14, alpha=0.7, c=colors[tau["ml_subtype"].to_numpy() - 1])
+        ax2.scatter(tau["ml_stage"], tau["stage_sd"], s=14, c=colors[tau["ml_subtype"].to_numpy() - 1])
     else:                                                 # chosen subtype in colour, on top of the others in grey
         chosen = tau["ml_subtype"] == subtype
         ax2.scatter(tau.loc[~chosen, "ml_stage"], tau.loc[~chosen, "stage_sd"], s=12, color="lightgray")
@@ -247,7 +248,7 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None)
         ax.set_xlim(0.4, stages[-1] + 0.6)
 
     ax3.boxplot([tau.loc[tau["ml_subtype"] == n, "stage_sd"] for n in range(1, k + 1)], widths=0.6,
-                patch_artist=True, boxprops={"alpha": 0.6}, medianprops={"color": "black"})
+                patch_artist=True, medianprops={"color": "white"})
     for n, (patch, color) in enumerate(zip(ax3.patches, colors), start=1):
         patch.set_facecolor(color if subtype in (None, n) else "lightgray")
     ax3.set_xticks(range(1, k + 1), subtype_titles, rotation=30, ha="right")
@@ -394,7 +395,7 @@ def plot_stage_vs(table, values, label, subtype_titles):
     for k, title in enumerate(subtype_titles, start=1):
         people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0) & numeric.notna()
         x, y = table.loc[people, "ml_stage"], numeric[people]
-        ax.scatter(x, y, s=14, alpha=0.6, color=colors[k - 1], label=f"{title} (n={people.sum()})")
+        ax.scatter(x, y, s=14, color=colors[k - 1], label=f"{title} (n={people.sum()})")
         if people.sum() > 2 and x.nunique() > 1:
             slope, intercept = np.polyfit(x, y, 1)
             xs = np.array([x.min(), x.max()])
@@ -419,7 +420,7 @@ def plot_asymmetry(table, asymmetry, subtype_titles):
     ax1.set_xticks(range(1, len(subtype_titles) + 1), subtype_titles, rotation=30, ha="right")
     ax1.axhline(0, color="gray", lw=1)
     ax1.set_ylabel("asymmetry (left - right)")
-    ax2.scatter(table.loc[tau_pos, "ml_stage"], asymmetry[tau_pos], s=12, alpha=0.6,
+    ax2.scatter(table.loc[tau_pos, "ml_stage"], asymmetry[tau_pos], s=12,
                 c=colors[table.loc[tau_pos, "ml_subtype"].to_numpy() - 1])
     ax2.axhline(0, color="gray", lw=1)
     ax2.set_xlabel("SuStaIn stage")
