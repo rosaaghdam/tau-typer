@@ -57,7 +57,7 @@ FIG_HELP = {    # short help text above each tab-4 figure
               "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Middle: how sure SuStaIn is "
               "about each person's stage (SD of their stage probabilities) - low = sure, high = the stage could "
               "be one of several (often higher in the middle stages, where events overlap - the pale squares "
-              "of the PVD); ringed dot = the person chosen in the Person tab. Right: the same per subtype. "
+              "of the PVD); ringed dot = the person chosen above. Right: the same per subtype. "
               "Dashed red line = your limit; the people above it are listed below.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
               "best). Bottom: subtype tree - where people go when one more subtype is allowed.",
@@ -259,8 +259,12 @@ app_ui = ui.page_navbar(
                          ui.nav_panel("Subtype probabilities", ui.p(FIG_HELP["probs"], class_="text-muted small"),
                                       ui.output_plot("fig_probs", height="560px")),
                          ui.nav_panel("Stages", ui.p(FIG_HELP["stages"], class_="text-muted small"),
-                                      ui.input_numeric("sd_limit", "Uncertain stage: SD above (stages)",
-                                                       value=CONFIG["results"]["stage_sd_limit"], min=0, step=0.1),
+                                      ui.layout_columns(
+                                          ui.input_numeric("sd_limit", "Uncertain stage: SD above (stages)",
+                                                           value=CONFIG["results"]["stage_sd_limit"], min=0, step=0.1),
+                                          ui.input_select("stages_subtype", "Show a person from", choices=[]),
+                                          ui.input_selectize("stages_person", "Person (circled)", choices=[]),
+                                          col_widths=[3, 3, 3]),
                                       ui.output_plot("fig_stages", height="440px"),
                                       ui.output_ui("uncertain_status"),
                                       ui.output_data_frame("uncertain_people")),
@@ -1355,7 +1359,24 @@ def server(input, output, session):
     @render.plot
     def fig_stages():
         d = fig_data()
-        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.fig_person() or None)
+        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.stages_person() or None)
+
+    @reactive.effect
+    def _stages_subtype_choices():
+        titles = fig_titles()
+        ui.update_select("stages_subtype", choices={"all": "All tau+ people",
+                                                    **{str(n): t for n, t in enumerate(titles, start=1)}})
+
+    @reactive.effect
+    def _stages_person_choices():
+        """People of the chosen subtype (tau+ only), most uncertain stage first; none circled at the start."""
+        table, chosen = fig_data()["table"], input.stages_subtype()
+        people = table[table["ml_stage"] > 0]
+        if chosen and chosen != "all":
+            people = people[people["ml_subtype"] == int(chosen)]
+        people = people.sort_values("stage_sd", ascending=False)
+        choices = {"": "(none)", **{p: f"{p} (stage {r.ml_stage}, SD {r.stage_sd:.2f})" for p, r in people.iterrows()}}
+        ui.update_selectize("stages_person", choices=choices, selected="")
 
     def uncertain_table():
         """Tau+ people whose stage SD is above the limit, most uncertain first."""
