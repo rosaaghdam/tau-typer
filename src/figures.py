@@ -204,13 +204,14 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
     return fig
 
 
-def plot_stages(table, subtype_titles, sd_limit=None, person=None):
+def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None):
     """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
     (S0) is only counted in the legend, so its large bar does not squash the others.
     Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
     stage (high where events overlap - the pale squares of the PVD).
     Right: the same uncertainty per subtype. Dashed red line = sd_limit (above = uncertain stage).
-    person: this person's dot gets a black ring (the person chosen in the Person tab)."""
+    person: this person's dot gets a black ring. subtype (1, 2, ...): only this subtype in colour in the
+    middle and right panels, the others grey."""
     k = len(subtype_titles)
     colors = subtype_colors(k)
     stages = np.arange(table["ml_stage"].max() + 1)
@@ -229,7 +230,13 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None):
     ax1.legend(fontsize=8)
 
     tau = table[table["ml_stage"] > 0]
-    ax2.scatter(tau["ml_stage"], tau["stage_sd"], s=14, alpha=0.7, c=colors[tau["ml_subtype"].to_numpy() - 1])
+    if subtype is None:
+        ax2.scatter(tau["ml_stage"], tau["stage_sd"], s=14, alpha=0.7, c=colors[tau["ml_subtype"].to_numpy() - 1])
+    else:                                                 # chosen subtype in colour, on top of the others in grey
+        chosen = tau["ml_subtype"] == subtype
+        ax2.scatter(tau.loc[~chosen, "ml_stage"], tau.loc[~chosen, "stage_sd"], s=12, color="lightgray")
+        ax2.scatter(tau.loc[chosen, "ml_stage"], tau.loc[chosen, "stage_sd"], s=20, color=colors[subtype - 1],
+                    label=subtype_titles[subtype - 1])
     if person is not None and person in tau.index:
         ax2.scatter(tau.loc[person, "ml_stage"], tau.loc[person, "stage_sd"], s=150, facecolors="none",
                     edgecolors="black", linewidths=2, label=str(person))
@@ -241,8 +248,8 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None):
 
     ax3.boxplot([tau.loc[tau["ml_subtype"] == n, "stage_sd"] for n in range(1, k + 1)], widths=0.6,
                 patch_artist=True, boxprops={"alpha": 0.6}, medianprops={"color": "black"})
-    for patch, color in zip(ax3.patches, colors):
-        patch.set_facecolor(color)
+    for n, (patch, color) in enumerate(zip(ax3.patches, colors), start=1):
+        patch.set_facecolor(color if subtype in (None, n) else "lightgray")
     ax3.set_xticks(range(1, k + 1), subtype_titles, rotation=30, ha="right")
     ax3.set_ylabel("uncertainty (SD of stage)")
     ax3.set_ylim(ax2.get_ylim())

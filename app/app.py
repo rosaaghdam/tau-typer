@@ -57,7 +57,7 @@ FIG_HELP = {    # short help text above each tab-4 figure
               "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Middle: how sure SuStaIn is "
               "about each person's stage (SD of their stage probabilities) - low = sure, high = the stage could "
               "be one of several (often higher in the middle stages, where events overlap - the pale squares "
-              "of the PVD); ringed dot = the person chosen above. Right: the same per subtype. "
+              "of the PVD); 'Show a person from' a subtype = that subtype in colour, the others grey; ringed dot = the person chosen above. Right: the same per subtype. "
               "Dashed red line = your limit; the people above it are listed below.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
               "best). Bottom: subtype tree - where people go when one more subtype is allowed.",
@@ -1359,7 +1359,9 @@ def server(input, output, session):
     @render.plot
     def fig_stages():
         d = fig_data()
-        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.stages_person() or None)
+        chosen = input.stages_subtype()
+        subtype = int(chosen) if chosen and chosen != "all" else None
+        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.stages_person() or None, subtype)
 
     @reactive.effect
     def _stages_subtype_choices():
