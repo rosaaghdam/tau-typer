@@ -1,4 +1,5 @@
 """Figures of SuStaIn results. Drawing is done by pySuStaIn's own plot functions where possible."""
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -156,9 +157,13 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
     return fig
 
 
+# Subtype colours: different from the diagnosis colours (blue CN, lavender SCD, yellow MCI, red AD)
+SUBTYPE_COLORS = ["#117733", "#882255", "#44AA99", "#332288", "#999933", "#AA4499", "#8C510A", "#777777"]
+
+
 def subtype_colors(k):
-    """One fixed colour per subtype (Subtype 1 = first colour), used by all tab-4 figures."""
-    return plt.cm.tab10(np.arange(k) % 10)
+    """One fixed colour per subtype (Subtype 1 = first colour), used by all tab-4 and tab-5 figures."""
+    return matplotlib.colors.to_rgba_array([SUBTYPE_COLORS[i % len(SUBTYPE_COLORS)] for i in range(k)])
 
 
 def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
