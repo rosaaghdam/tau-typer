@@ -50,10 +50,10 @@ FIG_HELP = {    # short help text above each tab-4 figure (paper = Vogel et al. 
                 "(number in each cell; paper Fig. 1a/c). Bottom: the same, split into stage groups (early stages "
                 "on the left, late on the right), so you can see where tau spreads as the stage rises (paper "
                 "Fig. 1e). n = number of people.",
-    "probs": "Each tau+ person inside a polygon with the subtypes at the corners (paper Fig. 1b): near a corner "
-             "= surely that subtype, in the middle = a mix. Corners: people per subtype. Dashed box: the middle "
-             "of the polygon; legend = % of people inside and outside it. Dots are jittered a little so people "
-             "on the same spot can be seen.",
+    "probs": "How clearly each tau+ person belongs to one subtype (paper Fig. 1b). Each dot is a person, each "
+             "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
+             "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
+             "it. In the paper most people were clearly one subtype.",
     "stages": "Left: tau+ people per stage and subtype (paper Ext. Fig. 2); S0 is given in the title only. "
               "Right: how sure SuStaIn is about each person's stage (spread of the stage probabilities).",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "

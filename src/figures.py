@@ -192,9 +192,8 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
                 ha="center", va="center", fontsize=10, color=subtype_colors(k)[n - 1], fontweight="bold")
     ax.legend([box], [f"Inside: {100 * inside.mean():.0f}%\nOutside: {100 * (1 - inside.mean()):.0f}%"],
               loc="upper right", bbox_to_anchor=(1, 0.92), frameon=False, handlelength=1.5, handleheight=2.5)
-    ax.text(0, 1.55, f"Subtype probabilities of the {n_tau} tau+ people", ha="center", fontsize=12)
     ax.set_xlim(-1.75, 1.75)
-    ax.set_ylim(-1.45, 1.7)
+    ax.set_ylim(-1.45, 1.45)
     ax.set_aspect("equal")
     ax.axis("off")
     fig.tight_layout()
