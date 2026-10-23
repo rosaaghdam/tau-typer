@@ -977,3 +977,17 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
   switch model; after 3.71 s / 1.65 s = no change. Profile: drawing figures ~4 s of 10 s, regional
   statistics 1.2 s, reading result files 0.08 s - so caching cannot help much. Real gain: the report
   (~7 s) no longer freezes the app for everyone. Faster figures would need fewer/lighter plots.
+
+## 2026-10-23 - frontend-design, round 2 (Rosa's 7 points)
+1. Note under the inclusion-rule box: "Inclusion rule: 480 of 500 people kept (96%)".
+2. Region distributions: plot the regions against any column (dots + trend line, or boxes), split by a
+   group (a number is cut into thirds), one trend line per group; table of p-values per region for x,
+   group and x-by-group (interaction), not corrected for many regions.
+3. New step 6 Report: automatic summary (check before use), PDF report (summary page + all figures +
+   Table 1 + model choice), ZIP and per-person CSV moved here; both reports made in the background.
+4. Colours checked with the dataviz colour-blind validator: diagnosis SCD -> #6250D6, MCI -> #EDA100 (CN
+   and AD unchanged; all pairs pass); subtypes teal/pink/brown/olive (no diagnosis hues).
+5. PVD tab: "Show every model (1, 2, ... subtypes)".
+6. New runs also save input_data.csv and input_values.csv: loading a run refills tabs 1-2 (older runs:
+   only the other columns and the z-scores).
+7. (i) help + full-screen cards on the figures of tabs 1-3 too.

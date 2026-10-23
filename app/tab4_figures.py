@@ -1,4 +1,6 @@
 """Tab 4 - Figures of the shown run: PVD, tau patterns, probabilities, stages, choosing k, person."""
+import base64
+import io
 import secrets
 import tempfile
 from pathlib import Path
@@ -30,8 +32,12 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                      width=320, open="always"),
                  ui.output_ui("fig_empty"),
                  ui.navset_tab(
-                     ui.nav_panel("PVD", figure_card("Positional variance diagram", FIG_HELP["pvd"],
-                                                     ui.output_image("fig_pvd", height="auto"))),
+                     ui.nav_panel("PVD", figure_card(
+                         "Positional variance diagram", FIG_HELP["pvd"],
+                         ui.input_checkbox("pvd_all", "Show every model (1, 2, ... subtypes), not only the one "
+                                                      "chosen on the left", value=False),
+                         ui.panel_conditional("!input.pvd_all", ui.output_image("fig_pvd", height="auto")),
+                         ui.panel_conditional("input.pvd_all", ui.output_ui("fig_pvd_all")))),
                      ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
                                                               ui.output_plot("fig_patterns", height="520px"),
                                                               ui.output_image("fig_progression", height="auto"))),
@@ -120,6 +126,25 @@ def server(input, output, session, shared):
                        subtype_order=pvd_order(d["result"], d["order"]))
         plt.close(fig)
         return {"src": f"{path}.png", "width": "100%"}
+
+    @render.ui
+    def fig_pvd_all():
+        """The PVD of every model of the run, 1 subtype first (pySuStaIn fits them one after the other)."""
+        req(input.pvd_all())
+        k_max = shown_settings()["n_subtypes_max"]
+        pictures = []
+        for k in range(1, k_max + 1):
+            d = model_view(k)
+            buffer = io.BytesIO()
+            fig = plot_pvd(d["result"], d["Z_vals"], d["regions"], subtype_titles(k), None,
+                           subtype_order=pvd_order(d["result"], d["order"]))
+            fig.savefig(buffer, format="png", dpi=90, bbox_inches="tight")
+            plt.close(fig)
+            source = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+            pictures += [ui.h6(f"{k} subtype{'s' if k > 1 else ''}", class_="mt-3"),
+                         ui.img(src=source, style=f"width: {60 if k == 1 else 100}%;",   # 1 panel: not too big
+                                alt=f"PVD of the model with {k} subtypes")]
+        return ui.TagList(*pictures)
 
     @render.plot
     def fig_patterns():

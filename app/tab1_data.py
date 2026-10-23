@@ -2,13 +2,13 @@
 import numpy as np
 import pandas as pd
 from shiny import reactive, render, req, ui
-from shiny.types import SafeException
+from shiny.types import SafeException, SilentException
 
-from src.figures import (group_colors, plot_category_bars, plot_correlations, plot_covariate_boxplots,
-                         plot_region_histograms)
+from src.figures import (OTHER_COLORS, group_colors, plot_category_bars, plot_correlations, plot_covariate_boxplots,
+                         plot_region_eda, plot_region_histograms)
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
-                    number_and_category_columns, qc_summary)
-from common import CONFIG, RULE_ROLES, ROLE_LABELS, step_status, step_title
+                    number_and_category_columns, qc_summary, region_trend_tests)
+from common import CONFIG, DATA_HELP, ROLE_LABELS, RULE_ROLES, figure_card, step_status, step_title
 
 panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
              ui.layout_sidebar(
@@ -28,10 +28,14 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                                   ui.h6("Inclusion rule", class_="mt-4"),
                                   ui.output_ui("inclusion_status"),
                                   ui.output_data_frame("inclusion_table")),
-                     ui.nav_panel("Region distributions",
-                                  ui.p("Raw values of each selected region column, before normalization.",
-                                       class_="text-muted small"),
-                                  ui.output_plot("region_hist", height="520px")),
+                     ui.nav_panel("Region distributions", figure_card(
+                         "Explore the regional values", DATA_HELP["regions"],
+                         ui.layout_columns(
+                             ui.input_select("eda_x", "Plot the regions against", choices={"": "(nothing)"}),
+                             ui.input_select("eda_split", "Split by (colour)", choices={"": "(no split)"}),
+                             col_widths=[4, 4]),
+                         ui.output_plot("region_hist", height="560px"),
+                         ui.output_ui("eda_tests_view"))),
                      ui.nav_panel("Demographics",
                                   ui.p("Everyone, and per diagnosis group.", class_="text-muted small"),
                                   ui.output_data_frame("demographics"),
@@ -41,9 +45,19 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
 def server(input, output, session, shared):
     """Outputs and reactive steps of this tab. shared = what earlier tabs made (and what this tab
     adds for the later ones)."""
+    restore = shared["restore"]
+
+    @reactive.effect
+    @reactive.event(input.data_file)
+    def _new_upload():
+        restore.set(None)                                 # a new file replaces a loaded run's data
+
     @reactive.calc
     def uploaded_data():
-        """The uploaded CSV as a table (re-read automatically when a new file is uploaded)."""
+        """The uploaded CSV as a table (re-read automatically when a new file is uploaded), or the data
+        of a run loaded in tab 3."""
+        if restore() is not None:
+            return restore()["data"]
         file = input.data_file()
         if not file:
             return None
@@ -61,6 +75,10 @@ def server(input, output, session, shared):
             return ui.p("Upload a file to match its columns.", class_="text-muted small")
         columns = list(data.columns)
         guess = guess_columns(columns)
+        if restore() is not None:                         # a loaded run: its own column choices
+            saved = restore()["columns"]
+            guess = {**{role: saved.get(role) for role in ROLE_LABELS},
+                     "regions": [r for r in restore()["regions"] if r in columns]}
         choices = {"": "(not in file)", **{col: col for col in columns}}
         selects = [ui.input_select(f"col_{role}", f"{label} (optional)", choices=choices, selected=guess[role] or "")
                    for role, label in ROLE_LABELS.items()]
@@ -68,6 +86,13 @@ def server(input, output, session, shared):
                                      choices=columns, selected=guess["regions"], multiple=True)
         return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions, ui.hr(),
                           ui.output_ui("inclusion_rule_ui"))
+
+    def rule_ticked():
+        """The inclusion-rule box; False until it exists (it is drawn when tab 1 is first opened)."""
+        try:
+            return bool(input.apply_rule())
+        except SilentException:
+            return False
 
     def missing_roles(roles):
         """Names of the needed columns that are set to "(not in file)" in tab 1."""
@@ -83,19 +108,33 @@ def server(input, output, session, shared):
             return ui.TagList(title, ui.p(f"Inclusion rule not available: it needs {', '.join(missing)}.",
                                           class_="text-muted small"))
         return ui.TagList(title, ui.input_checkbox("apply_rule", "Apply the inclusion rule "
-                                                   "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False))
+                                                   "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False),
+                          ui.output_ui("rule_note"))
+
+    @render.ui
+    def rule_note():
+        """Right under the checkbox: how many people the rule keeps."""
+        req(input.apply_rule())
+        kept, total = len(analysis_data()), len(uploaded_data())
+        return ui.p(f"Inclusion rule: {kept} of {total} people kept ({100 * kept / total:.0f}%).",
+                    class_="fw-bold small", style="color: var(--tt-accent);")
 
     @reactive.calc
     def chosen_columns():
-        """The user's dropdown choices: role -> column ("" = not in file)."""
-        return {role: input[f"col_{role}"]() for role in ROLE_LABELS}
+        """The user's dropdown choices: role -> column ("" = not in file). Before tab 1 has been opened
+        after loading a run, the boxes do not exist yet: then the run's own choices are used."""
+        try:
+            return {role: input[f"col_{role}"]() for role in ROLE_LABELS}
+        except SilentException:
+            req(restore() is not None)
+            return {role: restore()["columns"].get(role) or "" for role in ROLE_LABELS}
 
     @reactive.calc
     def included():
         """(people used from here on, reasons table or None). The rule runs only if the box is ticked."""
         data = uploaded_data()
         req(data is not None)
-        if missing_roles(RULE_ROLES) or not input.apply_rule():
+        if missing_roles(RULE_ROLES) or not rule_ticked():
             return data, None
         rule = CONFIG["inclusion"]
         return apply_inclusion_rule(data, chosen_columns(), rule["min_age_cn"],
@@ -186,12 +225,12 @@ def server(input, output, session, shared):
             ui.h6("All other columns", class_="mt-4"),
             ui.p("Numbers: mean (SD). Categories: % of each value (the 4 most common).", class_="text-muted small"),
             ui.output_data_frame("covariate_table"),
-            ui.h6("Number columns by diagnosis", class_="mt-4"),
-            ui.output_plot("covariate_boxplots", height=plot_height(len(numbers))),
-            ui.h6("Category columns by diagnosis", class_="mt-4"),
-            ui.output_plot("category_bars", height=plot_height(len(categories))),
-            ui.h6("Correlations between number columns (and the mean of the regions)", class_="mt-4"),
-            ui.output_plot("correlation_plot", height=f"{35 * len(numbers) + 300}px", width="70%"))
+            figure_card("Number columns by diagnosis", DATA_HELP["covariates"],
+                        ui.output_plot("covariate_boxplots", height=plot_height(len(numbers)))),
+            figure_card("Category columns by diagnosis", DATA_HELP["covariates"],
+                        ui.output_plot("category_bars", height=plot_height(len(categories)))),
+            figure_card("Correlations between number columns (and the mean of the regions)", DATA_HELP["covariates"],
+                        ui.output_plot("correlation_plot", height=f"{35 * len(numbers) + 300}px", width="70%")))
 
     @render.data_frame
     def covariate_table():
@@ -231,14 +270,85 @@ def server(input, output, session, shared):
     @render.plot
     def region_hist():
         req(input.col_regions())                         # wait for at least 1 region
-        return plot_region_histograms(analysis_data(), input.col_regions())
+        x, groups, colors = eda_choice()
+        if x is None and groups is None:
+            return plot_region_histograms(analysis_data(), input.col_regions())
+        return plot_region_eda(analysis_data(), list(input.col_regions()), x, groups, colors)
+
+    @reactive.effect
+    def _eda_choices():
+        """'Plot against' and 'Split by' offer the other columns of the file (age, sex, MMSE, ...)."""
+        columns = other_columns()
+        with reactive.isolate():
+            keep_x, keep_split = input.eda_x(), input.eda_split()
+        ui.update_select("eda_x", choices={"": "(nothing)", **{c: c for c in columns}},
+                         selected=keep_x if keep_x in columns else "")
+        ui.update_select("eda_split", choices={"": "(no split)", **{c: c for c in columns}},
+                         selected=keep_split if keep_split in columns else "")
+
+    def eda_choice():
+        """(x column or None, group of each person or None, {group: colour}). A number column used to split
+        is cut into thirds (low / middle / high); the diagnosis keeps its own colours."""
+        data = analysis_data()
+        x = input.eda_x() or None
+        split = input.eda_split() or None
+        if x is not None and x not in data.columns or split is not None and split not in data.columns:
+            return None, None, None
+        if split is None:
+            return x, None, None
+        numbers, _ = number_and_category_columns(data, [split])
+        if numbers:
+            groups = pd.qcut(pd.to_numeric(data[split], errors="coerce"), 3, labels=["low", "middle", "high"])
+            groups = groups.astype(str).where(groups.notna())
+            names = ["low", "middle", "high"]
+        else:
+            groups = data[split].astype(str).where(data[split].notna())
+            names = sorted(groups.dropna().unique())
+        if split == chosen_columns().get("diagnosis"):
+            names = diagnosis_groups()[1]
+            colors = group_colors(names)
+        else:
+            colors = {g: OTHER_COLORS[i % len(OTHER_COLORS)] for i, g in enumerate(names)}
+        return x, groups, colors
+
+    @render.ui
+    def eda_tests_view():
+        x, groups, _ = eda_choice()
+        if x is None:
+            return None
+        return ui.TagList(
+            ui.h6("Tests per region", class_="mt-3"),
+            ui.p(f"Linear model: region value ~ {x}" + (f" x {input.eda_split()}" if groups is not None else "") +
+                 ". 'p: x' = does the value change with " + x + (
+                     "; 'p: group' = do the groups differ; 'p: x by group' = does the trend differ between the "
+                     "groups (interaction)" if groups is not None else "") +
+                 ". p-values are not corrected for testing many regions.", class_="text-muted small"),
+            ui.output_data_frame("eda_tests"))
+
+    @render.data_frame
+    def eda_tests():
+        x, groups, _ = eda_choice()
+        req(x is not None)
+        table = region_trend_tests(analysis_data(), list(input.col_regions()), x, groups)
+        shown = table.copy()
+        for col in shown.columns:
+            shown[col] = shown[col].map(lambda v: f"{v:.3g}")
+        bold = [{"rows": [i for i, v in enumerate(table[col]) if v < 0.05], "cols": [j + 1],
+                 "style": {"font-weight": "bold"}} for j, col in enumerate(table.columns) if col.startswith("p:")]
+        return render.DataGrid(shown.reset_index(names="region"), styles=bold, width="100%")
 
     @render.ui
     def data_status():
         data = uploaded_data()
         if data is None:
             return ui.p("No data uploaded yet.")
-        return ui.p(f"{data.shape[0]} rows and {data.shape[1]} columns. First 20 rows:")
+        text = f"{data.shape[0]} rows and {data.shape[1]} columns. First 20 rows:"
+        if restore() is None:
+            return ui.p(text)
+        note = (f"The data of run {restore()['run']} (the people that run used)." if restore()["complete"] else
+                f"Run {restore()['run']} was made before the app saved the input data: only its other columns "
+                "are shown, not the regional values. Upload the file again to see them.")
+        return ui.TagList(ui.div(note, class_="alert alert-info py-2"), ui.p(text))
 
     @render.data_frame
     def data_head():
@@ -250,6 +360,8 @@ def server(input, output, session, shared):
     def step1_status():
         if uploaded_data() is None:
             return step_status("Upload a CSV", "attention")
+        if restore() is not None:
+            return step_status(f"{len(analysis_data())} people (from the run)", "done")
         rule = " (rule applied)" if included()[1] is not None else ""
         return step_status(f"{len(analysis_data())} people{rule}", "done")
 

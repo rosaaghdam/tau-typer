@@ -9,8 +9,8 @@ from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_po
                                z_max_table)
 from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm,
                         reference_group_normal, zscore_regions, zscore_with_reference)
-from common import (CONFIG, DISEASE_WORDS, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES, SAMPLE_DATA, step_status,
-                    step_title)
+from common import (CONFIG, DATA_HELP, DISEASE_WORDS, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES,
+                   SAMPLE_DATA, figure_card, step_status, step_title)
 
 panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
              ui.layout_sidebar(
@@ -66,13 +66,15 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                      ui.nav_panel("Normal reference", ui.output_ui("norm_status"),
                                   ui.output_ui("slopes_view"),
                                   ui.output_data_frame("norm_reference")),
-                     ui.nav_panel("GMM fit per region", ui.output_ui("gmm_region_choice"),
-                                  ui.output_plot("gmm_fit_plot", height="420px")),
+                     ui.nav_panel("GMM fit per region", figure_card("GMM fit of one region", DATA_HELP["gmm"],
+                                                                    ui.output_ui("gmm_region_choice"),
+                                                                    ui.output_plot("gmm_fit_plot", height="420px"))),
                      ui.nav_panel("Z-scores",
                                   ui.p("z = (value - normal mean) / normal SD. First 20 people:",
                                        class_="text-muted small"),
                                   ui.output_data_frame("z_head"),
-                                  ui.output_plot("z_hist", height="520px")),
+                                  figure_card("z-scores per region", DATA_HELP["zhist"],
+                                              ui.output_plot("z_hist", height="520px"))),
                      ui.nav_panel("Events",
                                   ui.p("Number of people reaching each cut-point in each region.",
                                        class_="text-muted small"),
@@ -100,10 +102,32 @@ def server(input, output, session, shared):
     chosen_columns = shared["chosen_columns"]
     missing_roles = shared["missing_roles"]
     other_columns = shared["other_columns"]
+    restore = shared["restore"]
+
+    def restored():
+        """The z-scores of a run loaded in tab 3 (None if there is none, or after a new Normalize)."""
+        return None if restore() is None else restore()["normalized"]
+
+    def norm_done():
+        """True once there are z-scores: Normalize was clicked, or a run was loaded."""
+        return restored() is not None or input.normalize() > 0
+
+    @reactive.effect
+    @reactive.event(input.normalize)
+    def _new_normalize():
+        if restore() is not None:                         # new z-scores replace the loaded run's
+            restore.set({**restore(), "normalized": None})
+
+    @reactive.calc
+    def normalized():
+        """The z-scores used from here on: from Normalize, or from a run loaded in tab 3."""
+        if restored() is not None:
+            return restored()
+        return computed_normalized()
 
     @reactive.calc
     @reactive.event(input.normalize)                    # runs only when Normalize is clicked
-    def normalized():
+    def computed_normalized():
         """z-scores of the kept people with the chosen method ("gmm", "reference" or "zscored").
         Returns a dict: z-scores, normal reference (None if already z-scored), values used,
         method, settings used, reference-group size and how many people were left out."""
@@ -180,7 +204,7 @@ def server(input, output, session, shared):
     @reactive.calc
     def norm_outdated():
         """True if a setting or the data changed after the last click on Normalize."""
-        if input.normalize() == 0:
+        if not norm_done() or restored() is not None:      # a loaded run's z-scores are used as saved
             return False
         try:
             return normalized()["inputs"] != norm_inputs()
@@ -193,15 +217,19 @@ def server(input, output, session, shared):
 
     @render.ui
     def norm_status():
-        if input.normalize() == 0:
+        if not norm_done():
             return ui.p("Choose the settings and click Normalize.", class_="text-muted")
         result = normalized()
         lines = [outdated_warning()] if norm_outdated() else []
+        if result.get("restored_from"):
+            lines.append(ui.div(f"These are the z-scores of run {result['restored_from']}, as saved with the run. "
+                                "Click Normalize to make new ones from the settings on the left.",
+                                class_="alert alert-info py-2"))
         lines += [ui.p(f"{NORM_METHODS[result['method']]}: {len(result['z'])} people in {result['z'].shape[1]} "
                       f"regions ({result['n_left_out']} left out because of missing region"
                        f"{' or covariate' if result['adjustment'] is not None else ''} values).",
                       class_="fw-bold")]
-        if result["method"] == "reference":
+        if result["method"] == "reference" and result["n_reference"] is not None:
             lines.append(ui.p(f"Reference group: {result['n_reference']} people "
                               f"({REFERENCE_GROUPS[CONFIG['normalization']['reference_group']]})."))
         adjustment = result["adjustment"]
@@ -231,11 +259,11 @@ def server(input, output, session, shared):
 
     @render.ui
     def gmm_region_choice():
-        if input.normalize() == 0:
+        if not norm_done():
             return ui.p("Click Normalize first.", class_="text-muted")
         if normalized()["method"] != "gmm":
             return ui.p("The GMM figure is only used for 'GMM on everyone'.", class_="text-muted")
-        regions = list(normalized()["values"].columns)
+        regions = list(normalized()["z"].columns)
         return ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
 
     @render.plot
@@ -243,6 +271,7 @@ def server(input, output, session, shared):
         result = normalized()
         req(result["method"] == "gmm")
         region = input.gmm_region()
+        req(result["values"] is not None and result["n_components"])   # an older loaded run has no values
         req(region in result["values"].columns)
         values = result["values"][region]
         gmm = fit_gmm(values, result["n_components"], CONFIG["pipeline"]["seed"])   # same as Normalize
@@ -326,7 +355,7 @@ def server(input, output, session, shared):
 
     @render.ui
     def events_status():
-        if input.normalize() == 0:
+        if not norm_done():
             return ui.p("Click Normalize first.", class_="text-muted")
         minimum = CONFIG["normalization"]["min_people_per_event"]
         n_rare = int((event_counts() < minimum).sum().sum())          # empty cells are not counted
@@ -375,7 +404,7 @@ def server(input, output, session, shared):
 
     @render.ui
     def zmax_status():
-        if input.normalize() == 0:
+        if not norm_done():
             return ui.p("Click Normalize first.", class_="text-muted")
         values = z_max_values()["Z_max used"]
         too_low = [region for region, cuts in region_cuts().items() if values[region] <= cuts[-1]]
@@ -415,7 +444,7 @@ def server(input, output, session, shared):
 
     @render.ui
     def sustain_input_summary():
-        if input.normalize() == 0:
+        if not norm_done():
             return ui.p("Click Normalize first.", class_="text-muted")
         s = sustain_input()
         n_events = int((s["Z_vals"] > 0).sum())
@@ -500,7 +529,7 @@ def server(input, output, session, shared):
 
     @render.ui
     def slopes_view():
-        if input.normalize() == 0 or normalized()["adjustment"] is None:
+        if not norm_done() or normalized()["adjustment"] is None:
             return None
         return ui.TagList(ui.h6("Covariate adjustment per region: slope (p-value)"),
                           ui.p("Slope = change in SUVR per unit of the covariate in the healthy reference group "
@@ -545,7 +574,7 @@ def server(input, output, session, shared):
     def step2_status():
         if uploaded_data() is None:
             return step_status("Waiting for data")
-        if input.normalize() == 0:
+        if not norm_done():
             return step_status("Click Normalize", "attention")
         if norm_outdated():
             return step_status("Settings changed", "attention")

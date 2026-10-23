@@ -113,6 +113,62 @@ def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
     return fig
 
 
+def plot_region_eda(data, regions, x=None, groups=None, colors=None):
+    """Explore the regional values (tab 1). One panel per region (left on top, right below):
+    - x = None: the distribution of the values (one colour per group if groups is given);
+    - x = a number column (e.g. age): each person as a dot, with a straight trend line per group - if the
+      lines of two groups are not parallel, the trend differs between the groups (an interaction);
+    - x = a category column (e.g. sex): a box per category, with the people as dots coloured by group.
+    groups: a Series of group labels (e.g. sex, or age split into low/middle/high), same rows as data;
+    colors: {group: colour}."""
+    values = data[list(regions)].apply(pd.to_numeric, errors="coerce")
+    names = list(colors) if groups is not None else [None]
+    member = {g: (groups == g) if g is not None else pd.Series(True, index=data.index) for g in names}
+    x_values = None if x is None else data[x]
+    x_is_number = x is not None and pd.to_numeric(x_values, errors="coerce").notna().mean() > 0.9
+    cells, n_cols = left_right_layout(list(regions))
+    n_rows = max(1, int(np.ceil(len(cells) / n_cols)))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.2 * n_cols, 2.7 * n_rows), squeeze=False)
+    for ax, region in zip(axes.flat, cells + [None] * (axes.size - len(cells))):
+        if region is None:
+            ax.set_visible(False)
+            continue
+        for g in names:
+            color = colors[g] if g is not None else "#52606D"
+            y = values.loc[member[g], region]
+            if x is None:
+                ax.hist(y.dropna(), bins=30, color=color, alpha=0.55 if g is not None else 1, label=g)
+            elif x_is_number:
+                xs = pd.to_numeric(x_values[member[g]], errors="coerce")
+                ok = xs.notna() & y.notna()
+                ax.scatter(xs[ok], y[ok], s=7, color=color, alpha=0.6, label=g)
+                if ok.sum() >= 3:                                  # straight trend line of this group
+                    slope, intercept = np.polyfit(xs[ok], y[ok], 1)
+                    line_x = np.array([xs[ok].min(), xs[ok].max()])
+                    ax.plot(line_x, intercept + slope * line_x, color=color, lw=2)
+        if x is not None and not x_is_number:                     # boxes per category, people as dots
+            categories = sorted(x_values.dropna().astype(str).unique())
+            ax.boxplot([values.loc[x_values.astype(str) == c, region].dropna() for c in categories],
+                       widths=0.5, showfliers=False, medianprops={"color": "#1F2933"})
+            rng = np.random.default_rng(0)
+            for g in names:
+                color = colors[g] if g is not None else "#52606D"
+                for i, c in enumerate(categories, start=1):
+                    y = values.loc[member[g] & (x_values.astype(str) == c), region].dropna()
+                    ax.scatter(i + rng.uniform(-0.15, 0.15, len(y)), y, s=6, color=color, alpha=0.6,
+                               label=g if i == 1 else None)
+            ax.set_xticks(range(1, len(categories) + 1), categories, fontsize=8)
+        ax.set_title(region, fontsize=10)
+        ax.set_xlabel(x or "value (e.g. SUVR)", fontsize=8)
+    if groups is not None:                                        # one legend for all panels
+        handles = [plt.Rectangle((0, 0), 1, 1, color=colors[g]) for g in names]
+        fig.legend(handles, [str(g) for g in names], loc="upper center", ncol=len(names), frameon=False)
+        fig.tight_layout(rect=(0, 0, 1, 0.94))
+    else:
+        fig.tight_layout()
+    return fig
+
+
 def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
     """One region: histogram of the values + every GMM bell curve (normal one in green), and the
     cut-points drawn on the value axis (SUVR = normal mean + z * normal SD) - the tab-2 check."""
@@ -161,9 +217,11 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
     return fig
 
 
-# Subtype colours: different from the diagnosis colours (blue CN, lavender SCD, yellow MCI, red AD):
-# green, brown, pink, dark grey, ochre, black, olive, light grey - no purple, only one green
-SUBTYPE_COLORS = ["#1B7837", "#8C510A", "#E7298A", "#4D4D4D", "#A6761D", "#000000", "#808000", "#B0B0B0"]
+# Subtype colours: teal, pink, brown, olive (+ raspberry, green, grey-brown, grey for 5-8 subtypes).
+# Checked with a colour-blind simulator (dataviz validate_palette.js, all pairs): the first 4 stay apart
+# for red-green colour blindness (worst Delta E 7.1 - fine because every figure also labels the subtypes)
+# and use none of the diagnosis hues (blue, violet, yellow, red).
+SUBTYPE_COLORS = ["#00897B", "#E87BA4", "#8A5A00", "#9E9D24", "#AD1457", "#008300", "#6D4C41", "#9E9E9E"]
 
 
 def subtype_colors(k):
@@ -198,7 +256,7 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
         count = (subtype == n).sum()
         side = np.sign(round(x, 6)) * 0.3                   # side corners: label away from the dots
         ax.text(1.12 * x + side, 1.17 * y, f"{title}\nn = {count} ({100 * count / n_tau:.0f}%)",
-                ha="center", va="center", fontsize=10, color=subtype_colors(k)[n - 1], fontweight="bold")
+                ha="center", va="center", fontsize=10, fontweight="bold")     # text in ink, the dots carry colour
     ax.legend([box], [f"Inside: {100 * inside.mean():.0f}%\nOutside: {100 * (1 - inside.mean()):.0f}%"],
               loc="upper right", bbox_to_anchor=(1, 0.92), frameon=False, handlelength=1.5, handleheight=2.5)
     ax.set_xlim(-1.75, 1.75)
@@ -435,8 +493,10 @@ def plot_asymmetry(table, asymmetry, subtype_titles):
     return fig
 
 
+# Diagnosis colours (Rosa's palette; SCD a deeper violet and MCI a deeper yellow so that all four stay
+# apart for colour-blind readers - checked with validate_palette.js, all pairs pass)
 DIAGNOSIS_COLORS = {"CN": "#11A0D9", "CU": "#11A0D9", "HC": "#11A0D9", "control": "#11A0D9",
-                    "SCD": "#9491D9", "MCI": "#F2B705", "AD": "#F24405", "dementia": "#F24405"}
+                    "SCD": "#6250D6", "MCI": "#EDA100", "AD": "#F24405", "dementia": "#F24405"}
 OTHER_COLORS = ["#3F8C61", "#8C2E62", "#332288", "#44AA99", "#DDCC77"]
 
 

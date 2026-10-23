@@ -1,6 +1,4 @@
-"""Tab 5 - Subtype analysis: Table 1, regional differences, stage vs variable, asymmetry, compare runs, downloads."""
-import asyncio
-from concurrent.futures import ProcessPoolExecutor
+"""Tab 5 - Subtype analysis: Table 1, regional differences, stage vs variable, asymmetry, compare runs."""
 from datetime import datetime
 
 import pandas as pd
@@ -8,8 +6,7 @@ import yaml
 from shiny import reactive, render, req, ui
 
 from src.figures import plot_asymmetry, plot_regional_contrasts, plot_stage_vs
-from src.report import build_report
-from src.results import load_sustain_result, model_likelihoods, size_order, subject_table
+from src.results import event_orders, load_sustain_result, model_likelihoods, size_order, subject_table
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
 from common import CONFIG, AN_HELP, figure_card, no_run_banner, step_status, step_title
 
@@ -49,18 +46,7 @@ panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
                                                     accept=[".zip"]),
                                       col_widths=[4, 3, 5]),
                                   ui.output_ui("an_compare_summary"),
-                                  ui.output_data_frame("an_compare_table")),
-                     ui.nav_panel("Download",
-                                  ui.p("One row per person: subtype, stage, probabilities and the other "
-                                       "columns of your file.", class_="text-muted small"),
-                                  ui.download_button("an_download", "Download results per person (CSV)"),
-                                  ui.p("Report: every figure of tabs 4-5 (PNG 300 dpi + PDF), every table "
-                                       "(CSV) and the run's settings, for the model chosen in the sidebar. It is "
-                                       "made in the background (about a minute); the app keeps working meanwhile.",
-                                       class_="text-muted small mt-3"),
-                                  ui.input_task_button("make_report", "Make report (ZIP)",
-                                                       label_busy="Making the report..."),
-                                  ui.output_ui("report_ready")))))
+                                  ui.output_data_frame("an_compare_table")))))
 
 
 def server(input, output, session, shared):
@@ -256,10 +242,6 @@ def server(input, output, session, shared):
             parts.append(an_covariates()[0])
         return pd.concat(parts, axis=1).rename_axis("subject")
 
-    @render.download_button(filename=lambda: f"{shown_run().name}_{an_data()['k']}subtypes_per_person.csv")
-    def an_download():
-        yield per_person_table().to_csv()
-
     def report_inputs():
         """Everything the report needs, as plain data (it is made in a separate process)."""
         d, folder, settings = an_data(), shown_run(), shown_settings()
@@ -282,7 +264,10 @@ def server(input, output, session, shared):
                   f"Made {datetime.now():%Y-%m-%d %H:%M}. Subtypes are numbered by number of tau+ people "
                   f"(Subtype 1 = most). Subtype names: {', '.join(titles)}.\n"
                   "figures/: PNG (300 dpi) and PDF. tables/: CSV. settings.yaml: everything the run used.\n")
-        return {"result": d["result"], "Z_vals": d["Z_vals"], "regions": d["regions"], "order": d["order"],
+        orders = event_orders(d["result"], d["Z_vals"], d["regions"], d["order"])
+        return {"run": folder.name, "k": d["k"], "settings": settings,
+                "mcmc_orders": [mcmc for _, mcmc, _ in orders],
+                "result": d["result"], "Z_vals": d["Z_vals"], "regions": d["regions"], "order": d["order"],
                 "z": d["z"], "table": d["table"], "edges": d["edges"], "titles": titles,
                 "vmax": input.fig_vmax() or CONFIG["figures"]["heatmap_vmax"], "sd_limit": input.sd_limit(),
                 "likelihoods": likelihoods, "subtypes_by_k": subtypes_by_k(d["z"].index),
@@ -290,29 +275,5 @@ def server(input, output, session, shared):
                 "texts": {"README.txt": readme, "settings.yaml": (folder / "settings.yaml").read_text()},
                 "file_name": f"{folder.name}_{d['k']}subtypes_report.zip"}
 
-    @ui.bind_task_button(button_id="make_report")
-    @reactive.extended_task
-    async def report_task(inputs):
-        """Makes the report in a separate process, so the app (and other users) can keep working."""
-        loop = asyncio.get_running_loop()
-        with ProcessPoolExecutor(max_workers=1) as pool:
-            data = await loop.run_in_executor(pool, build_report, inputs)
-        return inputs["file_name"], data
-
-    @reactive.effect
-    @reactive.event(input.make_report)
-    def _make_report():
-        report_task(report_inputs())
-
-    @render.ui
-    def report_ready():
-        if report_task.status() == "error":
-            return ui.p("The report could not be made - see the app's log.", class_="text-danger small mt-2")
-        if report_task.status() != "success":
-            return None
-        return ui.download_button("an_report", f"Download {report_task.result()[0]}", class_="btn-success mt-2")
-
-    @render.download_button(filename=lambda: report_task.result()[0])
-    def an_report():
-        """The report made by 'Make report'."""
-        yield report_task.result()[1]
+    # what the Report step (tab 6) uses
+    shared.update(an_data=an_data, report_inputs=report_inputs, per_person_table=per_person_table)

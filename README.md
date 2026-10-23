@@ -30,11 +30,12 @@ Then open the address it prints (usually http://127.0.0.1:8000).
 
 | Tab | What you do there |
 |---|---|
-| 1. Data & QC | Upload a CSV (one row per person), match the columns, check the data, optional inclusion rule |
+| 1. Data & QC | Upload a CSV (one row per person), match the columns, check the data, optional inclusion rule; explore the regions against age, sex, ... (with trend and interaction tests) |
 | 2. Normalization | z-scores (GMM, amyloid-negative CN reference, or already normalized), cut-points, Z_max |
 | 3. Run SuStaIn | Run pySuStaIn in the background (fast test or full run), cross-validation, saved runs |
 | 4. Figures | PVD, tau patterns, subtype probabilities, stages, choosing k, one person |
-| 5. Subtype analysis | Table 1, regional differences, stage vs age/cognition, asymmetry, compare runs, report (ZIP) |
+| 5. Subtype analysis | Table 1, regional differences, stage vs age/cognition, asymmetry, compare runs |
+| 6. Report | Automatic written summary, PDF report, ZIP of every figure and table, results per person |
 | About | pySuStaIn version + commit, papers to cite, privacy |
 
 Try it with the simulated toy data: tab 1 → "Sample Data" → upload that file.

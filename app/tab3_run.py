@@ -8,13 +8,13 @@ import pandas as pd
 import yaml
 from shiny import reactive, render, req, ui
 
-from src.app_runs import list_runs, prepare_run_folder, start_run, unzip_run, zip_run
+from src.app_runs import list_runs, prepare_run_folder, read_run_inputs, start_run, unzip_run, zip_run
 from src.figures import plot_model_choice
 from src.report import pysustain_info
 from src.results import (event_orders, load_sustain_result, mcmc_traces, model_likelihoods, size_order,
                          subject_table, subtype_summary)
 from src.sustain_model import make_z_vals
-from common import ROOT, NORM_METHODS, CONFIG, REFERENCE_GROUPS, step_status, step_title
+from common import CONFIG, DATA_HELP, NORM_METHODS, REFERENCE_GROUPS, ROOT, figure_card, step_status, step_title
 
 panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
              ui.layout_sidebar(
@@ -47,8 +47,9 @@ panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
                                   ui.output_ui("run_progress_view")),
                      ui.nav_panel("Model choice", ui.output_ui("model_choice_status"),
                                   ui.output_data_frame("model_likelihood_table"),
-                                  ui.output_plot("model_choice_plot", height="330px"),
-                                  ui.output_image("cv_folds_plot", height="auto")),
+                                  figure_card("How many subtypes?", DATA_HELP["model"],
+                                              ui.output_plot("model_choice_plot", height="330px")),
+                                  ui.output_ui("cv_folds_view")),
                      ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                   ui.input_select("result_model", "Model to look at", choices=[]),
                                   ui.output_ui("quick_numbers"),
@@ -81,6 +82,7 @@ def server(input, output, session, shared):
     norm_outdated = shared["norm_outdated"]
     normalized = shared["normalized"]
     private = shared["private"]
+    restore = shared["restore"]
     runs_folder = shared["runs_folder"]
     sustain_input = shared["sustain_input"]
 
@@ -135,7 +137,7 @@ def server(input, output, session, shared):
         """Everything one run needs, in one dictionary (saved as settings.yaml in the run folder)."""
         s = sustain_input()
         return {"n_people": len(s["subjects"]), "regions": s["regions"],
-                "normalization": normalized()["method"], "cut_points": {r: [float(c) for c in cuts] for r, cuts in s["cut_points"].items()},
+                "normalization": normalized()["method"], "gmm_components": normalized()["n_components"], "cut_points": {r: [float(c) for c in cuts] for r, cuts in s["cut_points"].items()},
                 "covariate_adjustment": (None if normalized()["adjustment"] is None else  # slopes per region
                                          normalized()["adjustment"]["slopes"].round(6).to_dict(orient="index")),
                 "reference_group": REFERENCE_GROUPS[CONFIG["normalization"]["reference_group"]],
@@ -180,7 +182,7 @@ def server(input, output, session, shared):
     def run_covariates():
         """All non-region columns (age, sex, diagnosis, ...) of the people in the run, same IDs as z."""
         data, z = analysis_data(), normalized()["z"]
-        others = data.drop(columns=list(input.col_regions()))
+        others = data.drop(columns=list(input.col_regions()), errors="ignore")
         id_col = chosen_columns().get("id")
         if id_col:
             others = others.set_index(id_col)
@@ -194,7 +196,7 @@ def server(input, output, session, shared):
         """Make the new run folder, then start pySuStaIn in its own process."""
         folder = runs_folder / input.run_name().strip()
         prepare_run_folder(folder, run_settings(), normalized()["z"], normalized()["reference"],
-                           run_covariates())
+                           run_covariates(), analysis_data(), normalized()["values"])
         job.set({"process": start_run(folder), "folder": folder, "started": datetime.now()})
 
     @reactive.calc
@@ -278,6 +280,11 @@ def server(input, output, session, shared):
         cv_file = folder / "cross_validation.csv"
         cv = pd.read_csv(cv_file, index_col="subtypes") if cv_file.exists() else None
         return plot_model_choice(model_likelihoods(folder, dataset), cv, mcmc_traces(folder, dataset))
+
+    @render.ui
+    def cv_folds_view():
+        req(shown_run() is not None and (shown_run() / "Log_likelihoods_cv_folds.png").exists())
+        return figure_card("Cross-validation folds", DATA_HELP["cv"], ui.output_image("cv_folds_plot", height="auto"))
 
     @render.image
     def cv_folds_plot():
@@ -404,7 +411,30 @@ def server(input, output, session, shared):
             ui.notification_show(f"Run {name} is {status}: only finished runs can be loaded.", type="warning")
             return
         shown_run.set(runs_folder / name)
-        ui.notification_show(f"Showing run {name} in Model choice and Quick result.")
+        restore_inputs(runs_folder / name)
+        ui.notification_show(f"Showing run {name} in all tabs.")
+
+    def restore_inputs(folder):
+        """Show the run's data in tab 1 and its z-scores in tab 2, and set the tab-2 boxes to the run's
+        settings (so Normalize would make the same z-scores again)."""
+        try:
+            inputs = read_run_inputs(folder)
+        except Exception as error:                          # e.g. a file missing in an uploaded run
+            ui.notification_show(f"Tabs 1-2 could not be filled from this run: {error}", type="warning")
+            return
+        restore.set(inputs)
+        settings = yaml.safe_load(open(folder / "settings.yaml"))
+        ui.update_radio_buttons("norm_method", selected=settings["normalization"])
+        if settings.get("gmm_components"):
+            ui.update_numeric("gmm_components", value=settings["gmm_components"])
+        cuts = list(settings["cut_points"].values())
+        same_cuts = all(c == cuts[0] for c in cuts)
+        ui.update_checkbox("per_region", value=not same_cuts)
+        if same_cuts:
+            ui.update_text("cut_points", value=", ".join(f"{c:g}" for c in cuts[0]))
+        if len(set(settings["z_max"])) == 1:
+            ui.update_radio_buttons("z_max_method", selected="manual")
+            ui.update_text("z_max_manual", value=f"{settings['z_max'][0]:g}")
 
     @render.download_button(filename=lambda: f"{input.saved_run()}.zip")
     def download_run():
@@ -471,7 +501,7 @@ def server(input, output, session, shared):
         if state == "failed":
             return step_status("Last run failed", "attention")
         if shown_run() is not None:
-            return step_status(f"Showing {shown_run().name}", "done")
+            return step_status(shown_run().name, "done")
         return step_status("Run or load a run")
 
     # what the later tabs use

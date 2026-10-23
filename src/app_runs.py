@@ -20,8 +20,10 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent          # project folder
 
 
-def prepare_run_folder(folder, settings, z, reference=None, covariates=None):
-    """Make a NEW run folder and save what the run needs. Fails if the folder already exists."""
+def prepare_run_folder(folder, settings, z, reference=None, covariates=None, data=None, values=None):
+    """Make a NEW run folder and save what the run needs. Fails if the folder already exists.
+    data (the table used in tab 1) and values (the regional values that were z-scored in tab 2) are
+    saved too, so loading the run later can show tabs 1 and 2 again."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=False)          # never reuse: pySuStaIn would load old results
     with open(folder / "settings.yaml", "w") as f:
@@ -31,7 +33,35 @@ def prepare_run_folder(folder, settings, z, reference=None, covariates=None):
         reference.T.to_csv(folder / "zscore_reference.csv", index_label="region")
     if covariates is not None:                          # same people and IDs as zscores.csv
         covariates.to_csv(folder / "covariates.csv", index_label="subject")
+    if data is not None:
+        data.to_csv(folder / "input_data.csv", index=False)
+    if values is not None:
+        values.to_csv(folder / "input_values.csv", index_label="subject")
 
+
+def read_run_inputs(folder):
+    """What a saved run used in tabs 1-2, to show those tabs again when the run is loaded:
+    {"data", "columns", "regions", "normalized", "complete"}. Runs made before the input data were
+    saved give only the other columns (covariates.csv) and the z-scores: "complete" is then False."""
+    folder = Path(folder)
+    settings = yaml.safe_load(open(folder / "settings.yaml"))
+    columns = settings.get("columns", {})
+    z = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str})
+    reference_file = folder / "zscore_reference.csv"
+    reference = pd.read_csv(reference_file, index_col="region").T if reference_file.exists() else None
+    complete = (folder / "input_data.csv").exists()
+    if complete:
+        data = pd.read_csv(folder / "input_data.csv")
+        values = pd.read_csv(folder / "input_values.csv", index_col="subject", dtype={"subject": str})
+    else:                                               # older run: other columns + IDs only
+        data = pd.read_csv(folder / "covariates.csv", dtype={"subject": str})
+        data = data.rename(columns={"subject": columns.get("id") or "subject"})
+        values = None
+    normalized = {"z": z, "reference": reference, "values": values, "method": settings["normalization"],
+                  "n_components": settings.get("gmm_components"), "n_reference": None, "n_left_out": 0,
+                  "inputs": None, "adjustment": None, "restored_from": folder.name}
+    return {"data": data, "columns": columns, "regions": settings["regions"], "normalized": normalized,
+            "complete": complete, "run": folder.name}
 
 def start_run(folder):
     """Start src/run_job.py for this folder as a separate process (so it can run for hours and be stopped)."""

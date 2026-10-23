@@ -57,3 +57,15 @@ def test_zip_with_paths_outside_is_refused(tmp_path):
     (tmp_path / "bad.zip").write_bytes(buffer.getvalue())
     with pytest.raises(ValueError):
         unzip_run(tmp_path / "bad.zip", tmp_path / "runs", "bad")
+
+
+def test_region_trend_tests_find_an_interaction():
+    """A region that rises with age only in one group: the interaction p-value is small."""
+    from src.qc import region_trend_tests
+    rng = np.random.default_rng(0)
+    age = rng.uniform(50, 90, 200)
+    sex = np.where(np.arange(200) % 2 == 0, "F", "M")
+    region = 1 + np.where(sex == "F", 0.02 * age, 0) + rng.normal(0, 0.05, 200)
+    data = pd.DataFrame({"age": age, "sex": sex, "R1": region})
+    table = region_trend_tests(data, ["R1"], "age", data["sex"])
+    assert table.loc["R1", "p: x by group (interaction)"] < 0.001

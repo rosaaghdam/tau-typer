@@ -38,6 +38,26 @@ FIG_HELP = {    # short help text above each tab-4 figure
               "Middle: subtype probabilities. Right: stage probabilities.",
 }
 
+DATA_HELP = {   # help (i) of the figures in tabs 1-3
+    "regions": "Explore the raw regional values (before normalization). With nothing chosen: the distribution "
+               "of each region. Plot against a number (e.g. age): one dot per person and a straight trend "
+               "line; against a category (e.g. sex): a box per value. 'Split by' colours the people by a "
+               "group (a number column is split into low / middle / high thirds) and draws one trend line "
+               "per group: lines that are not parallel mean the trend differs between the groups "
+               "(an interaction, e.g. age x sex). The table below tests this per region.",
+    "covariates": "The other columns of the file per diagnosis group: numbers as box plots (one dot per "
+                  "person), categories as bars (% per group), and the Spearman correlations between the "
+                  "number columns and the mean of the regions.",
+    "gmm": "One region: histogram of the values and the bell curves of the Gaussian mixture model; the "
+           "lowest-mean curve is 'normal'. The cut-points are drawn on the value axis "
+           "(value = normal mean + z x normal SD).",
+    "zhist": "The z-scores of each region. Most people should sit around 0; the tau+ tail goes to the right.",
+    "model": "Fit per number of subtypes (higher = fits this data better, but it always rises with more "
+             "subtypes), CVIC after cross-validation (lower = better) and the MCMC trace of each model "
+             "(flat = stable).",
+    "cv": "pySuStaIn's own figure: test log-likelihood of each cross-validation fold per number of subtypes.",
+}
+
 AN_HELP = {     # short help text in tab 5
     "table1": "Numbers: mean (SD); categories: %. p (subtypes): Kruskal-Wallis or chi-square "
               "between the subtypes. Adjusted: linear model variable ~ subtype + stage + the covariates chosen "
@@ -87,4 +107,4 @@ def step_title(number, label, status_id):
 
 def step_status(text, state="waiting"):
     """The small status under a step's name. state: "done", "attention" (needs your action) or "waiting"."""
-    return ui.span(text, class_=f"tt-step-status tt-{state}")
+    return ui.span(text, class_=f"tt-step-status tt-{state}", title=text)   # full text on hover

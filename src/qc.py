@@ -151,3 +151,34 @@ def covariate_summary(data, columns, group_col=None, groups=None):
                 row[name] = ", ".join(f"{value}: {100 * share:.0f}%" for value, share in shares.head(4).items())
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def region_trend_tests(data, regions, x, groups=None):
+    """Per region: does the value change with x, does it differ between the groups, and does the effect of
+    x differ between the groups (interaction)? Linear model: value ~ x (+ group + x:group), type-II tests.
+    Returns a table of p-values (not corrected for testing many regions) and, for a number x, the slope.
+    groups: a Series of group labels (same rows as data) or None."""
+    import statsmodels.api as sm
+    import statsmodels.formula.api as smf
+    x_is_number = pd.to_numeric(data[x], errors="coerce").notna().mean() > 0.9
+    rows = {}
+    for region in regions:
+        frame = pd.DataFrame({"y": pd.to_numeric(data[region], errors="coerce"),
+                              "x": pd.to_numeric(data[x], errors="coerce") if x_is_number else data[x].astype(str)})
+        x_term = "x" if x_is_number else "C(x)"
+        if groups is not None:
+            frame["g"] = groups.astype(str)
+        frame = frame.dropna()
+        formula = f"y ~ {x_term}" + (f" * C(g)" if groups is not None else "")
+        fit = smf.ols(formula, data=frame).fit()
+        tests = sm.stats.anova_lm(fit, typ=2)["PR(>F)"]
+        row = {"people": len(frame)}
+        if x_is_number:
+            row["slope per unit of x"] = fit.params["x"]
+        row["p: x"] = tests[x_term]
+        if groups is not None:
+            row["p: group"] = tests["C(g)"]
+            row["p: x by group (interaction)"] = tests[f"{x_term}:C(g)"]
+        rows[region] = row
+    return pd.DataFrame(rows).T
+

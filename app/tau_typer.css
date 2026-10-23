@@ -24,7 +24,7 @@ table, .shiny-data-grid { font-family: system-ui, -apple-system, "Segoe UI", san
 /* ---- the step rail: the main navigation, one step per tab, each with its status ---- */
 .navbar { background: var(--tt-surface) !important; border-bottom: 1px solid var(--tt-line); }
 .navbar-brand { font-weight: 700; color: var(--tt-ink) !important; margin-right: 1.5rem; }
-.navbar .nav-link { display: flex; align-items: center; gap: .55rem; padding: .55rem .85rem !important;
+.navbar .nav-link { display: flex; align-items: center; gap: .5rem; padding: .5rem .6rem !important;
                     position: relative; }
 .navbar .navbar-nav .nav-item:last-child { margin-left: auto; }          /* About on the right */
 .tt-step-num { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: inline-grid;
@@ -32,7 +32,9 @@ table, .shiny-data-grid { font-family: system-ui, -apple-system, "Segoe UI", san
                border: 2px solid var(--tt-line); background: var(--tt-surface); }
 .tt-step-text { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
 .tt-step-label { font-weight: 700; color: var(--tt-ink); font-size: .95rem; }
-.tt-step-status { font-size: .78rem; color: var(--tt-slate); white-space: nowrap; }
+.tt-step-text { min-width: 0; }
+.tt-step-status { display: block; max-width: 9.5rem; font-size: .78rem; color: var(--tt-slate); white-space: nowrap;
+                  overflow: hidden; text-overflow: ellipsis; }
 .nav-link:has(.tt-done) .tt-step-num { background: var(--tt-accent); border-color: var(--tt-accent); color: #fff; }
 .nav-link:has(.tt-attention) .tt-step-num { border-color: var(--tt-attention); color: var(--tt-attention); }
 .tt-step-status.tt-attention { color: var(--tt-attention); }

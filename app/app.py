@@ -8,7 +8,7 @@ import secrets
 import sys
 from pathlib import Path
 
-from shiny import App, ui
+from shiny import App, reactive, ui
 
 APP_FOLDER = Path(__file__).resolve().parent
 sys.path.insert(0, str(APP_FOLDER.parent))   # the project folder, so the tab files can import src/
@@ -18,10 +18,11 @@ import tab2_normalization
 import tab3_run
 import tab4_figures
 import tab5_analysis
+import tab6_report
 import tab_about
 from common import CONFIG, RUNS_FOLDER
 
-TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab_about]
+TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab6_report, tab_about]
 
 # Atkinson Hyperlegible: a typeface made for legibility (the browser loads it from Google Fonts;
 # without internet the system font is used)
@@ -36,7 +37,8 @@ def server(input, output, session):
     # visit gets its own folder, sees only its own runs, and the folder is deleted when the visit ends.
     private = CONFIG["runs"].get("private_per_visit", False)
     runs_folder = RUNS_FOLDER / f"visit_{secrets.token_hex(8)}" if private else RUNS_FOLDER
-    shared = {"private": private, "runs_folder": runs_folder}   # each tab adds what the later tabs need
+    shared = {"private": private, "runs_folder": runs_folder,   # each tab adds what the later tabs need
+              "restore": reactive.value(None)}   # a loaded run's data for tabs 1-2 (set in tab 3)
     for tab in TABS:
         tab.server(input, output, session, shared)
 
