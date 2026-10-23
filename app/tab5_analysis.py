@@ -11,7 +11,7 @@ from src.figures import plot_asymmetry, plot_regional_contrasts, plot_stage_vs
 from src.report import build_report
 from src.results import load_sustain_result, model_likelihoods, size_order, subject_table
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
-from common import CONFIG, AN_HELP
+from common import CONFIG, AN_HELP, figure_card, no_run_banner
 
 panel = ui.nav_panel("5. Subtype analysis",
              ui.layout_sidebar(
@@ -27,17 +27,20 @@ panel = ui.nav_panel("5. Subtype analysis",
                           "Only tau+ people (stage > 0) are compared between subtypes.",
                           class_="text-muted small"),
                      width=320, open="always"),
+                 ui.output_ui("an_empty"),
                  ui.navset_tab(
-                     ui.nav_panel("Table 1", ui.output_ui("an_status"), ui.output_data_frame("an_table1"),
-                                  ui.p(AN_HELP["table1"], class_="text-muted small mt-2")),
-                     ui.nav_panel("Regional differences", ui.p(AN_HELP["regions"], class_="text-muted small"),
-                                  ui.output_plot("an_regions_plot", height="520px")),
-                     ui.nav_panel("Stage vs variable", ui.p(AN_HELP["stage"], class_="text-muted small"),
-                                  ui.output_data_frame("an_stage_table"),
-                                  ui.output_plot("an_stage_plot", height="460px")),
-                     ui.nav_panel("Left-right asymmetry", ui.p(AN_HELP["asymmetry"], class_="text-muted small"),
-                                  ui.output_ui("an_asymmetry_status"),
-                                  ui.output_plot("an_asymmetry_plot", height="440px")),
+                     ui.nav_panel("Table 1", figure_card("Table 1: the subtypes compared", AN_HELP["table1"],
+                                                         ui.output_ui("an_status"),
+                                                         ui.output_data_frame("an_table1"))),
+                     ui.nav_panel("Regional differences", figure_card(
+                         "Where does each subtype differ?", AN_HELP["regions"],
+                         ui.output_plot("an_regions_plot", height="520px"))),
+                     ui.nav_panel("Stage vs variable", figure_card("Stage against a variable", AN_HELP["stage"],
+                                                                   ui.output_data_frame("an_stage_table"),
+                                                                   ui.output_plot("an_stage_plot", height="460px"))),
+                     ui.nav_panel("Left-right asymmetry", figure_card(
+                         "Left-right asymmetry", AN_HELP["asymmetry"], ui.output_ui("an_asymmetry_status"),
+                         ui.output_plot("an_asymmetry_plot", height="440px"))),
                      ui.nav_panel("Compare runs", ui.p(AN_HELP["compare"], class_="text-muted small"),
                                   ui.layout_columns(
                                       ui.input_select("an_other_run", "Other finished run", choices=[]),
@@ -74,6 +77,10 @@ def server(input, output, session, shared):
     subtype_titles = shared["subtype_titles"]
     subtypes_by_k = shared["subtypes_by_k"]
     runs_folder = shared["runs_folder"]
+
+    @render.ui
+    def an_empty():
+        return no_run_banner() if shown_run() is None else None
 
     @render.ui
     def an_run_info():

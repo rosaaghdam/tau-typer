@@ -13,7 +13,7 @@ from src.figures import (plot_model_choice, plot_person, plot_pvd, plot_stage_pr
                          plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
-from common import CONFIG, FIG_HELP
+from common import CONFIG, FIG_HELP, figure_card, no_run_banner
 
 panel = ui.nav_panel("4. Figures",
              ui.layout_sidebar(
@@ -28,30 +28,32 @@ panel = ui.nav_panel("4. Figures",
                      ui.input_numeric("fig_vmax", "Colour scale maximum (z)",
                                       value=CONFIG["figures"]["heatmap_vmax"], min=1),
                      width=320, open="always"),
+                 ui.output_ui("fig_empty"),
                  ui.navset_tab(
-                     ui.nav_panel("PVD", ui.p(FIG_HELP["pvd"], class_="text-muted small"),
-                                  ui.output_image("fig_pvd", height="auto")),
-                     ui.nav_panel("Tau patterns", ui.p(FIG_HELP["patterns"], class_="text-muted small"),
-                                  ui.output_plot("fig_patterns", height="520px"),
-                                  ui.output_plot("fig_progression", height="460px")),
-                     ui.nav_panel("Subtype probabilities", ui.p(FIG_HELP["probs"], class_="text-muted small"),
-                                  ui.output_plot("fig_probs", height="560px")),
-                     ui.nav_panel("Stages", ui.p(FIG_HELP["stages"], class_="text-muted small"),
-                                  ui.layout_columns(
-                                      ui.input_numeric("sd_limit", "Uncertain stage: SD above (stages)",
-                                                       value=CONFIG["results"]["stage_sd_limit"], min=0, step=0.1),
-                                      ui.input_select("stages_subtype", "Show a person from", choices=[]),
-                                      ui.input_selectize("stages_person", "Person (circled)", choices=[]),
-                                      col_widths=[3, 3, 3]),
-                                  ui.output_plot("fig_stages", height="440px"),
-                                  ui.output_ui("uncertain_status"),
-                                  ui.output_data_frame("uncertain_people")),
-                     ui.nav_panel("Choosing k", ui.p(FIG_HELP["choice"], class_="text-muted small"),
-                                  ui.output_plot("fig_choice", height="380px"),
-                                  ui.output_plot("fig_tree", height="480px")),
-                     ui.nav_panel("Person", ui.input_selectize("fig_person", "Person", choices=[]),
-                                  ui.p(FIG_HELP["person"], class_="text-muted small"),
-                                  ui.output_plot("fig_person_plot", height="420px")))))
+                     ui.nav_panel("PVD", figure_card("Positional variance diagram", FIG_HELP["pvd"],
+                                                     ui.output_image("fig_pvd", height="auto"))),
+                     ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
+                                                              ui.output_plot("fig_patterns", height="520px"),
+                                                              ui.output_plot("fig_progression", height="460px"))),
+                     ui.nav_panel("Subtype probabilities", figure_card("Subtype probabilities", FIG_HELP["probs"],
+                                                                       ui.output_plot("fig_probs", height="560px"))),
+                     ui.nav_panel("Stages", figure_card(
+                         "Stages and how sure they are", FIG_HELP["stages"],
+                         ui.layout_columns(
+                             ui.input_numeric("sd_limit", "Uncertain stage: SD above (stages)",
+                                              value=CONFIG["results"]["stage_sd_limit"], min=0, step=0.1),
+                             ui.input_select("stages_subtype", "Show a person from", choices=[]),
+                             ui.input_selectize("stages_person", "Person (circled)", choices=[]),
+                             col_widths=[3, 3, 3]),
+                         ui.output_plot("fig_stages", height="440px"),
+                         ui.output_ui("uncertain_status"),
+                         ui.output_data_frame("uncertain_people"))),
+                     ui.nav_panel("Choosing k", figure_card("How many subtypes?", FIG_HELP["choice"],
+                                                            ui.output_plot("fig_choice", height="380px"),
+                                                            ui.output_plot("fig_tree", height="480px"))),
+                     ui.nav_panel("Person", figure_card("One person", FIG_HELP["person"],
+                                                        ui.input_selectize("fig_person", "Person", choices=[]),
+                                                        ui.output_plot("fig_person_plot", height="420px"))))))
 
 
 def server(input, output, session, shared):
@@ -60,6 +62,10 @@ def server(input, output, session, shared):
     cut_points = shared["cut_points"]
     shown_run = shared["shown_run"]
     shown_settings = shared["shown_settings"]
+
+    @render.ui
+    def fig_empty():
+        return no_run_banner() if shown_run() is None else None
 
     @render.ui
     def fig_run_info():

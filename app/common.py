@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from shiny import ui
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
@@ -58,3 +59,17 @@ DISEASE_WORDS = ["mmse", "moca", "cdr", "adas", "cognit", "memory", "executive",
                  "tau", "amyloid", "abeta", "diagnos", "dx"]   # covariate names that look like disease measures
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
+
+
+def figure_card(title, help_text, *content):
+    """A card with a title, an (i) button that shows the help text, and a button to show it full screen."""
+    info = ui.popover(ui.tags.button("ⓘ", type="button", class_="btn btn-link btn-sm p-0 ms-1",
+                                     **{"aria-label": f"About: {title}"}),
+                      help_text, title=title, placement="right")
+    return ui.card(ui.card_header(title, info), *content, full_screen=True)
+
+
+def no_run_banner():
+    """Shown above tabs 4 and 5 until a run is loaded."""
+    return ui.div("No run shown yet: run SuStaIn, or load a saved run, in tab 3 (Run SuStaIn).",
+                  class_="alert alert-info")

@@ -10,7 +10,9 @@ from pathlib import Path
 
 from shiny import App, ui
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))   # so the tab files can be imported
+APP_FOLDER = Path(__file__).resolve().parent
+sys.path.insert(0, str(APP_FOLDER.parent))   # the project folder, so the tab files can import src/
+sys.path.insert(0, str(APP_FOLDER))          # so the tab files themselves can be imported
 import tab1_data
 import tab2_normalization
 import tab3_run
@@ -21,7 +23,7 @@ from common import CONFIG, RUNS_FOLDER
 
 TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab_about]
 
-app_ui = ui.page_navbar(*[tab.panel for tab in TABS], title="Tau-typer")
+app_ui = ui.page_navbar(*[tab.panel for tab in TABS], title="Tau-typer", theme=ui.Theme("shiny"))
 
 
 def server(input, output, session):
