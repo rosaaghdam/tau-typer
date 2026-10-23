@@ -595,7 +595,8 @@ def server(input, output, session, shared):
         if risky:
             verb = "looks like a disease measure" if len(risky) == 1 else "look like disease measures"
             return ui.p(f"Careful: {', '.join(risky)} {verb}. Removing it would remove the disease signal "
-                        "SuStaIn should find.", class_="text-danger small fw-bold")
+                        "SuStaIn should find. (Checked by name only, with the word list disease_words in "
+                        "config.yaml.)", class_="text-danger small fw-bold")
 
     def reference_labels():
         """Diagnosis labels of the healthy reference group (always used together with amyloid = 0)."""

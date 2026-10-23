@@ -1,5 +1,6 @@
 # One look for every figure of the app and the report (used by src/figures.py)
 font.family: sans-serif
+font.sans-serif: Arial, Helvetica, DejaVu Sans   # the first one installed is used
 font.size: 10
 axes.titlesize: 11
 axes.titleweight: bold

@@ -40,13 +40,13 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     fig = figs[0]
     for ax in fig.axes:
         ax.set_xlabel("")                                       # columns = stages (said in the app's help text)
-    fig.subplots_adjust(hspace=0.35, wspace=0.08)                     # room for titles and stage labels
+    fig.subplots_adjust(hspace=0.35, wspace=0.08, top=1 - 0.95 / fig.get_figheight())   # room for the legend
     # one legend for the colours (pySuStaIn's colours: 1st cut-point red, 2nd magenta, 3rd blue, ...)
     colours = ["red", "magenta", "blue", "#8000ff", "cyan", "#00ff80"]
     levels = np.unique(Z_vals[Z_vals > 0])
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
-    fig.legend(handles, [f"z-score {z:g}" for z in levels], loc="lower center", ncol=len(levels),
-               bbox_to_anchor=(0.5, -0.1 / fig.get_figheight()), frameon=False, fontsize=11)
+    fig.legend(handles, [f"z-score {z:g}" for z in levels], loc="upper center", ncol=len(levels),
+               bbox_to_anchor=(0.5, 1), frameon=False, fontsize=11)                 # on top
     if save_path is not None:
         fig.savefig(f"{save_path}.png", dpi=150, bbox_inches="tight")
     return fig
@@ -258,12 +258,15 @@ def colour_list(text):
 
 
 def colour_map(text, default):
-    """A colour map from what the user typed: a matplotlib name (Reds, Blues, viridis, ...) or two or more
-    colours from low to high (e.g. "#FFFFFF, #B71C1C"). Anything else gives the default map."""
+    """A colour map from what the user typed: a matplotlib name (Reds, Blues, viridis, ...), one colour
+    (white to that colour) or two or more colours from low to high (e.g. "#FFFFFF, #B71C1C").
+    Anything else gives the default map."""
     text = (text or "").strip()
     if text in matplotlib.colormaps:
         return text
     colours = colour_list(text)
+    if len(colours) == 1:
+        colours = ["#FFFFFF"] + colours
     if len(colours) >= 2:
         return matplotlib.colors.LinearSegmentedColormap.from_list("typed", colours)
     return default

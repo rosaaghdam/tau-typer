@@ -102,6 +102,11 @@ normalization:
   reference_labels_cn: [CN, CU, HC, control]
   reference_labels_scd: [SCD]
   covariate_alpha: 0.05        # a covariate is removed in a region only if p < this (Young 2018)
+  # Tab 2 warns when a covariate's name contains one of these words (lower case): removing a disease
+  # measure would remove the signal SuStaIn should find. Only the names are checked - add your own
+  # data's names here (e.g. a new test or biomarker).
+  disease_words: [mmse, moca, cdr, adas, cognit, memory, executive, language, visuo,
+                  tau, amyloid, abeta, diagnos, dx]
 
 # ---------- App tab 3: cross-validation ----------
 cross_validation:

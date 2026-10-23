@@ -88,8 +88,7 @@ AN_HELP = {     # short help text in tab 5
 RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the inclusion rule needs
 REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group normalization needs
 REFERENCE_GROUPS = {"cn_scd": "Amyloid-negative CN + SCD", "cn": "Amyloid-negative CN only"}
-DISEASE_WORDS = ["mmse", "moca", "cdr", "adas", "cognit", "memory", "executive", "language", "visuo",
-                 "tau", "amyloid", "abeta", "diagnos", "dx"]   # covariate names that look like disease measures
+DISEASE_WORDS = CONFIG["normalization"]["disease_words"]   # covariate names that look like disease measures
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
 
