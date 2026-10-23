@@ -84,11 +84,15 @@ def zip_run(folder):
     return buffer.getvalue()
 
 
-def unzip_run(zip_path, runs_folder, name):
+def unzip_run(zip_path, runs_folder, name, max_mb=None):
     """Make a new run folder from a downloaded run ZIP. Returns the folder.
-    Checks the ZIP first: it must have settings.yaml and only plain file names (nothing outside the folder)."""
+    Checks the ZIP first: it must have settings.yaml, only plain file names (nothing outside the folder)
+    and, with max_mb, unpack to at most that many MB."""
     with zipfile.ZipFile(zip_path) as zip_file:
         names = zip_file.namelist()
+        unpacked_mb = sum(info.file_size for info in zip_file.infolist()) / 1e6
+        if max_mb is not None and unpacked_mb > max_mb:
+            raise ValueError(f"The run is too big ({unpacked_mb:.0f} MB unpacked; the limit is {max_mb} MB).")
         if "settings.yaml" not in names:
             raise ValueError("This is not a Tau-typer run: settings.yaml is missing.")
         if any(n.startswith(("/", "\\")) or ".." in Path(n).parts for n in names):

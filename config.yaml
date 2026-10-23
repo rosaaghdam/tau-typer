@@ -113,6 +113,8 @@ runs:
   folder: results/app_runs    # one NEW sub-folder per run (pySuStaIn would reuse old files otherwise)
   dataset_name: tau_typer      # start of the result file names pySuStaIn writes
   private_per_visit: false     # true on a shared server: each visit has its own runs folder, deleted when the visit ends
+  max_upload_csv_mb: 50        # largest data file (CSV) the app accepts
+  max_upload_run_mb: 1000      # largest run ZIP (unpacked size) the app accepts
 
 # ---------- App tab 4: figures ----------
 figures:

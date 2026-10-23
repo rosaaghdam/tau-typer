@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 from shiny import reactive, render, req, ui
+from shiny.types import SafeException
 
 from src.figures import (group_colors, plot_category_bars, plot_correlations, plot_covariate_boxplots,
                          plot_region_histograms)
@@ -46,6 +47,10 @@ def server(input, output, session, shared):
         file = input.data_file()
         if not file:
             return None
+        limit = CONFIG["runs"]["max_upload_csv_mb"]
+        if file[0]["size"] > limit * 1e6:
+            raise SafeException(f"The file is too big ({file[0]['size'] / 1e6:.0f} MB; the limit is {limit} MB, "
+                                "set in config.yaml).")
         return pd.read_csv(file[0]["datapath"])
 
     @render.ui

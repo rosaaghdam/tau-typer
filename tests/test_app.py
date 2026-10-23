@@ -55,3 +55,19 @@ def test_s0_people_have_no_subtype(one_run):
         load(ts, one_run)
         rows = ts.get_output("subtype_summary_table").value["payload"]["data"]
         assert rows[0][0] == "S0"
+
+
+def test_report_is_made_in_the_background(one_run):
+    """Tab 5: 'Make report' builds the ZIP in a separate process; then the download button appears."""
+    import time
+    with test_server(APP, timeout_secs=300) as ts:
+        ts.set_inputs(saved_run=one_run, **FIGURE_INPUTS)
+        load(ts, one_run)
+        ts.set_inputs(make_report=1)
+        for _ in range(120):                              # wait up to 2 minutes
+            if ts.get_output("report_ready").status == "ok" and ts.get_output("report_ready").value:
+                break
+            time.sleep(1)
+            ts.set_inputs(fig_vmax=12)                    # lets the app check whether the job is done
+        assert errors(ts) == {}
+        assert "Download" in str(ts.get_output("report_ready").value)

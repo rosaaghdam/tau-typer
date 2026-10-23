@@ -13,7 +13,8 @@ REGIONS = ["L_MTL", "R_MTL", "L_temporal", "R_temporal", "L_parietal", "R_pariet
 
 # test_server has no browser, so boxes that the browser fills in (defaults, or choices the app sends)
 # are set by hand - the same values the app starts with
-BUTTONS = {name: 0 for name in ["normalize", "pr_reset", "run_button", "cancel_run", "load_run", "delete_run"]}
+BUTTONS = {name: 0 for name in ["normalize", "pr_reset", "run_button", "cancel_run", "load_run", "delete_run",
+                                     "make_report"]}
 DATA_INPUTS = {**BUTTONS, "col_id": "subject_id", "col_age": "age", "col_sex": "sex", "col_diagnosis": "diagnosis",
                "col_amyloid": "amyloid_positive", "col_regions": REGIONS, "apply_rule": False}
 NORM_INPUTS = {"norm_method": "gmm", "adjust_cov": False, "adjust_candidates": [], "adjust_only_sig": True,

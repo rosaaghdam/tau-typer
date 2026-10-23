@@ -440,7 +440,8 @@ def server(input, output, session, shared):
     def save_uploaded_run(file):
         """Save an uploaded run ZIP as a new saved run; returns its folder (None if the file is not a run)."""
         try:
-            folder = unzip_run(file["datapath"], runs_folder, Path(file["name"]).stem)
+            folder = unzip_run(file["datapath"], runs_folder, Path(file["name"]).stem,
+                               CONFIG["runs"]["max_upload_run_mb"])
         except Exception as error:                          # not a ZIP, or not a Tau-typer run
             ui.notification_show(f"Could not use this file: {error}", type="error", duration=10)
             return None
