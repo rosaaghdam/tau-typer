@@ -1,0 +1,19 @@
+# One look for every figure of the app and the report (used by src/figures.py)
+font.family: sans-serif
+font.size: 10
+axes.titlesize: 11
+axes.titleweight: bold
+axes.labelsize: 10
+axes.labelcolor: 1F2933
+axes.edgecolor: 9AA5B1
+axes.spines.top: False
+axes.spines.right: False
+xtick.color: 52606D
+ytick.color: 52606D
+xtick.labelsize: 9
+ytick.labelsize: 9
+text.color: 1F2933
+legend.frameon: False
+legend.fontsize: 9
+figure.facecolor: white
+savefig.facecolor: white

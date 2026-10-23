@@ -23,7 +23,12 @@ from common import CONFIG, RUNS_FOLDER
 
 TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab_about]
 
-app_ui = ui.page_navbar(*[tab.panel for tab in TABS], title="Tau-typer", theme=ui.Theme("shiny"))
+# Atkinson Hyperlegible: a typeface made for legibility (the browser loads it from Google Fonts;
+# without internet the system font is used)
+FONT = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap"
+app_ui = ui.page_navbar(*[tab.panel for tab in TABS], title="Tau-typer", id="main_nav", theme=ui.Theme("shiny"),
+                        header=ui.head_content(ui.tags.link(rel="stylesheet", href=FONT),
+                                               ui.include_css(APP_FOLDER / "tau_typer.css")))
 
 
 def server(input, output, session):

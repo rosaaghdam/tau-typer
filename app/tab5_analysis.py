@@ -11,9 +11,9 @@ from src.figures import plot_asymmetry, plot_regional_contrasts, plot_stage_vs
 from src.report import build_report
 from src.results import load_sustain_result, model_likelihoods, size_order, subject_table
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
-from common import CONFIG, AN_HELP, figure_card, no_run_banner
+from common import CONFIG, AN_HELP, figure_card, no_run_banner, step_status, step_title
 
-panel = ui.nav_panel("5. Subtype analysis",
+panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
              ui.layout_sidebar(
                  ui.sidebar(
                      ui.output_ui("an_run_info"),
@@ -77,6 +77,12 @@ def server(input, output, session, shared):
     subtype_titles = shared["subtype_titles"]
     subtypes_by_k = shared["subtypes_by_k"]
     runs_folder = shared["runs_folder"]
+
+    @render.ui
+    def step5_status():
+        if shown_run() is None:
+            return step_status("Waiting for a run")
+        return step_status(f"{input.an_model() or '?'} subtypes", "done")
 
     @render.ui
     def an_empty():

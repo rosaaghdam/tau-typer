@@ -14,24 +14,28 @@ from src.report import pysustain_info
 from src.results import (event_orders, load_sustain_result, mcmc_traces, model_likelihoods, size_order,
                          subject_table, subtype_summary)
 from src.sustain_model import make_z_vals
-from common import ROOT, NORM_METHODS, CONFIG, REFERENCE_GROUPS
+from common import ROOT, NORM_METHODS, CONFIG, REFERENCE_GROUPS, step_status, step_title
 
-panel = ui.nav_panel("3. Run SuStaIn",
+panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
              ui.layout_sidebar(
                  ui.sidebar(
-                     ui.input_radio_buttons("run_preset", "Preset", selected="paper",
-                                            choices={"paper": "Full run (recommended)", "fast": "Fast test (rough results)"}),
-                     ui.input_numeric("n_subtypes_max", "Max number of subtypes",
-                                      value=CONFIG["sustain"]["n_subtypes_max"], min=1, max=8),
-                     ui.input_numeric("n_startpoints", "Start points", value=CONFIG["sustain"]["n_startpoints"], min=1),
-                     ui.input_numeric("n_mcmc", "MCMC iterations", value=CONFIG["sustain"]["n_iterations_mcmc"], min=100),
-                     ui.input_numeric("run_seed", "Random seed", value=CONFIG["pipeline"]["seed"]),
-                     ui.input_checkbox("use_parallel", "Parallel start points (faster on big computers)",
-                                       value=CONFIG["sustain"]["use_parallel_startpoints"]),
-                     ui.input_checkbox("do_cv", "Cross-validation (to choose the number of subtypes)"),
-                     ui.panel_conditional("input.do_cv",
-                                          ui.input_numeric("n_folds", "Number of folds",
-                                                           value=CONFIG["cross_validation"]["n_folds"], min=2)),
+                     ui.accordion(
+                         ui.accordion_panel("Settings",
+                             ui.input_radio_buttons("run_preset", "Preset", selected="paper",
+                                                    choices={"paper": "Full run (recommended)", "fast": "Fast test (rough results)"}),
+                             ui.input_numeric("n_subtypes_max", "Max number of subtypes",
+                                              value=CONFIG["sustain"]["n_subtypes_max"], min=1, max=8),
+                             ui.input_numeric("n_startpoints", "Start points", value=CONFIG["sustain"]["n_startpoints"], min=1),
+                             ui.input_numeric("n_mcmc", "MCMC iterations", value=CONFIG["sustain"]["n_iterations_mcmc"], min=100),
+                             ui.input_numeric("run_seed", "Random seed", value=CONFIG["pipeline"]["seed"]),
+                             ui.input_checkbox("use_parallel", "Parallel start points (faster on big computers)",
+                                               value=CONFIG["sustain"]["use_parallel_startpoints"])),
+                         ui.accordion_panel("Cross-validation",
+                             ui.input_checkbox("do_cv", "Cross-validation (to choose the number of subtypes)"),
+                             ui.panel_conditional("input.do_cv",
+                                                  ui.input_numeric("n_folds", "Number of folds",
+                                                                   value=CONFIG["cross_validation"]["n_folds"], min=2))),
+                         open=["Settings"], multiple=True),
                      ui.input_text("run_name", "Run name (new folder)",
                                    value=datetime.now().strftime("run_%Y-%m-%d_%H%M")),
                      ui.input_action_button("run_button", "Run SuStaIn", class_="btn-primary"),
@@ -47,6 +51,7 @@ panel = ui.nav_panel("3. Run SuStaIn",
                                   ui.output_image("cv_folds_plot", height="auto")),
                      ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                   ui.input_select("result_model", "Model to look at", choices=[]),
+                                  ui.output_ui("quick_numbers"),
                                   ui.output_data_frame("subtype_summary_table"),
                                   ui.download_button("download_subjects", "Download subtype + stage per person (CSV)"),
                                   ui.output_ui("event_order_view")),
@@ -447,6 +452,27 @@ def server(input, output, session, shared):
             return None
         runs_changed.set(runs_changed() + 1)
         return folder
+
+    @render.ui
+    def quick_numbers():
+        """Four key numbers of the chosen model, above the table."""
+        table = shown_table()
+        tau = table[table["ml_stage"] > 0]
+        numbers = [(len(table), "people"), (f"{100 * len(tau) / len(table):.0f}%", "tau+ (stage above 0)"),
+                   (tau["ml_subtype"].nunique(), "subtypes with people"), (int(tau["poor_fit"].sum()), "poor fit")]
+        return ui.div(*[ui.div(ui.div(str(value), class_="tt-number-value"), ui.div(label, class_="tt-number-label"),
+                               class_="tt-number") for value, label in numbers], class_="tt-summary")
+
+    @render.ui
+    def step3_status():
+        state = run_state()
+        if state == "running":
+            return step_status("Running ...", "attention")
+        if state == "failed":
+            return step_status("Last run failed", "attention")
+        if shown_run() is not None:
+            return step_status(f"Showing {shown_run().name}", "done")
+        return step_status("Run or load a run")
 
     # what the later tabs use
     shared.update(finished_runs=finished_runs, no_run_yet=no_run_yet, save_uploaded_run=save_uploaded_run,

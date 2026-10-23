@@ -13,9 +13,9 @@ from src.figures import (plot_model_choice, plot_person, plot_pvd, plot_stage_pr
                          plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
-from common import CONFIG, FIG_HELP, figure_card, no_run_banner
+from common import CONFIG, FIG_HELP, figure_card, no_run_banner, step_status, step_title
 
-panel = ui.nav_panel("4. Figures",
+panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
              ui.layout_sidebar(
                  ui.sidebar(
                      ui.output_ui("fig_run_info"),
@@ -34,7 +34,7 @@ panel = ui.nav_panel("4. Figures",
                                                      ui.output_image("fig_pvd", height="auto"))),
                      ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
                                                               ui.output_plot("fig_patterns", height="520px"),
-                                                              ui.output_plot("fig_progression", height="460px"))),
+                                                              ui.output_image("fig_progression", height="auto"))),
                      ui.nav_panel("Subtype probabilities", figure_card("Subtype probabilities", FIG_HELP["probs"],
                                                                        ui.output_plot("fig_probs", height="560px"))),
                      ui.nav_panel("Stages", figure_card(
@@ -45,7 +45,7 @@ panel = ui.nav_panel("4. Figures",
                              ui.input_select("stages_subtype", "Show a person from", choices=[]),
                              ui.input_selectize("stages_person", "Person (circled)", choices=[]),
                              col_widths=[3, 3, 3]),
-                         ui.output_plot("fig_stages", height="440px"),
+                         ui.output_plot("fig_stages", height="760px"),
                          ui.output_ui("uncertain_status"),
                          ui.output_data_frame("uncertain_people"))),
                      ui.nav_panel("Choosing k", figure_card("How many subtypes?", FIG_HELP["choice"],
@@ -126,11 +126,19 @@ def server(input, output, session, shared):
         d = fig_data()
         return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12)
 
-    @render.plot
+    @render.image(delete_file=True)
     def fig_progression():
+        """Shown as a picture at its own size: squeezed into the page, its region names were cut off."""
         d = fig_data()
-        return plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
-                                      vmax=input.fig_vmax() or 12)
+        return as_picture(plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"],
+                                                 None, vmax=input.fig_vmax() or 12))
+
+    def as_picture(fig):
+        """A figure saved as a PNG for render.image (deleted after showing), at its own size."""
+        path = Path(tempfile.gettempdir()) / f"tau_typer_figure_{secrets.token_hex(8)}.png"
+        fig.savefig(path, dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        return {"src": str(path), "width": "100%"}
 
     @render.plot
     def fig_probs():
@@ -222,4 +230,10 @@ def server(input, output, session, shared):
                            d["result"]["prob_subtype"][i][d["order"]], d["result"]["prob_stage"][i], fig_titles())
 
     # what the later tabs use
+    @render.ui
+    def step4_status():
+        if shown_run() is None:
+            return step_status("Waiting for a run")
+        return step_status(f"{input.fig_model() or '?'} subtypes", "done")
+
     shared.update(model_view=model_view, subtype_titles=subtype_titles, subtypes_by_k=subtypes_by_k)

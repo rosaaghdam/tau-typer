@@ -8,9 +8,9 @@ from src.figures import (group_colors, plot_category_bars, plot_correlations, pl
                          plot_region_histograms)
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
                     number_and_category_columns, qc_summary)
-from common import CONFIG, RULE_ROLES, ROLE_LABELS
+from common import CONFIG, RULE_ROLES, ROLE_LABELS, step_status, step_title
 
-panel = ui.nav_panel("1. Data & QC",
+panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
              ui.layout_sidebar(
                  ui.sidebar(
                      ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
@@ -245,6 +245,13 @@ def server(input, output, session, shared):
         data = uploaded_data()
         req(data is not None)            # show nothing until a file is uploaded
         return data.head(20)
+
+    @render.ui
+    def step1_status():
+        if uploaded_data() is None:
+            return step_status("Upload a CSV", "attention")
+        rule = " (rule applied)" if included()[1] is not None else ""
+        return step_status(f"{len(analysis_data())} people{rule}", "done")
 
     # what the later tabs use
     shared.update(analysis_data=analysis_data, chosen_columns=chosen_columns, missing_roles=missing_roles,

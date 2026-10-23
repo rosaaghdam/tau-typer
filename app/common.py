@@ -25,12 +25,13 @@ FIG_HELP = {    # short help text above each tab-4 figure
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
              "it.",
-    "stages": "Left: how many tau+ people are at each SuStaIn stage, coloured by subtype; "
-              "people at stage 0 (S0, no abnormal tau) are only counted in the legend. Middle: how sure SuStaIn is "
-              "about each person's stage (SD of their stage probabilities) - low = sure, high = the stage could "
-              "be one of several (often higher in the middle stages, where events overlap - the pale squares "
-              "of the PVD); 'Show a person from' a subtype = that subtype in colour, the others grey; ringed dot = the person chosen above. Right: the same per subtype. "
-              "Dashed red line = your limit; the people above it are listed below.",
+    "stages": "Top: how many tau+ people are at each SuStaIn stage, coloured by subtype; people at stage 0 "
+              "(S0, no abnormal tau) are only counted in the legend. Bottom left: how sure SuStaIn is about each "
+              "person's stage (SD of their stage probabilities) - low = sure, high = the stage could be one of "
+              "several (often higher in the middle stages, where events overlap - the pale squares of the PVD). "
+              "Bottom right: the same per subtype. Choosing a subtype above shows it in colour and the others "
+              "grey; the person chosen above is circled. Dashed red line = your limit; the people above it are "
+              "listed below.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
               "best). Bottom: subtype tree - where people go when one more subtype is allowed.",
     "person": "Bars: this person's z-scores. Dots: average of people in the same subtype and stage group. "
@@ -73,3 +74,17 @@ def no_run_banner():
     """Shown above tabs 4 and 5 until a run is loaded."""
     return ui.div("No run shown yet: run SuStaIn, or load a saved run, in tab 3 (Run SuStaIn).",
                   class_="alert alert-info")
+
+
+def step_title(number, label, status_id):
+    """Title of one step in the step rail: a numbered circle, the step's name and its status
+    (status_id = a render.ui in the tab's server that returns step_status(...))."""
+    return ui.span(ui.span(str(number), class_="tt-step-num"),
+                   ui.span(ui.span(label, class_="tt-step-label"), ui.output_ui(status_id, inline=True),
+                           class_="tt-step-text"),
+                   class_="d-flex align-items-center gap-2")
+
+
+def step_status(text, state="waiting"):
+    """The small status under a step's name. state: "done", "attention" (needs your action) or "waiting"."""
+    return ui.span(text, class_=f"tt-step-status tt-{state}")

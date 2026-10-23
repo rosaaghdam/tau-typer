@@ -1,4 +1,6 @@
 """Figures of SuStaIn results. Drawing is done by pySuStaIn's own plot functions where possible."""
+from pathlib import Path
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +9,8 @@ from pySuStaIn import ZscoreSustain
 from scipy import stats
 
 from src.subtype_analysis import region_pairs
+
+plt.style.use(Path(__file__).with_name("tau_typer.mplstyle"))   # one look for every figure
 
 
 def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=5, subtype_order=None):
@@ -50,7 +54,7 @@ def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_
     labels = [f"{a}-{b - 1}" for a, b in zip(stage_edges[:-1], stage_edges[1:])]
     stage_group = pd.cut(table["ml_stage"], stage_edges, right=False, labels=labels)
     n = len(subtype_titles)                               # one panel per subtype + a thin colour-bar column
-    fig, axes = plt.subplots(1, n + 1, figsize=(4 * n + 1, 5), gridspec_kw={"width_ratios": [1] * n + [0.08]})
+    fig, axes = plt.subplots(1, n + 1, figsize=(2.6 * n + 1.5, 4.2), gridspec_kw={"width_ratios": [1] * n + [0.08]})
     colorbar_ax, axes = axes[-1], axes[:-1]
     for k, (ax, title) in enumerate(zip(axes, subtype_titles), start=1):
         people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0)      # this subtype, tau+ only
@@ -216,7 +220,9 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None)
     k = len(subtype_titles)
     colors = subtype_colors(k)
     stages = np.arange(table["ml_stage"].max() + 1)
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(17, 4.8), gridspec_kw={"width_ratios": [1.2, 1.2, 0.6]})
+    fig = plt.figure(figsize=(13, 9))                    # top: counts; bottom: uncertainty + per subtype
+    grid = fig.add_gridspec(2, 2, width_ratios=[3, 1])
+    ax1, ax2, ax3 = fig.add_subplot(grid[0, :]), fig.add_subplot(grid[1, 0]), fig.add_subplot(grid[1, 1])
     bottom = np.zeros(len(stages))
     s0 = (table["ml_stage"] == 0).sum()
     for n, title in enumerate(subtype_titles, start=1):

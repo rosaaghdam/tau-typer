@@ -9,51 +9,57 @@ from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_po
                                z_max_table)
 from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm,
                         reference_group_normal, zscore_regions, zscore_with_reference)
-from common import NORM_METHODS, CONFIG, SAMPLE_DATA, REFERENCE_ROLES, REFERENCE_GROUPS, DISEASE_WORDS
+from common import (CONFIG, DISEASE_WORDS, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES, SAMPLE_DATA, step_status,
+                    step_title)
 
-panel = ui.nav_panel("2. Normalization",
+panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
              ui.layout_sidebar(
                  ui.sidebar(
-                     ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
-                                            choices=NORM_METHODS, selected="gmm"),
-                     ui.output_ui("norm_method_note"),
-                     ui.input_checkbox("adjust_cov", "Adjust for covariates first (W-score style)", value=False),
-                     ui.panel_conditional(
-                         "input.adjust_cov",
-                         ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
-                         ui.output_ui("adjust_warning"),
-                         ui.input_checkbox("adjust_only_sig", "Remove only where significant", value=True),
-                         ui.panel_conditional(
-                             "input.adjust_only_sig",
-                             ui.input_numeric("adjust_alpha", "p-value limit",
-                                              value=CONFIG["normalization"]["covariate_alpha"],
-                                              min=0.001, max=0.5, step=0.01))),
-                     ui.panel_conditional(
-                         "input.norm_method === 'gmm'",
-                         ui.input_numeric("gmm_components", "Number of GMM components",
-                                          value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
-                         ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
-                              "the one with the lowest mean is 'normal'.", class_="text-muted small")),
-                     ui.input_checkbox("per_region", "Different cut-points / Z_max per region", value=False),
-                     ui.panel_conditional(                  # one set of values for all regions
-                         "!input.per_region",
-                         ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
-                                       value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
-                         ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
-                                                choices={"manual": "One value for all regions",
-                                                         "percentile": "Percentile per region"},
-                                                selected=CONFIG["normalization"]["z_max_method"]),
-                         ui.panel_conditional("input.z_max_method === 'manual'",
-                                              ui.input_text("z_max_manual", "Z_max",
-                                                            value=f"{CONFIG['sustain']['z_max']:g}")),
-                         ui.panel_conditional("input.z_max_method === 'percentile'",
-                                              ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
-                                                               value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
-                         ),
-                     ui.panel_conditional(                  # values per region: in the main area
-                         "input.per_region",
-                         ui.p("Set the cut-points and Z_max of each region in the 'Per-region values' tab "
-                              "(on the right).", class_="text-primary small")),
+                     ui.accordion(
+                         ui.accordion_panel("Method",
+                             ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
+                                                    choices=NORM_METHODS, selected="gmm"),
+                             ui.output_ui("norm_method_note"),
+                             ui.panel_conditional(
+                                 "input.norm_method === 'gmm'",
+                                 ui.input_numeric("gmm_components", "Number of GMM components",
+                                                  value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
+                                 ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
+                                      "the one with the lowest mean is 'normal'.", class_="text-muted small"))),
+                         ui.accordion_panel("Covariates (optional)",
+                             ui.input_checkbox("adjust_cov", "Adjust for covariates first (W-score style)", value=False),
+                             ui.panel_conditional(
+                                 "input.adjust_cov",
+                                 ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
+                                 ui.output_ui("adjust_warning"),
+                                 ui.input_checkbox("adjust_only_sig", "Remove only where significant", value=True),
+                                 ui.panel_conditional(
+                                     "input.adjust_only_sig",
+                                     ui.input_numeric("adjust_alpha", "p-value limit",
+                                                      value=CONFIG["normalization"]["covariate_alpha"],
+                                                      min=0.001, max=0.5, step=0.01)))),
+                         ui.accordion_panel("Events: cut-points and Z_max",
+                             ui.input_checkbox("per_region", "Different cut-points / Z_max per region", value=False),
+                             ui.panel_conditional(                  # one set of values for all regions
+                                 "!input.per_region",
+                                 ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
+                                               value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
+                                 ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
+                                                        choices={"manual": "One value for all regions",
+                                                                 "percentile": "Percentile per region"},
+                                                        selected=CONFIG["normalization"]["z_max_method"]),
+                                 ui.panel_conditional("input.z_max_method === 'manual'",
+                                                      ui.input_text("z_max_manual", "Z_max",
+                                                                    value=f"{CONFIG['sustain']['z_max']:g}")),
+                                 ui.panel_conditional("input.z_max_method === 'percentile'",
+                                                      ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
+                                                                       value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
+                                 ),
+                             ui.panel_conditional(                  # values per region: in the main area
+                                 "input.per_region",
+                                 ui.p("Set the cut-points and Z_max of each region in the 'Per-region values' tab "
+                                      "(on the right).", class_="text-primary small"))),
+                         open=["Method", "Events: cut-points and Z_max"], multiple=True),
                      ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
                      width=320, open="always"),
                  ui.navset_tab(
@@ -90,6 +96,7 @@ def server(input, output, session, shared):
     """Outputs and reactive steps of this tab. shared = what earlier tabs made (and what this tab
     adds for the later ones)."""
     analysis_data = shared["analysis_data"]
+    uploaded_data = shared["uploaded_data"]
     chosen_columns = shared["chosen_columns"]
     missing_roles = shared["missing_roles"]
     other_columns = shared["other_columns"]
@@ -533,6 +540,16 @@ def server(input, output, session, shared):
     @render.download_button(filename="tau_typer_covariate_adjustment.csv")
     def download_slopes():
         yield adjustment_table().to_csv(index_label="region")
+
+    @render.ui
+    def step2_status():
+        if uploaded_data() is None:
+            return step_status("Waiting for data")
+        if input.normalize() == 0:
+            return step_status("Click Normalize", "attention")
+        if norm_outdated():
+            return step_status("Settings changed", "attention")
+        return step_status(f"z-scores ready ({normalized()['z'].shape[1]} regions)", "done")
 
     # what the later tabs use
     shared.update(cut_points=cut_points, norm_outdated=norm_outdated, normalized=normalized,
