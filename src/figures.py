@@ -20,8 +20,15 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     blue = z 10. Dark square = SuStaIn is sure the event happens at that stage; pale = unsure.
     save_path is given without ".png" (None = do not save).
     subtype_order: which of pySuStaIn's subtypes to draw first, second, ... (None = pySuStaIn's choice).
+    Each title gets pySuStaIn's f and n, as pySuStaIn writes them: f = the subtype's share of all people
+    (mean over the MCMC samples), n = f x number of people.
     """
     k = len(subtype_titles)
+    shares = np.mean(result["samples_f"], axis=1)                     # pySuStaIn's own numbers
+    order = np.argsort(shares)[::-1] if subtype_order is None else subtype_order
+    n_people = len(result["ml_subtype"])
+    subtype_titles = [f"{title} (f={shares[i]:.2f}, n={round(shares[i] * n_people)})"
+                      for title, i in zip(subtype_titles, order)]
     n_rows, n_cols = (1, k) if k < 3 else (2, int(np.ceil(k / 2)))     # pySuStaIn's own grid (up to 6)
     n_events = int((Z_vals > 0).sum())
     panel_height = 7 / n_cols * len(regions) / n_events + 1.2          # cells are square in the PVD

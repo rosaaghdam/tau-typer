@@ -22,7 +22,9 @@ RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuSt
 SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy data + 10 clinical variables + SCD
 FIG_HELP = {    # short help text above each tab-4 figure
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Dark = SuStaIn "
-           "is sure the event happens at that stage, pale = unsure.",
+           "is sure the event happens at that stage, pale = unsure. In each title, as pySuStaIn writes it: f = the "
+           "subtype's share of all people (S0 included), n = f x number of people - so n can differ from the counts "
+           "of tau+ people in the other figures.",
     "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people "
                 "(number in each cell). Bottom: the same, split into stage groups (early stages on the left, late "
                 "on the right), so you can see where tau spreads as the stage rises. n = number of people.",
