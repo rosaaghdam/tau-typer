@@ -19,7 +19,8 @@ DATA_INPUTS = {**BUTTONS, "col_id": "subject_id", "col_age": "age", "col_sex": "
                "col_amyloid": "amyloid_positive", "col_regions": REGIONS, "apply_rule": False}
 NORM_INPUTS = {"norm_method": "gmm", "adjust_cov": False, "adjust_candidates": [], "adjust_only_sig": True,
                "adjust_alpha": 0.05, "gmm_components": 2, "per_region": False, "cut_points": "2, 5, 10",
-               "z_max_method": "manual", "z_max_manual": "15", "z_max_percentile": 95, "gmm_region": "L_MTL"}
+               "z_max_method": "manual", "z_max_manual": "15", "z_max_percentile": 95, "gmm_region": "L_MTL",
+               "zeda_x": "", "zeda_split": ""}
 FIGURE_INPUTS = {**BUTTONS, "subtype_names": "", "fig_vmax": 12, "sd_limit": 1.0, "stages_subtype": "all",
                  "stages_person": "", "fig_person": "TOY_0001", "pvd_all": False, "eda_x": "", "eda_split": "", "an_variables": ["age", "sex", "MMSE"],
                  "an_stage_variable": "age", "an_adjust": ["age", "sex"]}

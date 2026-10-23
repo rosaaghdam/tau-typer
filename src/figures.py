@@ -115,14 +115,14 @@ def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
     return fig
 
 
-def plot_region_eda(data, regions, x=None, groups=None, colors=None):
+def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label="value (e.g. SUVR)"):
     """Explore the regional values (tab 1). One panel per region (left on top, right below):
     - x = None: the distribution of the values (one colour per group if groups is given);
     - x = a number column (e.g. age): each person as a dot, with a straight trend line per group - if the
       lines of two groups are not parallel, the trend differs between the groups (an interaction);
     - x = a category column (e.g. sex): a box per category, with the people as dots coloured by group.
     groups: a Series of group labels (e.g. sex, or age split into low/middle/high), same rows as data;
-    colors: {group: colour}."""
+    colors: {group: colour}. value_label: what the regional values are (axis label)."""
     values = data[list(regions)].apply(pd.to_numeric, errors="coerce")
     names = list(colors) if groups is not None else [None]
     member = {g: (groups == g) if g is not None else pd.Series(True, index=data.index) for g in names}
@@ -161,9 +161,9 @@ def plot_region_eda(data, regions, x=None, groups=None, colors=None):
                                label=g if i == 1 else None)
             ax.set_xticks(range(1, len(categories) + 1), categories, fontsize=8)
         ax.set_title(region, fontsize=10)
-        ax.set_xlabel(x or "value (e.g. SUVR)", fontsize=8)
+        ax.set_xlabel(x or value_label, fontsize=8)
         if ax.get_subplotspec().is_first_col():                   # y label only on the left
-            ax.set_ylabel("people" if x is None else "value (e.g. SUVR)", fontsize=8)
+            ax.set_ylabel("people" if x is None else value_label, fontsize=8)
     if groups is not None:                                        # one legend for all panels
         handles = [plt.Rectangle((0, 0), 1, 1, color=colors[g]) for g in names]
         fig.legend(handles, [str(g) for g in names], loc="upper center", ncol=len(names), frameon=False)

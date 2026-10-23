@@ -4,7 +4,8 @@ import pandas as pd
 from shiny import reactive, render, req, ui
 from shiny.types import SafeException
 
-from src.figures import plot_gmm_fit, plot_region_histograms
+from src.figures import plot_gmm_fit, plot_region_eda, plot_region_histograms
+from src.qc import region_trend_tests
 from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_points, parse_z_max, sustain_inputs,
                                z_max_table)
 from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm,
@@ -73,8 +74,15 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                                   ui.p("z = (value - normal mean) / normal SD. First 20 people:",
                                        class_="text-muted small"),
                                   ui.output_data_frame("z_head"),
-                                  figure_card("z-scores per region", DATA_HELP["zhist"],
-                                              ui.output_plot("z_hist", height="520px"))),
+                                  figure_card("Explore the z-scores", DATA_HELP["zhist"],
+                                              ui.layout_columns(
+                                                  ui.input_select("zeda_x", "Plot the z-scores against",
+                                                                  choices={"": "(nothing)"}),
+                                                  ui.input_select("zeda_split", "Split by (colour)",
+                                                                  choices={"": "(no split)"}),
+                                                  col_widths=[4, 4]),
+                                              ui.output_plot("z_hist", height="560px"),
+                                              ui.output_ui("zeda_tests_view"))),
                      ui.nav_panel("Events",
                                   ui.p("Number of people reaching each cut-point in each region.",
                                        class_="text-muted small"),
@@ -103,6 +111,9 @@ def server(input, output, session, shared):
     missing_roles = shared["missing_roles"]
     other_columns = shared["other_columns"]
     restore = shared["restore"]
+    split_groups = shared["split_groups"]
+    tests_grid = shared["tests_grid"]
+    tests_view = shared["tests_view"]
 
     def restored():
         """The z-scores of a run loaded in tab 3 (None if there is none, or after a new Normalize)."""
@@ -286,7 +297,54 @@ def server(input, output, session, shared):
     @render.plot
     def z_hist():
         z = normalized()["z"]
-        return plot_region_histograms(z, list(z.columns), xlabel="z-score")
+        x, groups, colors = zeda_choice()
+        if x is None and groups is None:
+            return plot_region_histograms(z, list(z.columns), xlabel="z-score")
+        return plot_region_eda(z_with_columns(), list(z.columns), x, groups, colors, value_label="z-score")
+
+    @reactive.effect
+    def _zeda_choices():
+        """'Plot against' and 'Split by' offer the other columns of the file, as in tab 1."""
+        columns = other_columns()
+        with reactive.isolate():
+            keep_x, keep_split = input.zeda_x(), input.zeda_split()
+        ui.update_select("zeda_x", choices={"": "(nothing)", **{c: c for c in columns}},
+                         selected=keep_x if keep_x in columns else "")
+        ui.update_select("zeda_split", choices={"": "(no split)", **{c: c for c in columns}},
+                         selected=keep_split if keep_split in columns else "")
+
+    @reactive.calc
+    def z_with_columns():
+        """The z-scores next to the other columns of the same people (matched by subject ID)."""
+        z = normalized()["z"].copy()
+        data = analysis_data()
+        id_col = chosen_columns().get("id")
+        others = data.set_index(id_col) if id_col else data.copy()
+        others.index = others.index.astype(str)
+        z.index = z.index.astype(str)
+        others = others.drop(columns=[c for c in z.columns if c in others.columns])
+        return z.join(others[~others.index.duplicated()])
+
+    def zeda_choice():
+        """(x column or None, group of each person or None, {group: colour}) for the z-score figure."""
+        data = z_with_columns()
+        x = input.zeda_x() or None
+        if x is not None and x not in data.columns:
+            return None, None, None
+        return (x, *split_groups(data, input.zeda_split() or None))
+
+    @render.ui
+    def zeda_tests_view():
+        x, groups, _ = zeda_choice()
+        if x is None:
+            return None
+        return tests_view(x, input.zeda_split() if groups is not None else None, "zeda_tests", value="z-score")
+
+    @render.data_frame
+    def zeda_tests():
+        x, groups, _ = zeda_choice()
+        req(x is not None)
+        return tests_grid(region_trend_tests(z_with_columns(), list(normalized()["z"].columns), x, groups))
 
     @reactive.calc
     def cut_points():

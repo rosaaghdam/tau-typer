@@ -58,7 +58,9 @@ DATA_HELP = {   # help (i) of the figures in tabs 1-3
     "gmm": "One region: histogram of the values and the bell curves of the Gaussian mixture model; the "
            "lowest-mean curve is 'normal'. The cut-points are drawn on the value axis "
            "(value = normal mean + z x normal SD).",
-    "zhist": "The z-scores of each region. Most people should sit around 0; the tau+ tail goes to the right.",
+    "zhist": "The z-scores of each region: most people should sit around 0, the tau+ tail goes to the right. "
+             "As in tab 1, plot them against a column (e.g. age or plasma p-tau217) and split by a group to "
+             "see trends and interactions; the table below tests them per region.",
     "model": "Fit per number of subtypes (higher = fits this data better, but it always rises with more "
              "subtypes), CVIC after cross-validation (lower = better) and the MCMC trace of each model "
              "(flat = stable).",

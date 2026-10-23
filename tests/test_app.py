@@ -145,3 +145,15 @@ def test_split_by_a_number_with_many_ties():
         assert ts.get_output("region_hist").status == "ok"
         ts.set_inputs(eda_x="")
         assert errors(ts) == {}
+
+
+def test_explore_the_z_scores():
+    """Tab 2: z-scores against plasma p-tau217, split by sex, with the per-region tests."""
+    with test_server(APP, timeout_secs=120) as ts:
+        ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
+        ts.set_inputs(normalize=1)
+        ts.set_inputs(zeda_x="plasma_ptau217", zeda_split="sex")
+        ts.set_inputs(zeda_x="plasma_ptau217", zeda_split="sex")   # the app also refills these boxes
+        assert errors(ts) == {}
+        assert ts.get_output("z_hist").status == "ok"
+        assert "interaction" in str(ts.get_output("zeda_tests").value)

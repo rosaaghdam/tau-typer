@@ -294,8 +294,13 @@ def server(input, output, session, shared):
         split = input.eda_split() or None
         if x is not None and x not in data.columns or split is not None and split not in data.columns:
             return None, None, None
-        if split is None:
-            return x, None, None
+        return (x, *split_groups(data, split))
+
+    def split_groups(data, split):
+        """(group of each person, {group: colour}) for 'Split by', or (None, None) for no split. A number column
+        is cut into thirds; the diagnosis keeps its own colours. Used by tab 1 (values) and tab 2 (z-scores)."""
+        if split is None or split not in data.columns:
+            return None, None
         numbers, _ = number_and_category_columns(data, [split])
         if numbers:
             groups, names = number_groups(pd.to_numeric(data[split], errors="coerce"))
@@ -307,7 +312,7 @@ def server(input, output, session, shared):
             colors = group_colors(names)
         else:
             colors = {g: OTHER_COLORS[i % len(OTHER_COLORS)] for i, g in enumerate(names)}
-        return x, groups, colors
+        return groups, colors
 
     def number_groups(values):
         """A number column cut into about equal thirds, named by their value range (e.g. "18-27", ">27-30").
@@ -324,26 +329,33 @@ def server(input, output, session, shared):
         x, groups, _ = eda_choice()
         if x is None:
             return None
+        return tests_view(x, input.eda_split() if groups is not None else None, "eda_tests")
+
+    def tests_view(x, split, output_id, value="region value"):
+        """Heading + how to read the per-region tests + the table (output_id)."""
         return ui.TagList(
             ui.h6("Tests per region", class_="mt-3"),
-            ui.p(f"Linear model: region value ~ {x}" + (f" x {input.eda_split()}" if groups is not None else "") +
-                 ". 'p: x' = does the value change with " + x + (
+            ui.p(f"Linear model: {value} ~ {x}" + (f" x {split}" if split else "") +
+                 f". 'p: x' = does it change with {x}" + (
                      "; 'p: group' = do the groups differ; 'p: x by group' = does the trend differ between the "
-                     "groups (interaction)" if groups is not None else "") +
+                     "groups (interaction)" if split else "") +
                  ". p-values are not corrected for testing many regions.", class_="text-muted small"),
-            ui.output_data_frame("eda_tests"))
+            ui.output_data_frame(output_id))
 
-    @render.data_frame
-    def eda_tests():
-        x, groups, _ = eda_choice()
-        req(x is not None)
-        table = region_trend_tests(analysis_data(), list(input.col_regions()), x, groups)
+    def tests_grid(table):
+        """The per-region tests as a table; p below 0.05 in bold."""
         shown = table.copy()
         for col in shown.columns:
             shown[col] = shown[col].map(lambda v: f"{v:.3g}")
         bold = [{"rows": [i for i, v in enumerate(table[col]) if v < 0.05], "cols": [j + 1],
                  "style": {"font-weight": "bold"}} for j, col in enumerate(table.columns) if col.startswith("p:")]
         return render.DataGrid(shown.reset_index(names="region"), styles=bold, width="100%")
+
+    @render.data_frame
+    def eda_tests():
+        x, groups, _ = eda_choice()
+        req(x is not None)
+        return tests_grid(region_trend_tests(analysis_data(), list(input.col_regions()), x, groups))
 
     @render.ui
     def data_status():
@@ -375,4 +387,5 @@ def server(input, output, session, shared):
 
     # what the later tabs use
     shared.update(analysis_data=analysis_data, chosen_columns=chosen_columns, missing_roles=missing_roles,
-                  other_columns=other_columns, uploaded_data=uploaded_data)
+                  other_columns=other_columns, split_groups=split_groups, tests_grid=tests_grid,
+                  tests_view=tests_view, uploaded_data=uploaded_data)
