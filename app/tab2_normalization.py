@@ -1,0 +1,539 @@
+"""Tab 2 - Normalization: regional values -> z-scores, cut-points (events) and Z_max."""
+import numpy as np
+import pandas as pd
+from shiny import reactive, render, req, ui
+from shiny.types import SafeException
+
+from src.figures import plot_gmm_fit, plot_region_histograms
+from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_points, parse_z_max, sustain_inputs,
+                               z_max_table)
+from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm,
+                        reference_group_normal, zscore_regions, zscore_with_reference)
+from common import NORM_METHODS, CONFIG, SAMPLE_DATA, REFERENCE_ROLES, REFERENCE_GROUPS, DISEASE_WORDS
+
+panel = ui.nav_panel("2. Normalization",
+             ui.layout_sidebar(
+                 ui.sidebar(
+                     ui.input_radio_buttons("norm_method", "Where 'normal' comes from",
+                                            choices=NORM_METHODS, selected="gmm"),
+                     ui.output_ui("norm_method_note"),
+                     ui.input_checkbox("adjust_cov", "Adjust for covariates first (W-score style)", value=False),
+                     ui.panel_conditional(
+                         "input.adjust_cov",
+                         ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
+                         ui.output_ui("adjust_warning"),
+                         ui.input_checkbox("adjust_only_sig", "Remove only where significant", value=True),
+                         ui.panel_conditional(
+                             "input.adjust_only_sig",
+                             ui.input_numeric("adjust_alpha", "p-value limit",
+                                              value=CONFIG["normalization"]["covariate_alpha"],
+                                              min=0.001, max=0.5, step=0.01))),
+                     ui.panel_conditional(
+                         "input.norm_method === 'gmm'",
+                         ui.input_numeric("gmm_components", "Number of GMM components",
+                                          value=CONFIG["pipeline"]["gmm_components"], min=2, max=5),
+                         ui.p("Per region, a Gaussian mixture model splits the values into bell curves; "
+                              "the one with the lowest mean is 'normal'.", class_="text-muted small")),
+                     ui.input_checkbox("per_region", "Different cut-points / Z_max per region", value=False),
+                     ui.panel_conditional(                  # one set of values for all regions
+                         "!input.per_region",
+                         ui.input_text("cut_points", "Cut-points (the SuStaIn events)",
+                                       value=", ".join(f"{z:g}" for z in CONFIG["sustain"]["z_events"])),
+                         ui.input_radio_buttons("z_max_method", "Z_max (the z-score each region reaches at the very end)",
+                                                choices={"manual": "One value for all regions",
+                                                         "percentile": "Percentile per region"},
+                                                selected=CONFIG["normalization"]["z_max_method"]),
+                         ui.panel_conditional("input.z_max_method === 'manual'",
+                                              ui.input_text("z_max_manual", "Z_max",
+                                                            value=f"{CONFIG['sustain']['z_max']:g}")),
+                         ui.panel_conditional("input.z_max_method === 'percentile'",
+                                              ui.input_numeric("z_max_percentile", "Percentile (among people with z >= first cut-point)",
+                                                               value=CONFIG["normalization"]["z_max_percentile"], min=50, max=100)),
+                         ),
+                     ui.panel_conditional(                  # values per region: in the main area
+                         "input.per_region",
+                         ui.p("Set the cut-points and Z_max of each region in the 'Per-region values' tab "
+                              "(on the right).", class_="text-primary small")),
+                     ui.input_action_button("normalize", "Normalize", class_="btn-primary"),
+                     width=320, open="always"),
+                 ui.navset_tab(
+                     ui.nav_panel("Normal reference", ui.output_ui("norm_status"),
+                                  ui.output_ui("slopes_view"),
+                                  ui.output_data_frame("norm_reference")),
+                     ui.nav_panel("GMM fit per region", ui.output_ui("gmm_region_choice"),
+                                  ui.output_plot("gmm_fit_plot", height="420px")),
+                     ui.nav_panel("Z-scores",
+                                  ui.p("z = (value - normal mean) / normal SD. First 20 people:",
+                                       class_="text-muted small"),
+                                  ui.output_data_frame("z_head"),
+                                  ui.output_plot("z_hist", height="520px")),
+                     ui.nav_panel("Events",
+                                  ui.p("Number of people reaching each cut-point in each region.",
+                                       class_="text-muted small"),
+                                  ui.output_ui("events_status"),
+                                  ui.output_data_frame("events_table")),
+                     ui.nav_panel("Per-region values", ui.output_ui("per_region_ui"),
+                                  ui.panel_conditional("input.per_region",
+                                                       ui.input_action_button("pr_reset", "Reset to sidebar values",
+                                                                              class_="mt-2"))),
+                     ui.nav_panel("Z_max", ui.output_ui("zmax_status"),
+                                  ui.output_data_frame("zmax_table")),
+                     ui.nav_panel("SuStaIn input", ui.output_ui("sustain_input_summary"),
+                                  ui.download_button("download_z", "Download z-scores (CSV)"),
+                                  ui.download_button("download_reference", "Download normal reference (CSV)"),
+                                  ui.p("Keep the normal reference: new people must be z-scored with "
+                                       "these same numbers.", class_="text-muted small mt-2")),
+                     id="norm_tabs")))
+
+
+def server(input, output, session, shared):
+    """Outputs and reactive steps of this tab. shared = what earlier tabs made (and what this tab
+    adds for the later ones)."""
+    analysis_data = shared["analysis_data"]
+    chosen_columns = shared["chosen_columns"]
+    missing_roles = shared["missing_roles"]
+    other_columns = shared["other_columns"]
+
+    @reactive.calc
+    @reactive.event(input.normalize)                    # runs only when Normalize is clicked
+    def normalized():
+        """z-scores of the kept people with the chosen method ("gmm", "reference" or "zscored").
+        Returns a dict: z-scores, normal reference (None if already z-scored), values used,
+        method, settings used, reference-group size and how many people were left out."""
+        regions = list(input.col_regions() or [])
+        req(regions)
+        data = analysis_data()
+        values = data[regions].apply(pd.to_numeric, errors="coerce")
+        complete = values.dropna()                       # people with every region value
+        method, n_components, n_reference = input.norm_method(), input.gmm_components(), None
+        complete, adjustment = adjust_for_covariates(data, complete, regions, method)
+        if method == "gmm":
+            z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
+        elif method == "reference":
+            columns = chosen_columns()
+            if not (columns.get("diagnosis") and columns.get("amyloid")):
+                raise SafeException("The reference group needs the diagnosis and amyloid columns (tab 1).")
+            in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"],
+                                               columns["amyloid"], reference_labels())
+            n_reference = int(in_reference.sum())
+            if n_reference < 2:
+                raise SafeException("No amyloid-negative CN people found for the reference group.")
+            reference = reference_group_normal(complete, regions, in_reference)
+            z = zscore_with_reference(complete, regions, reference)
+        else:                                            # the uploaded values already are z-scores
+            z, reference = complete.copy(), None
+        id_col = chosen_columns().get("id")
+        if id_col:                                       # label rows with subject IDs
+            ids = data.loc[complete.index, id_col].values
+            z.index, complete.index = ids, ids
+        return {"z": z, "reference": reference, "values": complete, "method": method,
+                "n_components": n_components, "n_reference": n_reference,
+                "n_left_out": len(values) - len(complete), "inputs": norm_inputs(),
+                "adjustment": adjustment}
+
+    def adjust_for_covariates(data, complete, regions, method):
+        """If the box is ticked: test the chosen covariates in the healthy reference group and remove
+        them (only the significant ones, if that box is ticked) from everyone's SUVR.
+        Returns (values, None) or (adjusted values, dict with p-values, slopes and details)."""
+        names = list(input.adjust_candidates() or [])
+        if not input.adjust_cov() or method == "zscored":
+            return complete, None
+        if not names:
+            raise SafeException("Choose at least one covariate to test (or untick 'Adjust for covariates').")
+        columns = chosen_columns()
+        if not (columns.get("diagnosis") and columns.get("amyloid")):
+            raise SafeException("The covariate adjustment needs the diagnosis and amyloid columns (tab 1).")
+        covariates = covariate_matrix(data.loc[complete.index], names).dropna()   # known values only
+        complete = complete.loc[covariates.index]
+        in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"], columns["amyloid"],
+                                           reference_labels())
+        if in_reference.sum() < 10:
+            raise SafeException("The covariate adjustment needs at least 10 people in the healthy reference group.")
+        alpha = input.adjust_alpha() or CONFIG["normalization"]["covariate_alpha"]
+        try:
+            adjusted, p_values, estimates, slopes = covariate_adjustment(complete, regions, covariates,
+                                                                         in_reference, input.adjust_only_sig(), alpha)
+        except ValueError as error:
+            raise SafeException(str(error))
+        skipped = [c for c in covariates.columns if c not in p_values.columns]
+        return adjusted, {"p_values": p_values, "estimates": estimates, "slopes": slopes,
+                          "n_reference": int(in_reference.sum()),
+                          "skipped": skipped,
+                          "only_significant": input.adjust_only_sig(), "alpha": alpha,
+                          "group": REFERENCE_GROUPS[CONFIG["normalization"]["reference_group"]]}
+
+    def norm_inputs():
+        """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
+        method = input.norm_method()
+        return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
+                input.adjust_cov(), tuple(input.adjust_candidates() or []), input.adjust_only_sig(),
+                input.adjust_alpha(),
+                int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
+
+    @reactive.calc
+    def norm_outdated():
+        """True if a setting or the data changed after the last click on Normalize."""
+        if input.normalize() == 0:
+            return False
+        try:
+            return normalized()["inputs"] != norm_inputs()
+        except Exception:                                   # e.g. the data was removed
+            return True
+
+    def outdated_warning():
+        return ui.p("Settings or data changed after Normalize - click Normalize again to update the z-scores.",
+                    class_="text-danger fw-bold")
+
+    @render.ui
+    def norm_status():
+        if input.normalize() == 0:
+            return ui.p("Choose the settings and click Normalize.", class_="text-muted")
+        result = normalized()
+        lines = [outdated_warning()] if norm_outdated() else []
+        lines += [ui.p(f"{NORM_METHODS[result['method']]}: {len(result['z'])} people in {result['z'].shape[1]} "
+                      f"regions ({result['n_left_out']} left out because of missing region"
+                       f"{' or covariate' if result['adjustment'] is not None else ''} values).",
+                      class_="fw-bold")]
+        if result["method"] == "reference":
+            lines.append(ui.p(f"Reference group: {result['n_reference']} people "
+                              f"({REFERENCE_GROUPS[CONFIG['normalization']['reference_group']]})."))
+        adjustment = result["adjustment"]
+        if adjustment is not None:
+            used = (adjustment["slopes"] != 0).sum()
+            lines.append(ui.p(f"Covariates tested in {adjustment['n_reference']} people "
+                              f"({adjustment['group']}); removed where "
+                              f"{'p < ' + format(adjustment['alpha'], 'g') if adjustment['only_significant'] else 'chosen'}"
+                              f": {', '.join(f'{c} in {n} region(s)' for c, n in used.items())}. "
+                              "Details: table at the bottom.", class_="text-primary"))
+            if adjustment["skipped"]:
+                lines.append(ui.p(f"Skipped (the same for everyone in the reference group): "
+                                  f"{', '.join(adjustment['skipped'])}.", class_="text-muted small"))
+        if result["method"] == "zscored":
+            median = float(result["z"].median().median())
+            lines.append(ui.p("No normal reference is computed: the uploaded values are used as z-scores."))
+            if abs(median) > 1:
+                lines.append(ui.p(f"Warning: the median value is {median:.2f}, far from 0. Are these really "
+                                  "z-scores (not raw SUVR)?", class_="text-danger fw-bold"))
+        return ui.TagList(*lines)
+
+    @render.data_frame
+    def norm_reference():
+        reference = normalized()["reference"]
+        req(reference is not None)                       # nothing to show for already z-scored data
+        return reference.T.round(3).reset_index(names="Region")   # one row per region
+
+    @render.ui
+    def gmm_region_choice():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        if normalized()["method"] != "gmm":
+            return ui.p("The GMM figure is only used for 'GMM on everyone'.", class_="text-muted")
+        regions = list(normalized()["values"].columns)
+        return ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
+
+    @render.plot
+    def gmm_fit_plot():
+        result = normalized()
+        req(result["method"] == "gmm")
+        region = input.gmm_region()
+        req(region in result["values"].columns)
+        values = result["values"][region]
+        gmm = fit_gmm(values, result["n_components"], CONFIG["pipeline"]["seed"])   # same as Normalize
+        reference = result["reference"]
+        return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
+                            reference.loc["normal_sd", region], region_cuts()[region])
+
+    @render.data_frame
+    def z_head():
+        return normalized()["z"].head(20).round(2).reset_index(names="Subject")
+
+    @render.plot
+    def z_hist():
+        z = normalized()["z"]
+        return plot_region_histograms(z, list(z.columns), xlabel="z-score")
+
+    @reactive.calc
+    def cut_points():
+        """The typed cut-points as numbers; a clear message instead of an error if the text is invalid."""
+        try:
+            return parse_cut_points(input.cut_points())
+        except ValueError as error:
+            raise SafeException(str(error))              # shown to the user in the outputs
+
+    @reactive.effect
+    @reactive.event(input.per_region, ignore_init=True)
+    def _open_per_region_tab():
+        """Ticking 'Different cut-points / Z_max per region' opens the tab with the region rows."""
+        if input.per_region():
+            ui.update_navset("norm_tabs", selected="Per-region values")
+
+    @render.ui
+    def per_region_ui():
+        """One row per region with its own cut-points and Z_max, pre-filled with the sidebar values.
+        Built again (back to the sidebar values) when the regions change or Reset is clicked."""
+        input.pr_reset()
+        regions = list(input.col_regions() or [])
+        if not input.per_region():
+            return ui.p("Tick 'Different values per region' in the sidebar to set values for each region.",
+                        class_="text-muted")
+        if not regions:
+            return ui.p("Choose the region columns in tab 1 first.", class_="text-muted")
+        with reactive.isolate():
+            cuts_text = input.cut_points()
+            try:
+                z_max = sidebar_z_max_values()["Z_max used"]
+            except Exception:                                  # not normalized yet
+                z_max = pd.Series(CONFIG["sustain"]["z_max"], index=regions)
+        header = ui.row(ui.column(3, ui.strong("Region")), ui.column(5, ui.strong("Cut-points")),
+                        ui.column(4, ui.strong("Z_max")))
+        rows = [header]
+        for i, region in enumerate(regions):
+            rows.append(ui.row(
+                ui.column(3, ui.p(region, class_="mt-2")),
+                ui.column(5, ui.input_text(f"pr_cuts_{i}", None, value=cuts_text)),
+                ui.column(4, ui.input_numeric(f"pr_zmax_{i}", None, value=round(float(z_max.get(region, 15)), 1)))))
+        return ui.TagList(
+            ui.p("Each region can have its own cut-points (e.g. 2, 5 or 2, 4, 6, 8) and Z_max. The checks in "
+                 "the Events, Z_max and SuStaIn input tabs use these values.", class_="text-muted small"),
+            *rows)
+
+    @reactive.calc
+    def region_cuts():
+        """{region: cut-points} - the sidebar cut-points for every region, or the per-region values."""
+        regions = list(normalized()["z"].columns)
+        if not input.per_region():
+            return cuts_per_region(regions, cut_points())
+        cuts = {}
+        for i, region in enumerate(regions):
+            try:
+                cuts[region] = parse_cut_points(input[f"pr_cuts_{i}"]())
+            except ValueError as error:
+                raise SafeException(f"{region}: {error}")
+        return cuts
+
+    @reactive.calc
+    def event_counts():
+        """People reaching each cut-point (rows = regions, columns = cut-points)."""
+        z = normalized()["z"]
+        return count_people_above(z, list(z.columns), region_cuts())
+
+    @render.ui
+    def events_status():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        minimum = CONFIG["normalization"]["min_people_per_event"]
+        n_rare = int((event_counts() < minimum).sum().sum())          # empty cells are not counted
+        if n_rare == 0:
+            return ui.p(f"All events are reached by at least {minimum} people.", class_="text-success fw-bold")
+        return ui.p(f"{n_rare} event(s) are reached by fewer than {minimum} people (rows in red).",
+                    class_="text-danger fw-bold")
+
+    @render.data_frame
+    def events_table():
+        counts = event_counts()
+        minimum = CONFIG["normalization"]["min_people_per_event"]
+        rare_rows = [i for i, region in enumerate(counts.index) if (counts.loc[region] < minimum).any()]
+        if input.per_region():                                   # show each region's own cut-points
+            counts.insert(0, "Cut-points", [", ".join(f"{c:g}" for c in region_cuts()[r]) for r in counts.index])
+        return render.DataGrid(counts.reset_index(names="Region"),
+                               styles=[{"rows": rare_rows, "style": {"background-color": "#fde2e1"}}])
+
+    @reactive.calc
+    def sidebar_z_max_values():
+        """Z_max per region with the sidebar method, plus max/p99/p95 to help choose."""
+        z = normalized()["z"]
+        manual = None
+        if input.z_max_method() == "manual":
+            try:
+                manual = parse_z_max(input.z_max_manual(), list(z.columns))
+            except ValueError as error:
+                raise SafeException(str(error))
+        first_cuts = {region: cuts[0] for region, cuts in region_cuts().items()}
+        return z_max_table(z, input.z_max_method(), manual, input.z_max_percentile(), first_cuts)
+
+    @reactive.calc
+    def z_max_values():
+        """The Z_max used: the sidebar method, or the numbers typed per region."""
+        if not input.per_region():
+            return sidebar_z_max_values()
+        z = normalized()["z"]
+        manual = {}
+        for i, region in enumerate(z.columns):
+            value = input[f"pr_zmax_{i}"]()
+            if value is None:
+                raise SafeException(f"{region}: type a Z_max in the 'Per-region values' tab.")
+            manual[region] = float(value)
+        first_cuts = {region: cuts[0] for region, cuts in region_cuts().items()}
+        return z_max_table(z, "manual", manual, input.z_max_percentile(), first_cuts)
+
+    @render.ui
+    def zmax_status():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        values = z_max_values()["Z_max used"]
+        too_low = [region for region, cuts in region_cuts().items() if values[region] <= cuts[-1]]
+        if not too_low:
+            return ui.p("Z_max is above the last cut-point in every region.", class_="text-success fw-bold")
+        return ui.p(f"Z_max must be above the region's last cut-point. Too low in: {', '.join(too_low)}",
+                    class_="text-danger fw-bold")
+
+    @render.data_frame
+    def zmax_table():
+        table = z_max_values().reset_index(names="Region")
+        table["people with z >= min"] = table["people with z >= min"].astype(int)   # 130, not 130.0
+        return table
+
+    @reactive.calc
+    def sustain_input():
+        """Exactly what tab 3 gives to pySuStaIn (data, Z_vals, Z_max) + names, IDs and checks."""
+        z, cuts = normalized()["z"], region_cuts()
+        regions = list(z.columns)
+        z_max = z_max_values().loc[regions, "Z_max used"].to_numpy()
+        data, Z_vals, Z_max = sustain_inputs(z, regions, cuts, z_max)
+        minimum = CONFIG["normalization"]["min_people_per_event"]
+        last_cuts = np.array([cuts[region][-1] for region in regions])
+        checks = [("At least 2 regions", len(regions) >= 2),
+                  ("Z_max above the last cut-point in every region", bool((Z_max > last_cuts).all())),
+                  (f"Every event reached by at least {minimum} people",
+                   bool((event_counts().fillna(minimum) >= minimum).all().all()))]
+        return {"data": data, "Z_vals": Z_vals, "Z_max": Z_max, "regions": regions,
+                "subjects": list(z.index), "cut_points": cuts, "checks": checks}
+
+    def cuts_text(cuts):
+        """'2, 5, 10' if every region has the same cut-points, else 'different per region'."""
+        first = next(iter(cuts.values()))
+        if all(c == first for c in cuts.values()):
+            return ", ".join(f"{c:g}" for c in first)
+        return "different per region"
+
+    @render.ui
+    def sustain_input_summary():
+        if input.normalize() == 0:
+            return ui.p("Click Normalize first.", class_="text-muted")
+        s = sustain_input()
+        n_events = int((s["Z_vals"] > 0).sum())
+        z_max_text = (f"{s['Z_max'][0]:g} in every region" if len(set(s["Z_max"])) == 1
+                      else f"{s['Z_max'].min():.2f} - {s['Z_max'].max():.2f} (per region)")
+        facts = [f"Normalization: {NORM_METHODS[normalized()['method']]}",
+                 f"People x regions: {s['data'].shape[0]} x {s['data'].shape[1]}",
+                 f"Cut-points: {cuts_text(s['cut_points'])} -> {n_events} events, SuStaIn stages 0-{n_events}",
+                 f"Z_max: {z_max_text}"]
+        n_levels = len(np.unique(s["Z_vals"][s["Z_vals"] > 0]))
+        if n_levels > 6:
+            facts.append(f"Note: {n_levels} different cut-point values - SuStaIn runs, but its PVD figure can "
+                         "only show 6.")
+        checks = [ui.tags.li(("✓ " if ok else "✗ ") + text, class_="text-success" if ok else "text-danger")
+                  for text, ok in s["checks"]]
+        ready = all(ok for _, ok in s["checks"])
+        verdict = (ui.p("Ready for tab 3 (Run SuStaIn).", class_="text-success fw-bold") if ready else
+                   ui.p("Not ready: fix the items marked ✗.", class_="text-danger fw-bold"))
+        return ui.TagList(outdated_warning() if norm_outdated() else None,
+                          ui.h6("What goes into SuStaIn"), ui.tags.ul(*[ui.tags.li(f) for f in facts]),
+                          ui.h6("Checks"), ui.tags.ul(*checks), verdict)
+
+    @render.download_button(filename="tau_typer_zscores.csv")       # pairs with ui.download_button
+    def download_z():
+        yield normalized()["z"].round(4).to_csv(index_label="subject")
+
+    @render.download_button(filename="tau_typer_normal_reference.csv")
+    def download_reference():
+        result = normalized()
+        if result["reference"] is None:
+            yield "note\nNo normal reference: the uploaded data was already normalized.\n"
+        else:
+            table = result["reference"].T.round(4)
+            table["method"] = NORM_METHODS[result["method"]]
+            yield table.to_csv(index_label="region")
+
+    @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
+    def download_sample():
+        return str(SAMPLE_DATA)
+
+    # ---- normalization helpers moved here from the tab 1 / About parts
+
+    @reactive.effect
+    def _adjust_candidate_choices():
+        """'Covariates to test' offers every non-region, non-ID column except diagnosis and amyloid
+        (they define the reference group and are the disease itself); age and sex are pre-selected."""
+        roles = chosen_columns()
+        columns = [c for c in other_columns() if c not in (roles.get("diagnosis"), roles.get("amyloid"))]
+        default = [roles[r] for r in ("age", "sex") if roles.get(r) in columns]
+        ui.update_selectize("adjust_candidates", choices=columns, selected=default)
+
+    @render.ui
+    def adjust_warning():
+        """Red note if a chosen covariate looks like a disease measure (MMSE, CDR, p-tau, ...)."""
+        risky = [c for c in (input.adjust_candidates() or []) if any(w in c.lower() for w in DISEASE_WORDS)]
+        if risky:
+            verb = "looks like a disease measure" if len(risky) == 1 else "look like disease measures"
+            return ui.p(f"Careful: {', '.join(risky)} {verb}. Removing it would remove the disease signal "
+                        "SuStaIn should find.", class_="text-danger small fw-bold")
+
+    def reference_labels():
+        """Diagnosis labels of the healthy reference group (always used together with amyloid = 0)."""
+        labels = list(CONFIG["normalization"]["reference_labels_cn"])
+        if CONFIG["normalization"]["reference_group"] == "cn_scd":
+            labels += CONFIG["normalization"]["reference_labels_scd"]
+        return labels
+
+    @reactive.effect
+    def _norm_method_choices():
+        """Tab 2 offers 'Reference group' only when Diagnosis and Amyloid columns are chosen."""
+        missing = missing_roles(REFERENCE_ROLES)
+        choices = {key: label for key, label in NORM_METHODS.items() if not (missing and key == "reference")}
+        with reactive.isolate():
+            current = input.norm_method()
+        ui.update_radio_buttons("norm_method", choices=choices, selected=current if current in choices else "gmm")
+
+    @render.ui
+    def norm_method_note():
+        missing = missing_roles(REFERENCE_ROLES)
+        if missing:
+            return ui.p(f"'Reference group' needs {', '.join(missing)} (tab 1).", class_="text-muted small")
+
+    @render.ui
+    def slopes_view():
+        if input.normalize() == 0 or normalized()["adjustment"] is None:
+            return None
+        return ui.TagList(ui.h6("Covariate adjustment per region: slope (p-value)"),
+                          ui.p("Slope = change in SUVR per unit of the covariate in the healthy reference group "
+                               "(per year of age, per year of education, or vs the first category). "
+                               "Bold with ✓ = removed from everyone's SUVR.", class_="text-muted small"),
+                          ui.output_data_frame("slopes_table"),
+                          ui.download_button("download_slopes", "Download covariate adjustment (CSV)"),
+                          ui.p("Keep this file too: new people must be adjusted with the same slopes.",
+                               class_="text-muted small"))
+
+    def adjustment_table():
+        """For the download: per region and covariate the estimated slope, its p-value and removed (yes/no)."""
+        adjustment = req(normalized()["adjustment"])
+        table = pd.DataFrame(index=adjustment["p_values"].index)
+        for col in adjustment["p_values"].columns:
+            table[f"{col}: slope"] = adjustment["estimates"][col]
+            table[f"{col}: p"] = adjustment["p_values"][col]
+            table[f"{col}: removed"] = adjustment["slopes"][col] != 0
+        return table
+
+    @render.data_frame
+    def slopes_table():
+        """One column per covariate: 'slope (p = ...)', bold with ✓ where it was removed."""
+        adjustment = req(normalized()["adjustment"])        # only after an adjusted normalization
+        removed = adjustment["slopes"] != 0
+        shown = pd.DataFrame(index=adjustment["p_values"].index)
+        styles = []
+        for j, col in enumerate(adjustment["p_values"].columns):
+            shown[col] = [f"{adjustment['estimates'].loc[r, col]:+.4f} (p = {adjustment['p_values'].loc[r, col]:.2g})"
+                          + (" ✓ removed" if removed.loc[r, col] else "") for r in shown.index]
+            rows = [i for i, region in enumerate(shown.index) if removed.loc[region, col]]
+            if rows:
+                styles.append({"rows": rows, "cols": [1 + j], "style": {"font-weight": "bold",
+                                                                      "background-color": "#e3f2fd"}})
+        return render.DataGrid(shown.reset_index(names="Region"), styles=styles, width="100%")
+
+    @render.download_button(filename="tau_typer_covariate_adjustment.csv")
+    def download_slopes():
+        yield adjustment_table().to_csv(index_label="region")
+
+    # what the later tabs use
+    shared.update(cut_points=cut_points, norm_outdated=norm_outdated, normalized=normalized,
+                  sustain_input=sustain_input)

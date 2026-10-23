@@ -1,6 +1,7 @@
 """Paper steps 9-11 - read SuStaIn's saved results and turn them into readable tables and figures."""
 import os
 import pickle
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,13 @@ def load_sustain_result(output_folder, dataset_name, n_subtypes):
     pySuStaIn counts from 0: the 4-subtype model is saved as <dataset_name>_subtype3.pickle.
     """
     path = os.path.join(output_folder, "pickle_files", f"{dataset_name}_subtype{n_subtypes - 1}.pickle")
+    return read_result_file(path, os.path.getmtime(path))
+
+
+@lru_cache(maxsize=16)
+def read_result_file(path, modified):
+    """Read one result file once and keep it in memory (the tabs ask for the same file many times).
+    'modified' is the file's time stamp, so a changed file is read again."""
     with open(path, "rb") as f:
         return NumbersOnlyUnpickler(f).load()
 
