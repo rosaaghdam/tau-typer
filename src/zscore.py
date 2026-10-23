@@ -61,6 +61,37 @@ def zscore_with_reference(data, regions, reference):
     return (data[regions] - reference.loc["normal_mean"]) / reference.loc["normal_sd"]
 
 
+# ---------- Several cohorts: each cohort gets its own "normal" ----------
+def zscore_by_cohort(values, regions, cohorts, make_reference):
+    """z-scores made in each cohort separately, against that cohort's own normal reference, so z = 2 means
+    the same in every cohort (scanners, tracers and processing differ between cohorts).
+    cohorts: the cohort of each person (same rows as values; one value for everyone = one cohort).
+    make_reference(rows): the normal reference (rows normal_mean, normal_sd) of the people in rows.
+    Returns (z table in the same row order, {cohort: reference})."""
+    z_parts, references = [], {}
+    for cohort in sorted(cohorts.unique()):
+        rows = cohorts == cohort
+        references[cohort] = make_reference(rows)
+        z_parts.append(zscore_with_reference(values[rows], regions, references[cohort]))
+    return pd.concat(z_parts).loc[values.index], references
+
+
+def zscore_new_scans(values, regions, cohorts, references):
+    """z-scores of new scans (e.g. follow-ups) with the normal reference of their cohort - the same one the
+    model's people were z-scored with. Scans of a cohort without a reference are left out.
+    references None = the values already are z-scores."""
+    if references is None:
+        return values[regions].copy()
+    keep = cohorts.isin(list(references))
+    parts = [zscore_with_reference(values[cohorts == c], regions, references[c]) for c in cohorts[keep].unique()]
+    return pd.concat(parts).loc[values.index[keep]] if parts else values[regions].iloc[:0]
+
+
+def reference_table(references):
+    """{cohort: reference} -> one table: one row per cohort and region (to show and to save)."""
+    return pd.concat({c: r.T for c, r in references.items()}, names=["cohort", "region"]).reset_index()
+
+
 # ---------- Option: remove covariate effects (age, sex, ...) before normalization (W-score style) ----------
 
 def covariate_matrix(data, names, interactions=()):
@@ -130,3 +161,11 @@ def covariate_adjustment(data, regions, covariates, in_reference, only_significa
         slopes.loc[region, used] = fit.params[used]
         adjusted[region] = data[region] - centered[used].to_numpy() @ fit.params[used].to_numpy()
     return adjusted, p_values, estimates, slopes
+
+
+def apply_covariate_adjustment(values, regions, covariates, slopes, reference_means):
+    """The same covariate adjustment for new scans (e.g. follow-ups): value - sum of slope x (covariate -
+    reference mean), with the slopes and reference means learned by covariate_adjustment."""
+    centered = covariates[slopes.columns] - reference_means
+    removed = centered.to_numpy() @ slopes.loc[regions].to_numpy().T
+    return values[regions] - pd.DataFrame(removed, index=values.index, columns=regions)

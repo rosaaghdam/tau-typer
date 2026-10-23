@@ -8,8 +8,9 @@ from src.figures import colour_list, plot_gmm_fit, plot_region_eda, plot_region_
 from src.qc import region_trend_tests
 from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_points, parse_z_max, sustain_inputs,
                                z_max_table)
-from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm,
-                        reference_group_normal, zscore_regions, zscore_with_reference)
+from src.zscore import (amyloid_negative_cn, apply_covariate_adjustment, covariate_adjustment, covariate_matrix,
+                        fit_gmm, reference_group_normal, reference_table, zscore_by_cohort, zscore_new_scans,
+                        zscore_regions)
 from common import (CONFIG, DATA_HELP, DISEASE_WORDS, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES,
                    SAMPLE_DATA, add_figure, add_table, figure_card, figure_tools, step_status, step_title)
 
@@ -118,6 +119,8 @@ def server(input, output, session, shared):
     other_columns = shared["other_columns"]
     restore = shared["restore"]
     split_groups = shared["split_groups"]
+    followup_data = shared["followup_data"]
+    cohort_labels = shared["cohort_labels"]
     tests_grid = shared["tests_grid"]
     tests_view = shared["tests_view"]
     report_items = shared["report_items"]
@@ -146,47 +149,71 @@ def server(input, output, session, shared):
     @reactive.calc
     @reactive.event(input.normalize)                    # runs only when Normalize is clicked
     def computed_normalized():
-        """z-scores of the kept people with the chosen method ("gmm", "reference" or "zscored").
-        Returns a dict: z-scores, normal reference (None if already z-scored), values used,
-        method, settings used, reference-group size and how many people were left out."""
+        """z-scores of the kept people with the chosen method ("gmm", "reference" or "zscored"), made in
+        each cohort separately against its own normal (one cohort if there is no cohort column). Follow-up
+        scans get z-scores with the same normal reference. Returns a dict: z-scores, normal reference per
+        cohort (None if already z-scored), values used, method, settings used, reference-group sizes, how
+        many people were left out, each person's cohort and the follow-up z-scores."""
         regions = list(input.col_regions() or [])
         req(regions)
-        data = analysis_data()
+        data, later = analysis_data(), followup_data()
         values = data[regions].apply(pd.to_numeric, errors="coerce")
         complete = values.dropna()                       # people with every region value
+        later_values = later[regions].apply(pd.to_numeric, errors="coerce").dropna()
         method, n_components, n_reference = input.norm_method(), input.gmm_components(), None
-        complete, adjustment = adjust_for_covariates(data, complete, regions, method)
+        complete, later_values, adjustment = adjust_for_covariates(data, later, complete, later_values,
+                                                                   regions, method)
+        cohorts = cohort_labels(data.loc[complete.index])
         if method == "gmm":
-            z, reference = zscore_regions(complete, regions, n_components, CONFIG["pipeline"]["seed"])
+            check_cohort_sizes(cohorts.value_counts(), CONFIG["normalization"]["min_people_per_cohort_gmm"],
+                               "people", "choose 'Reference group'")
+            seed = CONFIG["pipeline"]["seed"]
+            z, reference = zscore_by_cohort(complete, regions, cohorts, lambda rows: zscore_regions(
+                complete[rows], regions, n_components, seed)[1])
         elif method == "reference":
             columns = chosen_columns()
             if not (columns.get("diagnosis") and columns.get("amyloid")):
                 raise SafeException("The reference group needs the diagnosis and amyloid columns (tab 1).")
             in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"],
                                                columns["amyloid"], reference_labels())
-            n_reference = int(in_reference.sum())
-            if n_reference < 2:
-                raise SafeException("No amyloid-negative CN people found for the reference group.")
-            reference = reference_group_normal(complete, regions, in_reference)
-            z = zscore_with_reference(complete, regions, reference)
+            n_reference = in_reference.groupby(cohorts).sum().astype(int)
+            check_cohort_sizes(n_reference, CONFIG["normalization"]["min_reference_per_cohort"],
+                               "healthy reference people (amyloid-negative CN)", "choose 'GMM on everyone'")
+            n_reference = n_reference.to_dict()
+            z, reference = zscore_by_cohort(complete, regions, cohorts, lambda rows: reference_group_normal(
+                complete[rows], regions, in_reference[rows]))
         else:                                            # the uploaded values already are z-scores
             z, reference = complete.copy(), None
-        id_col = chosen_columns().get("id")
+        later_z = zscore_new_scans(later_values, regions, cohort_labels(later.loc[later_values.index]), reference)
+        id_col, visit_col = chosen_columns().get("id"), chosen_columns().get("visit")
+        if visit_col:
+            later_z["visit"] = later.loc[later_z.index, visit_col]
         if id_col:                                       # label rows with subject IDs
             ids = data.loc[complete.index, id_col].values
-            z.index, complete.index = ids, ids
+            later_z.index = later.loc[later_z.index, id_col].values
+            z.index, complete.index, cohorts.index = ids, ids, ids
         return {"z": z, "reference": reference, "values": complete, "method": method,
                 "n_components": n_components, "n_reference": n_reference,
                 "n_left_out": len(values) - len(complete), "inputs": norm_inputs(),
-                "adjustment": adjustment}
+                "adjustment": adjustment, "cohorts": cohorts, "followup_z": later_z}
 
-    def adjust_for_covariates(data, complete, regions, method):
+    def check_cohort_sizes(counts, minimum, what, other_choice):
+        """Stops with a clear message if a cohort is too small for its own normal reference."""
+        small = {cohort: int(n) for cohort, n in counts.items() if n < minimum}
+        if small:
+            listed = ", ".join(f"{c}: {n}" for c, n in small.items())
+            raise SafeException(f"Too few {what} for a normal reference in cohort(s) {listed} - at least {minimum} "
+                                f"are needed (config.yaml). Leave these cohorts out of the file, or {other_choice}.")
+
+    def adjust_for_covariates(data, later, complete, later_values, regions, method):
         """If the box is ticked: test the chosen covariates in the healthy reference group and remove
-        them (only the significant ones, if that box is ticked) from everyone's SUVR.
-        Returns (values, None) or (adjusted values, dict with p-values, slopes and details)."""
+        them (only the significant ones, if that box is ticked) from everyone's SUVR - and, with the same
+        slopes, from the follow-up scans. With several cohorts the cohort is in the model too, so the
+        slopes are learned within the cohorts (the cohorts themselves get their own normal anyway).
+        Returns (values, follow-up values, None) or (adjusted values, adjusted follow-ups, details)."""
         names = list(input.adjust_candidates() or [])
         if not input.adjust_cov() or method == "zscored":
-            return complete, None
+            return complete, later_values, None
         if not names:
             raise SafeException("Choose at least one covariate to test (or untick 'Adjust for covariates').")
         columns = chosen_columns()
@@ -194,24 +221,34 @@ def server(input, output, session, shared):
             raise SafeException("The covariate adjustment needs the diagnosis and amyloid columns (tab 1).")
         pairs = [tuple(pair.split(" x ")) for pair in input.adjust_interactions() or []]
         pairs = [(a, b) for a, b in pairs if a in names and b in names]
-        covariates = covariate_matrix(data.loc[complete.index], names, pairs).dropna()   # known values only
-        complete = complete.loc[covariates.index]
+        cohort_col = columns.get("cohort")
+        if cohort_col and cohort_col not in names and cohort_labels(data).nunique() > 1:
+            names = names + [cohort_col]
+        both = pd.concat([data.loc[complete.index], later.loc[later_values.index]])   # same columns for both
+        covariates = covariate_matrix(both, names, pairs).dropna()   # known values only
+        complete = complete.loc[complete.index.intersection(covariates.index)]
+        later_values = later_values.loc[later_values.index.intersection(covariates.index)]
         in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"], columns["amyloid"],
                                            reference_labels())
         if in_reference.sum() < 10:
             raise SafeException("The covariate adjustment needs at least 10 people in the healthy reference group.")
         alpha = input.adjust_alpha() or CONFIG["normalization"]["covariate_alpha"]
+        baseline_covariates = covariates.loc[complete.index]
         try:
-            adjusted, p_values, estimates, slopes = covariate_adjustment(complete, regions, covariates,
+            adjusted, p_values, estimates, slopes = covariate_adjustment(complete, regions, baseline_covariates,
                                                                          in_reference, input.adjust_only_sig(), alpha)
         except ValueError as error:
             raise SafeException(str(error))
+        reference_means = baseline_covariates.loc[in_reference, slopes.columns].mean()
+        later_adjusted = apply_covariate_adjustment(later_values, regions, covariates.loc[later_values.index],
+                                                    slopes, reference_means)
         skipped = [c for c in covariates.columns if c not in p_values.columns]
-        return adjusted, {"p_values": p_values, "estimates": estimates, "slopes": slopes,
-                          "n_reference": int(in_reference.sum()),
-                          "skipped": skipped,
-                          "only_significant": input.adjust_only_sig(), "alpha": alpha,
-                          "group": REFERENCE_GROUPS[CONFIG["normalization"]["reference_group"]]}
+        return adjusted, later_adjusted, {"p_values": p_values, "estimates": estimates, "slopes": slopes,
+                                          "reference_means": reference_means,
+                                          "n_reference": int(in_reference.sum()),
+                                          "skipped": skipped,
+                                          "only_significant": input.adjust_only_sig(), "alpha": alpha,
+                                          "group": REFERENCE_GROUPS[CONFIG["normalization"]["reference_group"]]}
 
     def norm_inputs():
         """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
@@ -219,7 +256,7 @@ def server(input, output, session, shared):
         return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
                 input.adjust_cov(), tuple(input.adjust_candidates() or []),
                 tuple(input.adjust_interactions() or []), input.adjust_only_sig(),
-                input.adjust_alpha(),
+                input.adjust_alpha(), chosen_columns().get("cohort"), chosen_columns().get("visit"),
                 int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
 
     @reactive.calc
@@ -251,8 +288,20 @@ def server(input, output, session, shared):
                        f"{' or covariate' if result['adjustment'] is not None else ''} values).",
                       class_="fw-bold")]
         if result["method"] == "reference" and result["n_reference"] is not None:
-            lines.append(ui.p(f"Reference group: {result['n_reference']} people "
+            sizes = ", ".join(f"{n} people in {c}" if len(result["n_reference"]) > 1 else f"{n} people"
+                              for c, n in result["n_reference"].items())
+            lines.append(ui.p(f"Reference group: {sizes} "
                               f"({REFERENCE_GROUPS[CONFIG['normalization']['reference_group']]})."))
+        cohorts = result.get("cohorts")
+        if cohorts is not None and cohorts.nunique() > 1:
+            lines.append(ui.p(f"Made in each of the {cohorts.nunique()} cohorts separately, against its own normal: "
+                              + ", ".join(f"{c} ({n} people)" for c, n in cohorts.value_counts().sort_index().items())
+                              + ". So z = 2 means the same in every cohort."))
+        followups = result.get("followup_z")
+        if followups is not None and len(followups):
+            lines.append(ui.p(f"{len(followups)} follow-up scans z-scored with the same normal reference"
+                              f"{' and covariate slopes' if result['adjustment'] is not None else ''} - they are "
+                              "staged with the fitted model in tab 5 (Follow-up scans).", class_="text-muted"))
         adjustment = result["adjustment"]
         if adjustment is not None:
             used = (adjustment["slopes"] != 0).sum()
@@ -276,7 +325,8 @@ def server(input, output, session, shared):
     def norm_reference():
         reference = normalized()["reference"]
         req(reference is not None)                       # nothing to show for already z-scored data
-        return reference.T.round(3).reset_index(names="Region")   # one row per region
+        table = reference_table(reference).round(3)      # one row per cohort and region
+        return table if table["cohort"].nunique() > 1 else table.drop(columns="cohort")
 
     @render.ui
     def gmm_region_choice():
@@ -285,7 +335,12 @@ def server(input, output, session, shared):
         if normalized()["method"] != "gmm":
             return ui.p("The GMM figure is only used for 'GMM on everyone'.", class_="text-muted")
         regions = list(normalized()["z"].columns)
-        return ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
+        region = ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
+        cohorts = list(normalized()["reference"])
+        if len(cohorts) == 1:
+            return region
+        return ui.layout_columns(region, ui.input_select("gmm_cohort", "Cohort", choices=cohorts),
+                                 col_widths=[4, 4])
 
     def make_gmm():
         result = normalized()
@@ -293,9 +348,15 @@ def server(input, output, session, shared):
         region = input.gmm_region()
         req(result["values"] is not None and result["n_components"])   # an older loaded run has no values
         req(region in result["values"].columns)
+        cohort = list(result["reference"])[0]
+        if len(result["reference"]) > 1:
+            cohort = input.gmm_cohort()
+            req(cohort in result["reference"])
         values = result["values"][region]
+        if result.get("cohorts") is not None:
+            values = values[(result["cohorts"] == cohort).to_numpy()]
         gmm = fit_gmm(values, result["n_components"], CONFIG["pipeline"]["seed"])   # same as Normalize
-        reference = result["reference"]
+        reference = result["reference"][cohort]
         return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
                             reference.loc["normal_sd", region], region_cuts()[region])
 
@@ -560,9 +621,9 @@ def server(input, output, session, shared):
         if result["reference"] is None:
             yield "note\nNo normal reference: the uploaded data was already normalized.\n"
         else:
-            table = result["reference"].T.round(4)
+            table = reference_table(result["reference"]).round(4)
             table["method"] = NORM_METHODS[result["method"]]
-            yield table.to_csv(index_label="region")
+            yield table.to_csv(index=False)
 
     @render.download_link(filename="tau_typer_sample_data.csv")     # pairs with ui.download_link
     def download_sample():

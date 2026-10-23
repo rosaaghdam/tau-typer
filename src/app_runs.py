@@ -1,7 +1,8 @@
 """App tab 3 - one folder per SuStaIn run, and starting pySuStaIn in its own process.
 
-A run folder holds: settings.yaml, zscores.csv, zscore_reference.csv (if any), covariates.csv
-(the other columns: age, sex, diagnosis, ... - used by tab 5), log.txt (all
+A run folder holds: settings.yaml, zscores.csv, zscore_reference.csv (if any; one row per cohort and
+region), covariates.csv (the other columns: age, sex, diagnosis, ... - used by tab 5),
+followup_zscores.csv (later scans of the same people, if any - staged in tab 5), log.txt (all
 that pySuStaIn prints), pid.txt (the process number while it runs), status.txt (finished / failed /
 cancelled) and pySuStaIn's own files. A run folder can be downloaded as a ZIP and uploaded again.
 """
@@ -17,26 +18,32 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from src.zscore import reference_table
+
 ROOT = Path(__file__).resolve().parent.parent          # project folder
 
 
-def prepare_run_folder(folder, settings, z, reference=None, covariates=None, data=None, values=None):
+def prepare_run_folder(folder, settings, z, reference=None, covariates=None, data=None, values=None,
+                       followups=None):
     """Make a NEW run folder and save what the run needs. Fails if the folder already exists.
-    data (the table used in tab 1) and values (the regional values that were z-scored in tab 2) are
-    saved too, so loading the run later can show tabs 1 and 2 again."""
+    reference: {cohort: normal reference}. data (the table used in tab 1) and values (the regional values
+    that were z-scored in tab 2) are saved too, so loading the run later can show tabs 1 and 2 again.
+    followups: z-scores of the later scans (made with the same normal), staged later with the model."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=False)          # never reuse: pySuStaIn would load old results
     with open(folder / "settings.yaml", "w") as f:
         yaml.safe_dump(settings, f, sort_keys=False)
     z.to_csv(folder / "zscores.csv", index_label="subject")
     if reference is not None:                           # needed later to z-score new people the same way
-        reference.T.to_csv(folder / "zscore_reference.csv", index_label="region")
+        reference_table(reference).to_csv(folder / "zscore_reference.csv", index=False)
     if covariates is not None:                          # same people and IDs as zscores.csv
         covariates.to_csv(folder / "covariates.csv", index_label="subject")
     if data is not None:
         data.to_csv(folder / "input_data.csv", index=False)
     if values is not None:
         values.to_csv(folder / "input_values.csv", index_label="subject")
+    if followups is not None and len(followups):
+        followups.to_csv(folder / "followup_zscores.csv", index_label="subject")
 
 
 def read_run_inputs(folder):
@@ -47,8 +54,7 @@ def read_run_inputs(folder):
     settings = yaml.safe_load(open(folder / "settings.yaml"))
     columns = settings.get("columns", {})
     z = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str})
-    reference_file = folder / "zscore_reference.csv"
-    reference = pd.read_csv(reference_file, index_col="region").T if reference_file.exists() else None
+    reference = read_reference(folder / "zscore_reference.csv")
     complete = (folder / "input_data.csv").exists()
     if complete:
         data = pd.read_csv(folder / "input_data.csv")
@@ -59,9 +65,22 @@ def read_run_inputs(folder):
         values = None
     normalized = {"z": z, "reference": reference, "values": values, "method": settings["normalization"],
                   "n_components": settings.get("gmm_components"), "n_reference": None, "n_left_out": 0,
-                  "inputs": None, "adjustment": None, "restored_from": folder.name}
+                  "inputs": None, "adjustment": None, "restored_from": folder.name, "cohorts": None,
+                  "followup_z": None}
     return {"data": data, "columns": columns, "regions": settings["regions"], "normalized": normalized,
             "complete": complete, "run": folder.name}
+
+def read_reference(path):
+    """The saved normal reference as {cohort: table with rows normal_mean, normal_sd}, or None.
+    Runs made before cohorts were possible have no cohort column: one cohort, "all"."""
+    if not path.exists():
+        return None
+    table = pd.read_csv(path)
+    if "cohort" not in table:
+        table["cohort"] = "all"
+    return {str(cohort): rows.set_index("region")[["normal_mean", "normal_sd"]].T
+            for cohort, rows in table.groupby("cohort")}
+
 
 def start_run(folder):
     """Start src/run_job.py for this folder as a separate process (so it can run for hours and be stopped)."""

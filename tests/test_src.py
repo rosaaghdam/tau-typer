@@ -105,3 +105,58 @@ def test_report_holds_only_the_chosen_items():
     names = zipfile.ZipFile(io.BytesIO(data)).namelist()
     assert set(names) == {"figures/01_tau_per_subtype.png", "figures/01_tau_per_subtype.pdf",
                           "tables/01_table_1_the_subtypes_compared.csv", "tables/per_person.csv", "README.txt"}
+
+
+def test_first_scan_is_the_baseline():
+    """The earliest scan of each person is used (dates in any row order); the later ones are follow-ups."""
+    from src.qc import split_baseline, visit_times
+    data = pd.DataFrame({"id": ["a", "a", "b", "c", "c"], "date": ["2021-01-01", "2019-01-01", "2020-05-01",
+                                                                    "2018-01-01", "2020-01-01"], "x": range(5)})
+    first, later = split_baseline(data, "id", "date")
+    assert list(first["x"]) == [1, 2, 3] and list(later["x"]) == [0, 4]
+    assert visit_times(pd.Series(["2019-01-01", "2021-01-01"]))[1] == "years"
+    first, later = split_baseline(data, "id", None)       # no visit column: first row, no follow-ups
+    assert list(first["x"]) == [0, 2, 3] and len(later) == 0
+
+
+def test_each_cohort_gets_its_own_normal():
+    """Cohort B reads 20% higher: z-scored per cohort, the healthy people of both are around 0."""
+    from src.zscore import reference_group_normal, zscore_by_cohort, zscore_new_scans
+    rng = np.random.default_rng(0)
+    cohorts = pd.Series(["A"] * 100 + ["B"] * 100)
+    values = pd.DataFrame({"R1": rng.normal(1.2, 0.1, 200)})
+    values.loc[cohorts == "B", "R1"] *= 1.2
+    healthy = pd.Series(True, index=values.index)
+    z, references = zscore_by_cohort(values, ["R1"], cohorts, lambda rows: reference_group_normal(
+        values[rows], ["R1"], healthy[rows]))
+    assert abs(z.groupby(cohorts)["R1"].mean()).max() < 1e-9
+    new = zscore_new_scans(values.iloc[[0, 150]], ["R1"], cohorts.iloc[[0, 150]], references)
+    assert np.allclose(new["R1"], z.iloc[[0, 150]]["R1"])  # the same normal for later scans
+
+
+def test_same_covariate_adjustment_for_new_scans():
+    """Applying the learned slopes to the same people gives the same adjusted values."""
+    from src.zscore import apply_covariate_adjustment, covariate_adjustment, covariate_matrix
+    rng = np.random.default_rng(1)
+    data = pd.DataFrame({"age": rng.uniform(50, 85, 200), "sex": rng.choice(["F", "M"], 200)})
+    data["R1"] = 1 + 0.01 * data["age"] + rng.normal(0, 0.05, 200)
+    covariates = covariate_matrix(data, ["age", "sex"])
+    healthy = pd.Series(True, index=data.index)
+    adjusted, _, _, slopes = covariate_adjustment(data, ["R1"], covariates, healthy, only_significant=False)
+    again = apply_covariate_adjustment(data, ["R1"], covariates, slopes, covariates[slopes.columns].mean())
+    assert np.allclose(again["R1"], adjusted["R1"])
+
+
+def test_staging_the_model_people_again_gives_their_stage(one_run):
+    """pySuStaIn's staging of new scans, given the model's own people, mostly gives back their stage."""
+    import yaml
+    from conftest import ROOT
+    from src.results import load_sustain_result
+    from src.sustain_model import stage_new_scans
+    folder = ROOT / "results" / "app_runs" / one_run
+    settings = yaml.safe_load(open(folder / "settings.yaml"))
+    result = load_sustain_result(folder, settings["dataset_name"], 2)
+    z = pd.read_csv(folder / "zscores.csv", index_col="subject").iloc[:80]
+    staged = stage_new_scans(z, settings["regions"], settings, result, 200)
+    same = (staged["ml_stage"].ravel() == result["ml_stage"].ravel()[:80]).mean()
+    assert same > 0.8

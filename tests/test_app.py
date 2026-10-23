@@ -3,7 +3,8 @@ Run from the project folder:   ./env/bin/python -m pytest tests -q
 """
 from shiny.testserver import test_server
 
-from conftest import APP, DATA_INPUTS, FIGURE_INPUTS, NORM_INPUTS, errors, finished_runs, toy_upload
+from conftest import (APP, DATA_INPUTS, FIGURE_INPUTS, NORM_INPUTS, errors, finished_runs, toy_upload,
+                      two_cohort_file)
 
 
 def load(ts, run, k="2"):
@@ -165,3 +166,56 @@ def test_explore_the_z_scores():
         assert errors(ts) == {}
         assert ts.get_output("z_hist").status == "ok"
         assert "interaction" in str(ts.get_output("zeda_tests").value)
+
+
+def test_two_cohorts_and_follow_up_scans(tmp_path):
+    """Tabs 1-2: the first scan of each person is used, later scans are kept; each cohort gets its own normal
+    (with either method), and the follow-up scans are z-scored with it."""
+    with test_server(APP, timeout_secs=120) as ts:
+        ts.set_inputs(data_file=toy_upload(two_cohort_file(tmp_path)), **DATA_INPUTS, **NORM_INPUTS)
+        ts.set_inputs(col_cohort="cohort", col_visit="scan_date")
+        ts.set_inputs(col_cohort="cohort", col_visit="scan_date")   # the test server shows it one step later
+        status = str(ts.get_output("data_status").value)
+        assert "650 scans of 500 people" in status and "2 cohorts" in status
+        for clicks, method in [(1, "reference"), (3, "gmm")]:
+            ts.set_inputs(norm_method=method, adjust_cov=True, adjust_candidates=["age"], normalize=clicks)
+            ts.set_inputs(normalize=clicks + 1)               # a few outputs follow only on the next update
+            assert errors(ts) == {}
+            norm = str(ts.get_output("norm_status").value)
+            assert "each of the 2 cohorts" in norm and "150 follow-up scans" in norm
+            assert "cohort" in str(ts.get_output("norm_reference").value)
+
+
+def test_follow_up_scans_and_cohorts_of_a_run(one_run):
+    """Tab 5: a run with follow-up scans and a cohort column - the scans are staged by the model, and the
+    subtypes are counted per cohort."""
+    import shutil
+    import pandas as pd
+    import yaml
+    from conftest import ROOT
+    runs = ROOT / "results" / "app_runs"
+    copy = runs / "_test_followup"
+    shutil.rmtree(copy, ignore_errors=True)
+    shutil.copytree(runs / one_run, copy)
+    try:
+        z = pd.read_csv(copy / "zscores.csv", index_col="subject", dtype={"subject": str})
+        later = z.iloc[:60] + 0.5                        # 60 people, a little more tau two visits later
+        later["visit"] = 3
+        later.to_csv(copy / "followup_zscores.csv", index_label="subject")
+        covariates = pd.read_csv(copy / "covariates.csv", index_col="subject", dtype={"subject": str})
+        covariates["site"] = ["A" if i % 2 else "B" for i in range(len(covariates))]
+        covariates["visit"] = 1
+        covariates.to_csv(copy / "covariates.csv", index_label="subject")
+        settings = yaml.safe_load(open(copy / "settings.yaml"))
+        settings.setdefault("columns", {}).update(cohort="site", visit="visit")
+        yaml.safe_dump(settings, open(copy / "settings.yaml", "w"), sort_keys=False)
+        with test_server(APP, timeout_secs=300) as ts:
+            ts.set_inputs(saved_run="_test_followup", **FIGURE_INPUTS)
+            load(ts, "_test_followup")
+            assert errors(ts) == {}
+            assert "60 people have 60 follow-up scans" in str(ts.get_output("an_followup_status").value)
+            assert ts.get_output("an_followup_plot").status == "ok"
+            assert "2 cohorts" in str(ts.get_output("an_cohort_status").value)
+            assert ts.get_output("an_cohort_plot").status == "ok"
+    finally:
+        shutil.rmtree(copy, ignore_errors=True)

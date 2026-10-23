@@ -7,7 +7,7 @@ from shiny.types import SafeException, SilentException
 from src.figures import (OTHER_COLORS, colour_list, colour_map, group_colors, override_colors, plot_category_bars,
                          plot_correlations, plot_covariate_boxplots, plot_region_eda, plot_region_histograms)
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
-                    number_and_category_columns, qc_summary, region_trend_tests)
+                    number_and_category_columns, qc_summary, region_trend_tests, split_baseline)
 from common import (CONFIG, DATA_HELP, ROLE_LABELS, RULE_ROLES, add_figure, add_table, as_picture, figure_card,
                     figure_tools, step_status, step_title, table_tools)
 
@@ -146,7 +146,7 @@ def server(input, output, session, shared):
     def rule_note():
         """Right under the checkbox: how many people the rule keeps."""
         req(input.apply_rule())
-        kept, total = len(analysis_data()), len(uploaded_data())
+        kept, total = len(analysis_data()), len(scans()[0])
         return ui.p(f"Inclusion rule: {kept} of {total} people kept ({100 * kept / total:.0f}%).",
                     class_="fw-bold small", style="color: var(--tt-accent);")
 
@@ -161,10 +161,35 @@ def server(input, output, session, shared):
             return {role: restore()["columns"].get(role) or "" for role in ROLE_LABELS}
 
     @reactive.calc
-    def included():
-        """(people used from here on, reasons table or None). The rule runs only if the box is ticked."""
+    def scans():
+        """(first scan of each person, their later scans). With a visit column the earliest scan is the
+        baseline used by SuStaIn; the later ones are staged later with the fitted model (tab 5)."""
         data = uploaded_data()
         req(data is not None)
+        id_col, visit_col = (chosen_columns().get(role) for role in ("id", "visit"))
+        return split_baseline(data, id_col if id_col in data else None,      # a loaded run may name a column
+                              visit_col if visit_col in data else None)      # that is not in its data
+
+    @reactive.calc
+    def followup_data():
+        """The later scans of the people used (empty without a visit column)."""
+        later, id_col = scans()[1], chosen_columns().get("id")
+        if len(later) == 0:
+            return later
+        return later[later[id_col].astype(str).isin(analysis_data()[id_col].astype(str))]
+
+    def cohort_labels(data):
+        """The cohort of each person (text), or "all" for everyone when there is no cohort column.
+        People without a cohort get "(missing)"."""
+        col = chosen_columns().get("cohort")
+        if not col or col not in data:
+            return pd.Series("all", index=data.index)
+        return data[col].astype(str).where(data[col].notna(), "(missing)")
+
+    @reactive.calc
+    def included():
+        """(people used from here on, reasons table or None). The rule runs only if the box is ticked."""
+        data = scans()[0]
         if missing_roles(RULE_ROLES) or not rule_ticked():
             return data, None
         rule = CONFIG["inclusion"]
@@ -182,7 +207,7 @@ def server(input, output, session, shared):
         if reasons is None:
             return ui.p("Inclusion rule not applied (tick the box in the sidebar to apply it).",
                         class_="text-muted small")
-        return ui.p(f"Inclusion rule: {len(analysis_data())} of {len(uploaded_data())} people kept.",
+        return ui.p(f"Inclusion rule: {len(analysis_data())} of {len(scans()[0])} people kept.",
                     class_="fw-bold")
 
     @render.data_frame
@@ -231,7 +256,7 @@ def server(input, output, session, shared):
     @reactive.calc
     def other_columns():
         """All columns that are not regions and not the ID: age, sex, MMSE, ..."""
-        skip = set(input.col_regions() or []) | {chosen_columns().get("id")}
+        skip = set(input.col_regions() or []) | {chosen_columns().get("id"), chosen_columns().get("visit")}
         return [col for col in analysis_data().columns if col not in skip]
 
     @reactive.calc
@@ -433,8 +458,9 @@ def server(input, output, session, shared):
         if data is None:
             return ui.p("No data uploaded yet.")
         text = f"{data.shape[0]} rows and {data.shape[1]} columns. First 20 rows:"
+        notes = [scans_note(data)]
         if restore() is None:
-            return ui.p(text)
+            return ui.TagList(*notes, ui.p(text))
         if restore()["complete"]:
             note = f"The data of run {restore()['run']} (the people that run used)."
         elif old_run_from_file() is not None:
@@ -444,7 +470,30 @@ def server(input, output, session, shared):
             note = (f"Run {restore()['run']} was made before the app saved the input data, so its regional values "
                     "are missing here: only the other columns are shown. To see them, upload the same CSV file "
                     "(sidebar) and load the run again in tab 3 - or just upload the file to start fresh.")
-        return ui.TagList(ui.div(note, class_="alert alert-info py-2"), ui.p(text))
+        return ui.TagList(ui.div(note, class_="alert alert-info py-2"), *notes, ui.p(text))
+
+    def scans_note(data):
+        """How the scans and cohorts are used (shown above the data)."""
+        columns = chosen_columns()
+        first, later = scans()
+        lines = []
+        if columns.get("id") and len(first) < len(data):
+            if columns.get("visit"):
+                lines.append(f"{len(data)} scans of {len(first)} people: the first scan of each person (earliest "
+                             f"{columns['visit']}) is used by SuStaIn; the {len(later)} later scans are kept to "
+                             "stage them with the fitted model (tab 5, Follow-up scans).")
+            else:
+                lines.append(f"{len(data) - len(first)} people have more than one row: only their first row is "
+                             "used. Choose the 'Scan date or visit number' column to use the earliest scan and "
+                             "keep the later ones.")
+        cohorts = cohort_labels(first)
+        if cohorts.nunique() > 1:
+            sizes = ", ".join(f"{c} ({n})" for c, n in cohorts.value_counts().sort_index().items())
+            lines.append(f"{cohorts.nunique()} cohorts: {sizes} people. The z-scores are made in each cohort "
+                         "separately (tab 2).")
+        elif not columns.get("cohort"):
+            lines.append("One cohort (no cohort column chosen): everyone is normalized together.")
+        return ui.div(*[ui.p(line, class_="mb-1") for line in lines], class_="small text-muted mb-2")
 
     @render.data_frame
     def data_head():
@@ -472,5 +521,6 @@ def server(input, output, session, shared):
 
     # what the later tabs use
     shared.update(analysis_data=analysis_data, chosen_columns=chosen_columns, missing_roles=missing_roles,
+                  followup_data=followup_data, cohort_labels=cohort_labels,
                   other_columns=other_columns, split_groups=split_groups, tests_grid=tests_grid,
                   tests_view=tests_view, uploaded_data=uploaded_data)

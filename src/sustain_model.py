@@ -3,6 +3,7 @@
 We only WRAP pySuStaIn here: all the modelling is done by the original package.
 """
 import os
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -122,6 +123,22 @@ def run_sustain(data, Z_vals, Z_max, regions, settings, output_folder, seed, plo
                           settings["dataset_name"], settings["use_parallel_startpoints"], seed)
     outputs = model.run_sustain_algorithm(plot=plot)
     return model, outputs
+
+
+def stage_new_scans(z, regions, settings, result, n_samples=1000):
+    """Subtype and stage new scans (e.g. follow-up scans) with an already fitted model, using pySuStaIn's
+    own subtype_and_stage_individuals_newData. The model is not changed or fitted again.
+    z: the new scans' z-scores (made with the same normal reference). result: one saved model.
+    Returns the same names as a saved result (ml_subtype, prob_ml_subtype, ml_stage, ...), so
+    results.subject_table can read it."""
+    data, Z_vals, Z_max = sustain_inputs(z, regions, settings["cut_points"], settings["z_max"])
+    model = ZscoreSustain(data, Z_vals, Z_max, regions, 1, 1, 1, tempfile.gettempdir(), "new_scans", False,
+                          settings["seed"])                    # only used to stage; nothing is fitted
+    names = ["ml_subtype", "prob_ml_subtype", "ml_stage", "prob_ml_stage", "prob_subtype", "prob_stage",
+             "prob_subtype_stage"]
+    staged = model.subtype_and_stage_individuals_newData(data, result["samples_sequence"], result["samples_f"],
+                                                         n_samples)
+    return dict(zip(names, staged))
 
 
 def cross_validate(model, n_people, n_folds, seed):

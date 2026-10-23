@@ -541,6 +541,46 @@ def plot_asymmetry(table, asymmetry, subtype_titles, colors=None):
     return fig
 
 
+def plot_cohort_subtypes(percent, subtype_titles, colors=None):
+    """How often each subtype (and S0) is found in each cohort: one bar per cohort, split into the % of its
+    people in S0 (grey) and in each subtype. percent: rows "S0", "Subtype 1", ...; columns = cohorts."""
+    k = len(subtype_titles)
+    shades = ["#D9E2EC"] + list(subtype_colors(k, colors))
+    labels = ["S0 (no abnormal tau)"] + list(subtype_titles)
+    fig, ax = plt.subplots(figsize=(1.3 * percent.shape[1] + 4, 4.2))
+    bottom = np.zeros(percent.shape[1])
+    for row, shade, label in zip(["S0"] + [f"Subtype {n}" for n in range(1, k + 1)], shades, labels):
+        heights = percent.loc[row].to_numpy() if row in percent.index else np.zeros(percent.shape[1])
+        ax.bar(range(percent.shape[1]), heights, bottom=bottom, color=shade, label=label, width=0.6)
+        bottom += heights
+    ax.set_xticks(range(percent.shape[1]), percent.columns)
+    ax.set_ylabel("% of the cohort's people")
+    ax.set_ylim(0, 100)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1))
+    fig.tight_layout()
+    return fig
+
+
+def plot_followup(scans, subtype_titles, time_label, colors=None):
+    """SuStaIn stage over time for the people with follow-up scans: one line per person from the first scan
+    (time 0) through the later ones, coloured by the subtype at the first scan (grey = S0 at first).
+    scans: one row per scan with columns person, time, stage, first_subtype (0 = S0)."""
+    k = len(subtype_titles)
+    shades = subtype_colors(k, colors)
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    for _, person in scans.sort_values("time").groupby("person"):
+        first = int(person["first_subtype"].iloc[0])
+        ax.plot(person["time"], person["stage"], "-o", ms=3, lw=1, alpha=0.6,
+                color=shades[first - 1] if first > 0 else "#9AA5B1")
+    handles = [plt.Line2D([], [], color=shades[n], lw=2) for n in range(k)] + [plt.Line2D([], [], color="#9AA5B1", lw=2)]
+    ax.legend(handles, list(subtype_titles) + ["S0 at the first scan"], title="Subtype at the first scan",
+              loc="upper left", bbox_to_anchor=(1.01, 1))
+    ax.set_xlabel(time_label)
+    ax.set_ylabel("SuStaIn stage")
+    fig.tight_layout()
+    return fig
+
+
 # Diagnosis colours (Rosa's palette; SCD a deeper violet and MCI a deeper yellow so that all four stay
 # apart for colour-blind readers - checked with validate_palette.js, all pairs pass)
 DIAGNOSIS_COLORS = {"CN": "#11A0D9", "CU": "#11A0D9", "HC": "#11A0D9", "control": "#11A0D9",

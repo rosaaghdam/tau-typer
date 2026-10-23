@@ -139,6 +139,7 @@ def server(input, output, session, shared):
     def run_settings():
         """Everything one run needs, in one dictionary (saved as settings.yaml in the run folder)."""
         s = sustain_input()
+        followups = normalized().get("followup_z")        # later scans (none for a loaded run)
         return {"n_people": len(s["subjects"]), "regions": s["regions"],
                 "normalization": normalized()["method"], "gmm_components": normalized()["n_components"], "cut_points": {r: [float(c) for c in cuts] for r, cuts in s["cut_points"].items()},
                 "covariate_adjustment": (None if normalized()["adjustment"] is None else  # slopes per region
@@ -151,6 +152,8 @@ def server(input, output, session, shared):
                 "n_folds": input.n_folds() if input.do_cv() else None,       # None = no cross-validation
                 "dataset_name": CONFIG["runs"]["dataset_name"],
                 "columns": {role: col for role, col in chosen_columns().items() if col},   # for tab 5
+                "cohorts": sorted(normalized()["reference"]) if normalized()["reference"] else None,
+                "n_followup_scans": 0 if followups is None else len(followups),
                 "pysustain": pysustain_info()}                                          # what was run
 
     @render.ui
@@ -167,6 +170,9 @@ def server(input, output, session, shared):
                  f"Start points: {st['n_startpoints']}, MCMC iterations: {st['n_iterations_mcmc']:,}, "
                  f"seed: {st['seed']}, parallel: {'yes' if st['use_parallel_startpoints'] else 'no'}",
                  "Cross-validation: " + (f"{st['n_folds']} folds" if st['n_folds'] else "off"),
+                 "Cohorts: " + (", ".join(st["cohorts"]) + " (each normalized against its own normal)"
+                                if st["cohorts"] and len(st["cohorts"]) > 1 else "one"),
+                 f"Follow-up scans saved to stage later: {st['n_followup_scans']}",
                  f"Results folder: {(runs_folder / input.run_name().strip()).relative_to(ROOT)}"]
         return ui.TagList(ui.h6("This run"), ui.tags.ul(*[ui.tags.li(f) for f in facts]))
 
@@ -199,7 +205,7 @@ def server(input, output, session, shared):
         """Make the new run folder, then start pySuStaIn in its own process."""
         folder = runs_folder / input.run_name().strip()
         prepare_run_folder(folder, run_settings(), normalized()["z"], normalized()["reference"],
-                           run_covariates(), analysis_data(), normalized()["values"])
+                           run_covariates(), analysis_data(), normalized()["values"], normalized().get("followup_z"))
         job.set({"process": start_run(folder), "folder": folder, "started": datetime.now()})
 
     @reactive.calc

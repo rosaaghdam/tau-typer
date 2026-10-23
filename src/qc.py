@@ -10,6 +10,8 @@ COLUMN_HINTS = {
     "sex": ["sex", "gender"],
     "diagnosis": ["diagnosis", "diag", "dx", "group"],
     "amyloid": ["amyloid", "abeta", "ab_status"],
+    "cohort": ["cohort", "site", "study", "centre", "center"],
+    "visit": ["visit", "scan_date", "date", "timepoint", "session", "viscode"],
 }
 # Region columns start with a hemisphere: L_, R_, lh_, rh_, left_, right_ (or - / . instead of _)
 REGION_PATTERN = re.compile(r"^(l|r|lh|rh|left|right)[_\-.]", re.IGNORECASE)
@@ -29,6 +31,31 @@ def guess_columns(columns):
         guesses[role] = (exact + partial + [None])[0]
     guesses["regions"] = [col for col in columns if REGION_PATTERN.match(col)]
     return guesses
+
+
+def visit_times(values):
+    """A visit column as numbers, and their unit: numbers stay as they are (visit 1, 2, ... or years),
+    dates become years (2019-07-02 -> 2019.5). Returns (numbers, "years" or "visits")."""
+    numbers = pd.to_numeric(values, errors="coerce")
+    if numbers.notna().mean() > 0.9:
+        return numbers, "visits"
+    dates = pd.to_datetime(values, errors="coerce")
+    return dates.dt.year + (dates.dt.dayofyear - 1) / 365.25, "years"
+
+
+def split_baseline(data, id_col, visit_col):
+    """(baseline scans, follow-up scans). SuStaIn needs one scan per person: the first one (earliest visit).
+    The later scans are kept, to be staged later with the fitted model. Without a visit column the order of
+    the scans is unknown: then only the first row of each person is kept and there are no follow-ups."""
+    if not id_col:
+        return data, data.iloc[:0]
+    ordered = data
+    if visit_col:
+        time = visit_times(data[visit_col])[0]
+        ordered = data.assign(_time=time).sort_values([id_col, "_time"], kind="stable").drop(columns="_time")
+    first = ~ordered[id_col].astype(str).duplicated()
+    later = ordered[~first] if visit_col else data.iloc[:0]
+    return ordered[first].sort_index(), later.sort_index()
 
 
 def qc_summary(data, columns, regions, suvr_min, suvr_max):

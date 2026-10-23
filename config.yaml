@@ -73,6 +73,7 @@ results:
   n_subtypes: 4                # which model to read (paper: 4, chosen by cross-validation)
   poor_fit_threshold: 0.5      # paper: subtype probability < 0.5 = does not fit any subtype well
   stage_sd_limit: 1.0          # tab 4 Stages: stage called uncertain if its SD (in stages) is above this
+  n_samples_staging: 1000      # MCMC samples used to stage follow-up scans (pySuStaIn's own default)
   # Our names for the subtypes of THIS run, in SuStaIn's order (Subtype 1 = largest group).
   # Chosen by looking at the average z-score table and the PVD (S6). Re-check after every new run!
   subtype_names: [limbic, posterior, lateral temporal, MTL-sparing]
@@ -102,6 +103,9 @@ normalization:
   reference_labels_cn: [CN, CU, HC, control]
   reference_labels_scd: [SCD]
   covariate_alpha: 0.05        # a covariate is removed in a region only if p < this (Young 2018)
+  # Several cohorts (tab 1 'Cohort / site'): every cohort gets its own normal, so it needs enough people
+  min_reference_per_cohort: 10     # healthy reference people per cohort (method 'Reference group')
+  min_people_per_cohort_gmm: 50    # people per cohort (method 'GMM on everyone')
   # Tab 2 warns when a covariate's name contains one of these words (lower case): removing a disease
   # measure would remove the signal SuStaIn should find. Only the names are checked - add your own
   # data's names here (e.g. a new test or biomarker).

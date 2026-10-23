@@ -17,9 +17,9 @@ BUTTONS = {name: 0 for name in ["normalize", "pr_reset", "run_button", "cancel_r
                                      "make_report", "make_pdf"]}
 # under each figure / table: colours (where it has them) and "Include in report", as the app starts
 IN_REPORT = {"pvd", "patterns", "progression", "probs", "stages", "choice", "tree", "regions", "stage_plot",
-             "asymmetry", "table1", "stage_table", "models"}
+             "asymmetry", "table1", "stage_table", "models", "cohort_plot", "followup_plot"}
 NOT_IN_REPORT = {"person", "uncertain", "compare", "model", "demographics", "eda", "eda_tests", "covariates",
-                 "boxplots", "bars", "correlations", "gmm", "zeda", "zeda_tests"}
+                 "boxplots", "bars", "correlations", "gmm", "zeda", "zeda_tests", "cohort_table", "followup_table"}
 TOOL_INPUTS = {**{f"{name}_report": True for name in IN_REPORT},
                **{f"{name}_report": False for name in NOT_IN_REPORT},
                "patterns_colors": "Reds", "progression_colors": "Reds", "regions_colors": "RdBu_r",
@@ -27,7 +27,8 @@ TOOL_INPUTS = {**{f"{name}_report": True for name in IN_REPORT},
                "zeda_colors": "", "subtype_colors": "#00897B, #E87BA4, #8A5A00, #9E9D24, #AD1457, #008300",
                "pvd_more": [], "adjust_interactions": []}
 DATA_INPUTS = {**BUTTONS, **TOOL_INPUTS, "col_id": "subject_id", "col_age": "age", "col_sex": "sex", "col_diagnosis": "diagnosis",
-               "col_amyloid": "amyloid_positive", "col_regions": REGIONS, "apply_rule": False}
+               "col_amyloid": "amyloid_positive", "col_regions": REGIONS, "apply_rule": False, "col_cohort": "",
+               "col_visit": ""}
 NORM_INPUTS = {"norm_method": "gmm", "adjust_cov": False, "adjust_candidates": [], "adjust_only_sig": True,
                "adjust_alpha": 0.05, "gmm_components": 2, "per_region": False, "cut_points": "2, 5, 10",
                "z_max_method": "manual", "z_max_manual": "15", "z_max_percentile": 95, "gmm_region": "L_MTL",
@@ -37,9 +38,25 @@ FIGURE_INPUTS = {**BUTTONS, **TOOL_INPUTS, "subtype_names": "", "fig_vmax": 12, 
                  "an_stage_variable": "age", "an_adjust": ["age", "sex"]}
 
 
-def toy_upload():
+def toy_upload(path=TOY):
     """The value input_file gives the server after a CSV upload."""
-    return [{"name": TOY.name, "size": TOY.stat().st_size, "type": "text/csv", "datapath": str(TOY)}]
+    return [{"name": path.name, "size": path.stat().st_size, "type": "text/csv", "datapath": str(path)}]
+
+
+def two_cohort_file(folder):
+    """The toy data as two cohorts with a scan date: cohort B's scanner reads 15% higher, and 150 people
+    have a second scan two years later (a little more tau). Saved as a CSV in folder."""
+    import pandas as pd
+    data = pd.read_csv(TOY)
+    data["cohort"] = ["A" if i % 2 == 0 else "B" for i in range(len(data))]
+    data.loc[data["cohort"] == "B", REGIONS] *= 1.15
+    data["scan_date"] = "2019-03-01"
+    later = data.sample(150, random_state=0).copy()
+    later[REGIONS] = later[REGIONS] * 1.03 + 0.02
+    later["scan_date"] = "2021-03-01"
+    path = folder / "two_cohorts.csv"
+    pd.concat([data, later]).sample(frac=1, random_state=1).to_csv(path, index=False)   # rows in any order
+    return path
 
 
 def finished_runs():

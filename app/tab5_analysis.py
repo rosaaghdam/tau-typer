@@ -5,9 +5,13 @@ import pandas as pd
 import yaml
 from shiny import reactive, render, req, ui
 
-from src.figures import colour_map, plot_asymmetry, plot_regional_contrasts, plot_stage_vs
+from src.figures import (colour_map, plot_asymmetry, plot_cohort_subtypes, plot_followup, plot_regional_contrasts,
+                         plot_stage_vs)
+from src.qc import visit_times
+from src.sustain_model import stage_new_scans
 from src.results import event_orders, load_sustain_result, model_likelihoods, size_order, subject_table
-from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
+from src.subtype_analysis import (asymmetry_index, compare_runs, followup_changes, followup_summary, group_table,
+                                  regional_contrasts, stage_association, subtypes_per_cohort)
 from common import (CONFIG, AN_HELP, add_figure, add_table, figure_card, figure_tools, no_run_banner, step_status,
                     step_title, table_tools)
 
@@ -45,6 +49,19 @@ panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
                          "Left-right asymmetry", AN_HELP["asymmetry"], ui.output_ui("an_asymmetry_status"),
                          ui.output_plot("an_asymmetry_plot", height="440px"),
                          figure_tools("asymmetry"))),
+                     ui.nav_panel("Cohorts", figure_card(
+                         "Subtypes per cohort", AN_HELP["cohorts"], ui.output_ui("an_cohort_status"),
+                         ui.output_plot("an_cohort_plot", height="380px"),
+                         figure_tools("cohort_plot"),
+                         ui.output_data_frame("an_cohort_table"),
+                         table_tools("cohort_table"))),
+                     ui.nav_panel("Follow-up scans", figure_card(
+                         "Follow-up scans, staged by the model", AN_HELP["followup"],
+                         ui.output_ui("an_followup_status"),
+                         ui.output_plot("an_followup_plot", height="440px"),
+                         figure_tools("followup_plot"),
+                         ui.output_data_frame("an_followup_table"),
+                         table_tools("followup_table"))),
                      ui.nav_panel("Compare runs", ui.p(AN_HELP["compare"], class_="text-muted small"),
                                   ui.layout_columns(
                                       ui.input_select("an_other_run", "Other finished run", choices=[]),
@@ -256,12 +273,116 @@ def server(input, output, session, shared):
     def an_compare_table():
         return render.DataGrid(an_comparison()[0].reset_index())
 
+    def cohort_column():
+        """The run's cohort column, if it has one and it is in the run's other columns."""
+        col = (shown_settings().get("columns") or {}).get("cohort")
+        covariates = an_covariates()[0]
+        return col if col and covariates is not None and col in covariates else None
+
+    @reactive.calc
+    def an_cohorts():
+        """(% per cohort, counts, p) for the chosen model."""
+        col = req(cohort_column())
+        return subtypes_per_cohort(an_data()["table"], an_covariates()[0][col].astype(str))
+
+    @render.ui
+    def an_cohort_status():
+        if shown_run() is None:
+            return no_run_yet()
+        if cohort_column() is None:
+            return ui.p("One cohort: this run has no cohort column (tab 1 'Cohort / site'), so there is nothing "
+                        "to compare.", class_="text-muted small")
+        percent, _, p = an_cohorts()
+        tested = "cannot be tested" if pd.isna(p) else f"chi-square p = {p:.3g}"
+        return ui.p(f"{percent.shape[1]} cohorts. Are the subtypes equally common in every cohort (tau+ people)? "
+                    f"{tested}.", class_="small")
+
+    def make_cohort_plot():
+        return plot_cohort_subtypes(an_cohorts()[0], subtype_titles(an_data()["k"]), colors=typed_subtype_colors())
+
+    @render.plot
+    def an_cohort_plot():
+        return make_cohort_plot()
+
+    def make_cohort_table():
+        percent, counts, _ = an_cohorts()
+        return pd.concat({"%": percent, "people": counts}, axis=1)
+
+    @render.data_frame
+    def an_cohort_table():
+        table = make_cohort_table()
+        table.columns = [f"{col} ({kind})" for kind, col in table.columns]
+        return render.DataGrid(table.reset_index())
+
+    def followup_file():
+        folder = shown_run()
+        return None if folder is None else folder / "followup_zscores.csv"
+
+    @reactive.calc
+    def an_followup():
+        """(one row per follow-up scan next to the first scan, time unit). The scans are staged with the
+        model chosen on the left; the model itself is not changed."""
+        req(followup_file() is not None and followup_file().exists())
+        d, settings = an_data(), shown_settings()
+        later = pd.read_csv(followup_file(), dtype={"subject": str}).set_index("subject")
+        later = later[later.index.isin(d["table"].index)]           # people of the model only
+        req(len(later) > 0)
+        staged = stage_new_scans(later[d["regions"]], d["regions"], settings, d["result"],
+                                 CONFIG["results"]["n_samples_staging"])
+        later_table = subject_table(staged, later.index, CONFIG["results"]["poor_fit_threshold"], d["order"])
+        times, unit = visit_times(later["visit"])
+        visit_col = (settings.get("columns") or {}).get("visit")
+        covariates = an_covariates()[0]
+        if covariates is not None and visit_col in covariates:           # time since the first scan
+            first_times = visit_times(covariates[visit_col].reindex(d["table"].index))[0]
+            times = times.to_numpy() - first_times.loc[later.index].to_numpy()
+        return followup_changes(d["table"], later_table, times), unit
+
+    @render.ui
+    def an_followup_status():
+        if shown_run() is None:
+            return no_run_yet()
+        if not followup_file().exists():
+            return ui.p("This run has no follow-up scans. To stage later scans, choose the 'Scan date or visit "
+                        "number' column in tab 1 (one row per scan), normalize again and make a new run.",
+                        class_="text-muted small")
+        changes, _ = an_followup()
+        return ui.tags.ul(*[ui.tags.li(line) for line in followup_summary(changes)], class_="small")
+
+    def make_followup_plot():
+        changes, unit = an_followup()
+        titles = subtype_titles(an_data()["k"])
+        number = {t: n for n, t in enumerate([f"Subtype {i}" for i in range(1, len(titles) + 1)], start=1)}
+        first = changes.drop_duplicates("person")
+        scans = pd.concat([pd.DataFrame({"person": first["person"], "time": 0.0, "stage": first["first stage"],
+                                         "first_subtype": first["first subtype"].map(number).fillna(0)}),
+                           pd.DataFrame({"person": changes["person"], "time": changes["time"],
+                                         "stage": changes["stage"],
+                                         "first_subtype": changes["first subtype"].map(number).fillna(0)})])
+        label = "years since the first scan" if unit == "years" else "visits since the first scan"
+        return plot_followup(scans, titles, label, colors=typed_subtype_colors())
+
+    @render.plot
+    def an_followup_plot():
+        return make_followup_plot()
+
+    def make_followup_table():
+        return an_followup()[0].round(2)
+
+    @render.data_frame
+    def an_followup_table():
+        return render.DataGrid(make_followup_table())
+
     # Save and "Include in report" for the figures and tables of this tab
     add_table(report_items, "table1", "Table 1: the subtypes compared", lambda: make_table1().set_index("variable"))
     add_figure(report_items, "regions", "Where does each subtype differ", make_regions)
     add_table(report_items, "stage_table", "Stage against a variable", make_stage_table)
     add_figure(report_items, "stage_plot", "Stage against a variable", make_stage_plot)
     add_figure(report_items, "asymmetry", "Left-right asymmetry", make_asymmetry)
+    add_figure(report_items, "cohort_plot", "Subtypes per cohort", make_cohort_plot)
+    add_table(report_items, "cohort_table", "Subtypes per cohort", make_cohort_table)
+    add_figure(report_items, "followup_plot", "Follow-up scans: stage over time", make_followup_plot)
+    add_table(report_items, "followup_table", "Follow-up scans", make_followup_table)
     add_table(report_items, "compare", "Two runs compared", lambda: an_comparison()[0])
 
     def per_person_table():

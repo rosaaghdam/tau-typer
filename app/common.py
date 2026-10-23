@@ -81,6 +81,13 @@ AN_HELP = {     # short help text in tab 5
              "overall and per subtype; one line per subtype in the figure.",
     "asymmetry": "Asymmetry = mean over left/right region pairs of (L - R) / (|L| + |R|); "
                  "above 0 = more tau on the left.",
+    "cohorts": "How often each subtype is found in each cohort (tab 1 'Cohort / site'). Every cohort was "
+               "normalized against its own normal. If a subtype is (almost) only in one cohort, it may be a "
+               "scanner or processing effect, not biology - check it by running SuStaIn on each cohort alone "
+               "and comparing the runs (Compare runs). p: chi-square test, tau+ people only.",
+    "followup": "The later scans of the model's people, z-scored with the same normal reference and staged by "
+                "the fitted model (pySuStaIn's subtype_and_stage_individuals_newData - the model is not fitted "
+                "again). A good model: the stage rises (or stays) over time and people keep their subtype.",
     "compare": "How well do two runs agree on the same people (e.g. other settings, Z_max or normalization)? "
                "Cross-table of the groups, adjusted Rand index (1 = same subtypes) and stage correlation.",
 }
@@ -90,7 +97,9 @@ REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group n
 REFERENCE_GROUPS = {"cn_scd": "Amyloid-negative CN + SCD", "cn": "Amyloid-negative CN only"}
 DISEASE_WORDS = CONFIG["normalization"]["disease_words"]   # covariate names that look like disease measures
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
-               "diagnosis": "Diagnosis", "amyloid": "Amyloid status"}
+               "diagnosis": "Diagnosis", "amyloid": "Amyloid status",
+               "cohort": "Cohort / site",               # z-scores are made in each cohort separately
+               "visit": "Scan date or visit number"}    # several scans per person: the first one is used
 
 
 def figure_card(title, help_text, *content):

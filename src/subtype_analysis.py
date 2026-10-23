@@ -196,3 +196,46 @@ def compare_runs(table_a, table_b):
     rho = stats.spearmanr(a["ml_stage"], b["ml_stage"])[0] if len(common) > 2 else np.nan
     return crosstab, {"people in both runs": len(common), "tau+ in both": int(both.sum()),
                       "adjusted Rand index (subtypes)": round(ari, 3), "stage correlation (Spearman)": round(rho, 3)}
+
+
+def subtypes_per_cohort(table, cohorts):
+    """(% of each cohort's people in S0 and in each subtype, counts, p). p: chi-square test of whether the
+    subtypes (tau+ people only) are equally common in every cohort (NaN if it cannot be tested)."""
+    label = table["subtype"]
+    counts = pd.crosstab(label, cohorts.reindex(table.index))
+    percent = (100 * counts / counts.sum()).round(1)
+    tau = counts.drop(index="S0", errors="ignore")
+    tau = tau.loc[tau.sum(axis=1) > 0, tau.sum() > 0]
+    p = stats.chi2_contingency(tau)[1] if tau.shape[0] > 1 and tau.shape[1] > 1 else np.nan
+    return percent, counts, p
+
+
+def followup_changes(first, later, times):
+    """Each follow-up scan next to the person's first scan. first: subject table of the first scans (the
+    model's people); later: subject table of the follow-up scans (index = person, may repeat); times: years
+    or visits since the first scan, same rows as later. Returns one row per follow-up scan."""
+    rows = pd.DataFrame({"person": later.index, "time": np.asarray(times, dtype=float),
+                         "first subtype": first.loc[later.index, "subtype"].to_numpy(),
+                         "first stage": first.loc[later.index, "ml_stage"].to_numpy(),
+                         "subtype": later["subtype"].to_numpy(), "stage": later["ml_stage"].to_numpy(),
+                         "subtype probability": later["prob_subtype"].round(2).to_numpy()})
+    rows["stage change"] = rows["stage"] - rows["first stage"]
+    return rows
+
+
+def followup_summary(changes):
+    """Plain sentences: does the stage rise, and do people keep their subtype? (last scan of each person)"""
+    last = changes.sort_values("time").groupby("person").tail(1)
+    lines = [f"{changes['person'].nunique()} people have {len(changes)} follow-up scans."]
+    both = last[(last["first subtype"] != "S0") & (last["subtype"] != "S0")]
+    if len(both):
+        same = (both["first subtype"] == both["subtype"]).mean()
+        lines.append(f"Of the {len(both)} people tau+ at both their first and last scan, {100 * same:.0f}% keep "
+                     "their subtype.")
+    up, down = (last["stage change"] > 0).mean(), (last["stage change"] < 0).mean()
+    lines.append(f"Stage at the last scan: higher for {100 * up:.0f}%, the same for {100 * (1 - up - down):.0f}%, "
+                 f"lower for {100 * down:.0f}% (a few lower stages are expected from noise).")
+    became = ((last["first subtype"] == "S0") & (last["subtype"] != "S0")).sum()
+    if (last["first subtype"] == "S0").any():
+        lines.append(f"{became} of {(last['first subtype'] == 'S0').sum()} people at S0 first have abnormal tau later.")
+    return lines
