@@ -298,9 +298,7 @@ def server(input, output, session, shared):
             return x, None, None
         numbers, _ = number_and_category_columns(data, [split])
         if numbers:
-            groups = pd.qcut(pd.to_numeric(data[split], errors="coerce"), 3, labels=["low", "middle", "high"])
-            groups = groups.astype(str).where(groups.notna())
-            names = ["low", "middle", "high"]
+            groups, names = number_groups(pd.to_numeric(data[split], errors="coerce"))
         else:
             groups = data[split].astype(str).where(data[split].notna())
             names = sorted(groups.dropna().unique())
@@ -310,6 +308,16 @@ def server(input, output, session, shared):
         else:
             colors = {g: OTHER_COLORS[i % len(OTHER_COLORS)] for i, g in enumerate(names)}
         return x, groups, colors
+
+    def number_groups(values):
+        """A number column cut into about equal thirds, named by their value range (e.g. "18-27", ">27-30").
+        Fewer groups when many people share a value (e.g. MMSE = 30), so no group is empty."""
+        bins, edges = pd.qcut(values, 3, retbins=True, duplicates="drop")
+        edges[0] = values.min()                            # qcut moves the lowest edge a tiny bit down
+        names = [f"{'>' if i else ''}{low:.3g}-{high:.3g}"      # e.g. "18-27", ">27-30" (27 is in the first)
+                 for i, (low, high) in enumerate(zip(edges[:-1], edges[1:]))]
+        groups = bins.cat.rename_categories(names).astype(str).where(bins.notna())
+        return groups, names
 
     @render.ui
     def eda_tests_view():

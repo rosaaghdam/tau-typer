@@ -109,6 +109,8 @@ def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
         ax.hist(values[region].dropna(), bins=40, color="#4C72B0")
         ax.set_title(region, fontsize=10)
         ax.set_xlabel(xlabel, fontsize=8)
+        if ax.get_subplotspec().is_first_col():                   # y label only on the left
+            ax.set_ylabel("people", fontsize=8)
     fig.tight_layout()
     return fig
 
@@ -160,6 +162,8 @@ def plot_region_eda(data, regions, x=None, groups=None, colors=None):
             ax.set_xticks(range(1, len(categories) + 1), categories, fontsize=8)
         ax.set_title(region, fontsize=10)
         ax.set_xlabel(x or "value (e.g. SUVR)", fontsize=8)
+        if ax.get_subplotspec().is_first_col():                   # y label only on the left
+            ax.set_ylabel("people" if x is None else "value (e.g. SUVR)", fontsize=8)
     if groups is not None:                                        # one legend for all panels
         handles = [plt.Rectangle((0, 0), 1, 1, color=colors[g]) for g in names]
         fig.legend(handles, [str(g) for g in names], loc="upper center", ncol=len(names), frameon=False)

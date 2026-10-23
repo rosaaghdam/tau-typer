@@ -134,3 +134,14 @@ def test_loading_a_run_fills_tabs_1_and_2(one_run, tmp_path):
             assert errors(ts) == {}
     finally:
         shutil.rmtree(copy, ignore_errors=True)
+
+
+def test_split_by_a_number_with_many_ties():
+    """MMSE: many people have 30, so equal thirds are impossible - the split must still work."""
+    with test_server(APP, timeout_secs=120) as ts:
+        ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS, eda_x="", eda_split="")
+        ts.set_inputs(eda_x="age", eda_split="MMSE")
+        assert errors(ts) == {}
+        assert ts.get_output("region_hist").status == "ok"
+        ts.set_inputs(eda_x="")
+        assert errors(ts) == {}
