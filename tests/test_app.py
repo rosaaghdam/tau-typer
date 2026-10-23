@@ -31,6 +31,7 @@ def test_normalize_with_reference_group_and_covariates():
     with test_server(APP, timeout_secs=120) as ts:
         ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
         ts.set_inputs(norm_method="reference", adjust_cov=True, adjust_candidates=["age"], normalize=1)
+        ts.set_inputs(normalize=2)                        # a few outputs follow only on the next update
         assert errors(ts) == {}
         assert ts.get_output("slopes_table").status == "ok"
 
@@ -152,6 +153,7 @@ def test_explore_the_z_scores():
     with test_server(APP, timeout_secs=120) as ts:
         ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
         ts.set_inputs(normalize=1)
+        ts.set_inputs(normalize=2)                        # a few outputs follow only on the next update
         ts.set_inputs(zeda_x="plasma_ptau217", zeda_split="sex")
         ts.set_inputs(zeda_x="plasma_ptau217", zeda_split="sex")   # the app also refills these boxes
         assert errors(ts) == {}
