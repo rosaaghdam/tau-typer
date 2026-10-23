@@ -8,7 +8,7 @@ from src.figures import (OTHER_COLORS, group_colors, plot_category_bars, plot_co
                          plot_region_eda, plot_region_histograms)
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
                     number_and_category_columns, qc_summary, region_trend_tests)
-from common import CONFIG, DATA_HELP, ROLE_LABELS, RULE_ROLES, figure_card, step_status, step_title
+from common import CONFIG, DATA_HELP, ROLE_LABELS, RULE_ROLES, as_picture, figure_card, step_status, step_title
 
 panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
              ui.layout_sidebar(
@@ -229,8 +229,8 @@ def server(input, output, session, shared):
                         ui.output_plot("covariate_boxplots", height=plot_height(len(numbers)))),
             figure_card("Category columns by diagnosis", DATA_HELP["covariates"],
                         ui.output_plot("category_bars", height=plot_height(len(categories)))),
-            figure_card("Correlations between number columns (and the mean of the regions)", DATA_HELP["covariates"],
-                        ui.output_plot("correlation_plot", height=f"{35 * len(numbers) + 300}px", width="70%")))
+            figure_card("Correlations between number columns (and the mean of the regions)", DATA_HELP["correlations"],
+                        ui.output_image("correlation_plot", height="auto")))
 
     @render.data_frame
     def covariate_table():
@@ -256,7 +256,7 @@ def server(input, output, session, shared):
         req(categories)
         return plot_category_bars(analysis_data(), categories, group_col, groups)
 
-    @render.plot
+    @render.image(delete_file=True)
     def correlation_plot():
         numbers, _ = number_and_category_columns(analysis_data(), other_columns())
         regions = list(input.col_regions() or [])
@@ -265,7 +265,7 @@ def server(input, output, session, shared):
             data["mean of regions"] = data[regions].apply(pd.to_numeric, errors="coerce").mean(axis=1)
             numbers = numbers + ["mean of regions"]
         req(len(numbers) > 1)
-        return plot_correlations(data, numbers)
+        return as_picture(plot_correlations(data, numbers), width="70%")
 
     @render.plot
     def region_hist():

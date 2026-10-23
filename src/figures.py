@@ -575,16 +575,31 @@ def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
 
 
 def plot_correlations(data, numbers):
-    """Spearman correlation between all number columns. Red = rise together, blue = one falls."""
+    """Spearman correlation between all number columns, as a triangle of circles (like R's corrplot):
+    bigger circle = stronger correlation; blue = rise together, red = one falls when the other rises."""
     values = data[numbers].apply(pd.to_numeric, errors="coerce")
-    corr = values.corr(method="spearman")
-    size = 0.45 * len(numbers) + 3
-    fig, ax = plt.subplots(figsize=(size + 1, size))
-    image = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
-    ax.set_xticks(range(len(numbers)), numbers, rotation=90, fontsize=8)
-    ax.set_yticks(range(len(numbers)), numbers, fontsize=8)
-    for (row, col), r in np.ndenumerate(corr.to_numpy()):
-        ax.text(col, row, f"{r:.2f}", ha="center", va="center", fontsize=7)
-    fig.colorbar(image, ax=ax, label="Spearman r")
+    corr = values.corr(method="spearman").to_numpy()
+    n = len(numbers)
+    size = 0.42 * n + 2.5
+    fig, ax = plt.subplots(figsize=(size + 1.2, size))
+    cmap = plt.get_cmap("RdBu")
+    for row in range(n):
+        for col in range(row, n):                         # upper triangle (and the diagonal)
+            ax.add_patch(plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, edgecolor="#D9E2EC", lw=0.8))
+            r = corr[row, col]
+            if np.isnan(r):
+                continue
+            ax.add_patch(plt.Circle((col, row), 0.45 * np.sqrt(abs(r)), color=cmap((r + 1) / 2)))
+    ax.set_xlim(-0.5, n - 0.5)
+    ax.set_ylim(n - 0.5, -0.5)
+    ax.set_aspect("equal")
+    ax.xaxis.tick_top()
+    ax.set_xticks(range(n), numbers, rotation=45, ha="left", fontsize=9)
+    ax.set_yticks(range(n), numbers, fontsize=9)
+    ax.tick_params(length=0)
+    for side in ax.spines.values():
+        side.set_visible(False)
+    colorbar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(-1, 1), cmap=cmap), ax=ax, shrink=0.8)
+    colorbar.set_label("Spearman r")
     fig.tight_layout()
     return fig

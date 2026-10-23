@@ -2,6 +2,10 @@
 import sys
 from pathlib import Path
 
+import secrets
+import tempfile
+
+import matplotlib.pyplot as plt
 import yaml
 from shiny import ui
 
@@ -48,6 +52,9 @@ DATA_HELP = {   # help (i) of the figures in tabs 1-3
     "covariates": "The other columns of the file per diagnosis group: numbers as box plots (one dot per "
                   "person), categories as bars (% per group), and the Spearman correlations between the "
                   "number columns and the mean of the regions.",
+    "correlations": "Spearman correlation between every pair of number columns (and the mean of the regions). "
+                    "Bigger circle = stronger; blue = the two rise together, red = one falls when the other "
+                    "rises; white = no relation.",
     "gmm": "One region: histogram of the values and the bell curves of the Gaussian mixture model; the "
            "lowest-mean curve is 'normal'. The cut-points are drawn on the value axis "
            "(value = normal mean + z x normal SD).",
@@ -108,3 +115,12 @@ def step_title(number, label, status_id):
 def step_status(text, state="waiting"):
     """The small status under a step's name. state: "done", "attention" (needs your action) or "waiting"."""
     return ui.span(text, class_=f"tt-step-status tt-{state}", title=text)   # full text on hover
+
+
+def as_picture(fig, width="100%"):
+    """A figure saved as a PNG for render.image (deleted after showing), at its own size - so its labels are
+    never squeezed or cut off by the page width."""
+    path = Path(tempfile.gettempdir()) / f"tau_typer_figure_{secrets.token_hex(8)}.png"
+    fig.savefig(path, dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    return {"src": str(path), "width": width}

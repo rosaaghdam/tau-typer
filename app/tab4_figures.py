@@ -15,7 +15,7 @@ from src.figures import (plot_model_choice, plot_person, plot_pvd, plot_stage_pr
                          plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
-from common import CONFIG, FIG_HELP, figure_card, no_run_banner, step_status, step_title
+from common import CONFIG, FIG_HELP, as_picture, figure_card, no_run_banner, step_status, step_title
 
 panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
              ui.layout_sidebar(
@@ -157,13 +157,6 @@ def server(input, output, session, shared):
         d = fig_data()
         return as_picture(plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"],
                                                  None, vmax=input.fig_vmax() or 12))
-
-    def as_picture(fig):
-        """A figure saved as a PNG for render.image (deleted after showing), at its own size."""
-        path = Path(tempfile.gettempdir()) / f"tau_typer_figure_{secrets.token_hex(8)}.png"
-        fig.savefig(path, dpi=110, bbox_inches="tight")
-        plt.close(fig)
-        return {"src": str(path), "width": "100%"}
 
     @render.plot
     def fig_probs():
