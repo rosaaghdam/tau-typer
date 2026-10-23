@@ -63,20 +63,27 @@ def zscore_with_reference(data, regions, reference):
 
 # ---------- Option: remove covariate effects (age, sex, ...) before normalization (W-score style) ----------
 
-def covariate_matrix(data, names):
+def covariate_matrix(data, names, interactions=()):
     """The chosen covariates as numbers: number columns as they are, category columns (sex, APOE4,
-    site, ...) as 0/1 columns, one per value except the first (e.g. "sex=M")."""
+    site, ...) as 0/1 columns, one per value except the first (e.g. "sex=M").
+    interactions: pairs of names, e.g. [("age", "sex")] - adds their product, e.g. "age x sex=M"
+    (does the age effect differ between men and women?)."""
     numbers, _ = number_and_category_columns(data, names)
-    parts = []
+    parts = {}
     for name in names:
         if name in numbers:
-            parts.append(pd.to_numeric(data[name], errors="coerce").rename(name))
+            parts[name] = pd.to_numeric(data[name], errors="coerce").rename(name).to_frame()
         else:
             values = data[name].map(lambda v: v if pd.isna(v) else (f"{v:g}" if isinstance(v, float) else str(v)))
             dummies = pd.get_dummies(values, prefix=name, prefix_sep="=", drop_first=True, dtype=float)
             dummies.loc[values.isna()] = np.nan                  # unknown stays unknown
-            parts.append(dummies)
-    return pd.concat(parts, axis=1)
+            parts[name] = dummies
+    products = []
+    for a, b in interactions:
+        for col_a in parts[a].columns:
+            for col_b in parts[b].columns:
+                products.append((parts[a][col_a] * parts[b][col_b]).rename(f"{col_a} x {col_b}"))
+    return pd.concat(list(parts.values()) + products, axis=1)
 
 
 def covariate_adjustment(data, regions, covariates, in_reference, only_significant=True, alpha=0.05):
@@ -86,7 +93,7 @@ def covariate_adjustment(data, regions, covariates, in_reference, only_significa
     1. In the reference people (amyloid-negative, cognitively normal = normal ageing), fit
        SUVR = a + b1*cov1 + b2*cov2 + ... and keep the p-value of every covariate.
     2. Keep the covariates with p < alpha (or all of them if only_significant is False) and fit
-       again with only those.
+       again with only those. A kept interaction (e.g. "age x sex=M") keeps its own terms too.
     3. For everyone: adjusted SUVR = SUVR - sum of b * (covariate - reference mean), so everyone is
        moved to the reference group's average. The values stay on the SUVR scale.
     covariates: from covariate_matrix, same rows as data, no empty cells.
@@ -114,6 +121,9 @@ def covariate_adjustment(data, regions, covariates, in_reference, only_significa
         p_values.loc[region] = fit.pvalues[covariates.columns]
         estimates.loc[region] = fit.params[covariates.columns]
         used = [c for c in covariates.columns if fit.pvalues[c] < alpha] if only_significant else list(covariates.columns)
+        for c in list(used):                                      # a kept interaction (age x sex=M)
+            used += [part for part in c.split(" x ") if part in covariates.columns]   # keeps its own terms
+        used = [c for c in covariates.columns if c in used]       # once each, in the table's order
         if not used:
             continue                                              # nothing to remove in this region
         fit = sm.OLS(y, sm.add_constant(reference_x[used], has_constant="add")).fit()

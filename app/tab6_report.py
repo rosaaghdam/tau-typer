@@ -3,10 +3,12 @@ and table, and the results per person (CSV). Both reports are made in the backgr
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 
+import matplotlib.pyplot as plt
+
 from shiny import reactive, render, req, ui
 
 from src.report import build_pdf_report, build_report, run_summary
-from common import figure_card, no_run_banner, step_status, step_title
+from common import chosen_for_report, figure_card, no_run_banner, step_status, step_title
 
 REPORT_HELP = ("Written from the numbers of the shown run and the model chosen in tab 5 (sizes, first events, "
                "fit, Table 1, regional differences, stage). It is a starting point: check every sentence "
@@ -17,12 +19,13 @@ panel = ui.nav_panel(step_title(6, "Report", "step6_status"),
              ui.layout_columns(
                  figure_card("Summary of this run", REPORT_HELP, ui.output_ui("report_summary")),
                  ui.card(ui.card_header("Download"),
-                         ui.p("PDF: the summary, every figure and the main tables, ready to read or share.",
-                              class_="small"),
+                         ui.output_ui("report_contents"),
+                         ui.p("PDF: the summary and the chosen figures and tables, ready to read or share.",
+                              class_="small mt-3"),
                          ui.input_task_button("make_pdf", "Make PDF report", label_busy="Making the PDF..."),
                          ui.output_ui("pdf_ready"),
-                         ui.p("ZIP: every figure (PNG 300 dpi + PDF), every table (CSV) and the run's settings.",
-                              class_="small mt-4"),
+                         ui.p("ZIP: the chosen figures (PNG 300 dpi + PDF) and tables (CSV), the results per "
+                              "person and the run's settings.", class_="small mt-4"),
                          ui.input_task_button("make_report", "Make report (ZIP)", label_busy="Making the ZIP..."),
                          ui.output_ui("report_ready"),
                          ui.p("One row per person: subtype, stage, probabilities and the other columns of your file.",
@@ -39,6 +42,7 @@ def server(input, output, session, shared):
     an_data = shared["an_data"]
     report_inputs = shared["report_inputs"]
     per_person_table = shared["per_person_table"]
+    report_items = shared["report_items"]
 
     @render.ui
     def report_empty():
@@ -49,6 +53,36 @@ def server(input, output, session, shared):
         if shown_run() is None:
             return step_status("Waiting for a run")
         return step_status("Ready to download", "done")
+
+    def ticked(items):
+        """Titles of the items whose "Include in report" box is ticked (boxes not drawn yet are skipped)."""
+        titles = []
+        for item_id, (title, _) in items.items():
+            try:
+                if input[f"{item_id}_report"]():
+                    titles.append(title)
+            except Exception:
+                continue
+        return titles
+
+    @render.ui
+    def report_contents():
+        """What the reports will hold: the figures and tables ticked 'Include in report' in the tabs."""
+        figures, tables = ticked(report_items["figures"]), ticked(report_items["tables"])
+        return ui.TagList(
+            ui.h6("In the report"),
+            ui.p(f"{len(figures)} figure(s): {', '.join(figures) or 'none'}.", class_="small mb-1"),
+            ui.p(f"{len(tables)} table(s): {', '.join(tables) or 'none'}.", class_="small mb-1"),
+            ui.p("Tick or untick 'Include in report' under each figure or table to change this. Each figure "
+                 "is drawn as it is on its page (colours, chosen subtype, person, ...).",
+                 class_="text-muted small"))
+
+    def report_parts():
+        """(report inputs, chosen figures, chosen tables) - the figures are drawn here, in the app."""
+        figures = chosen_for_report(input, report_items["figures"])
+        for fig in figures.values():
+            plt.close(fig)                              # still usable for the report, but pyplot lets go of it
+        return report_inputs(), figures, chosen_for_report(input, report_items["tables"])
 
     @render.ui
     def report_summary():
@@ -61,17 +95,17 @@ def server(input, output, session, shared):
 
     @ui.bind_task_button(button_id="make_pdf")
     @reactive.extended_task
-    async def pdf_task(inputs):
+    async def pdf_task(inputs, figures, tables):
         """Makes the PDF in a separate process, so the app (and other users) can keep working."""
         loop = asyncio.get_running_loop()
         with ProcessPoolExecutor(max_workers=1) as pool:
-            data = await loop.run_in_executor(pool, build_pdf_report, inputs)
+            data = await loop.run_in_executor(pool, build_pdf_report, inputs, figures, tables)
         return inputs["file_name"].replace(".zip", ".pdf"), data
 
     @reactive.effect
     @reactive.event(input.make_pdf)
     def _make_pdf():
-        pdf_task(report_inputs())
+        pdf_task(*report_parts())
 
     @render.ui
     def pdf_ready():
@@ -88,17 +122,17 @@ def server(input, output, session, shared):
 
     @ui.bind_task_button(button_id="make_report")
     @reactive.extended_task
-    async def report_task(inputs):
+    async def report_task(inputs, figures, tables):
         """Makes the report in a separate process, so the app (and other users) can keep working."""
         loop = asyncio.get_running_loop()
         with ProcessPoolExecutor(max_workers=1) as pool:
-            data = await loop.run_in_executor(pool, build_report, inputs)
+            data = await loop.run_in_executor(pool, build_report, inputs, figures, tables)
         return inputs["file_name"], data
 
     @reactive.effect
     @reactive.event(input.make_report)
     def _make_report():
-        report_task(report_inputs())
+        report_task(*report_parts())
 
     @render.ui
     def report_ready():

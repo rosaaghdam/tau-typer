@@ -30,10 +30,12 @@ def test_normalize_with_reference_group_and_covariates():
     """Reference-group normalization with age adjusted first."""
     with test_server(APP, timeout_secs=120) as ts:
         ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
-        ts.set_inputs(norm_method="reference", adjust_cov=True, adjust_candidates=["age"], normalize=1)
+        ts.set_inputs(norm_method="reference", adjust_cov=True, adjust_candidates=["age", "sex"],
+                      adjust_interactions=["age x sex"], normalize=1)
         ts.set_inputs(normalize=2)                        # a few outputs follow only on the next update
         assert errors(ts) == {}
         assert ts.get_output("slopes_table").status == "ok"
+        assert "age x sex" in str(ts.get_output("slopes_table").value)   # the interaction was tested
 
 
 def test_show_saved_run(one_run):
@@ -47,6 +49,10 @@ def test_show_saved_run(one_run):
         for name in ["subtype_summary_table", "event_order_view", "fig_pvd", "fig_probs", "fig_stages",
                      "fig_tree", "an_table1", "an_regions_plot"]:
             assert ts.get_output(name).status == "ok", name
+        ts.set_inputs(pvd_more=["1"], subtype_colors="#000000, 112233", patterns_colors="#FFFFFF, #0F5C6E")
+        assert errors(ts) == {}
+        assert "Model with 1 subtype" in str(ts.get_output("fig_pvd_more").value)
+        assert "1 figure(s)" not in str(ts.get_output("report_contents").value)   # many figures ticked
 
 
 def test_s0_people_have_no_subtype(one_run):
@@ -63,7 +69,7 @@ def test_report_is_made_in_the_background(one_run):
     download buttons appear. (Both in one test: background jobs of two test sessions clash.)"""
     import time
     with test_server(APP, timeout_secs=300) as ts:
-        ts.set_inputs(saved_run=one_run, **FIGURE_INPUTS)
+        ts.set_inputs(saved_run=one_run, **{**FIGURE_INPUTS, "tree_report": False, "person_report": True})
         load(ts, one_run)
         ts.set_inputs(make_report=1)
         for _ in range(120):                              # wait up to 2 minutes

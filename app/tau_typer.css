@@ -65,5 +65,12 @@ table, .shiny-data-grid { font-family: system-ui, -apple-system, "Segoe UI", san
 .tt-number-value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
 .tt-number-label { font-size: .85rem; color: var(--tt-slate); }
 
+/* ---- under each figure: colours, save as PNG / PDF, include in report ---- */
+.tt-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem 1rem; margin: .5rem 0 1rem;
+            padding-top: .5rem; border-top: 1px solid var(--tt-line); }
+.tt-tools .form-group, .tt-tools .shiny-input-container { margin-bottom: 0; }
+.tt-tools .form-label { font-size: .8rem; color: var(--tt-slate); margin-bottom: .15rem; }
+.tt-tools .form-check { margin-bottom: .3rem; }
+
 /* ---- keyboard focus always visible ---- */
 :focus-visible { outline: 3px solid #2D7FF9; outline-offset: 2px; }

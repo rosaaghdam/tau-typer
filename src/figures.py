@@ -45,7 +45,7 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     return fig
 
 
-def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12):
+def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12, cmap="Reds"):
     """Average z-score per region for real people, grouped by subtype and stage (paper Fig. 1e idea).
 
     One panel per subtype: rows = regions, columns = stage groups (e.g. 1-6, 7-12, ...).
@@ -60,7 +60,7 @@ def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_
         people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0)      # this subtype, tau+ only
         means = z[people].groupby(stage_group[people], observed=False)[regions].mean().T  # regions x groups
         counts = stage_group[people].value_counts().reindex(labels)
-        image = ax.imshow(means, cmap="Reds", vmin=0, vmax=vmax, aspect="auto")
+        image = ax.imshow(means, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
         ax.set_xticks(range(len(labels)), [f"{lab}\nn={n}" for lab, n in zip(labels, counts)], fontsize=9)
         ax.set_yticks(range(len(regions)), regions if k == 1 else [])   # region names only on the left
         ax.set_title(title)                               # columns = stage groups (said in the help text)
@@ -87,7 +87,7 @@ def left_right_layout(regions, max_cols=6):
     return cells + others, n_cols
 
 
-def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
+def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)", color="#4C72B0"):
     """One small histogram per region column - raw values in tab 1, z-scores in tab 2.
 
     Left regions on top, each right region right below its left partner (same x-axis), so
@@ -106,7 +106,7 @@ def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
         if region is None:
             ax.set_visible(False)                         # empty panel
             continue
-        ax.hist(values[region].dropna(), bins=40, color="#4C72B0")
+        ax.hist(values[region].dropna(), bins=40, color=color)
         ax.set_title(region, fontsize=10)
         ax.set_xlabel(xlabel, fontsize=8)
         if ax.get_subplotspec().is_first_col():                   # y label only on the left
@@ -115,14 +115,16 @@ def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)"):
     return fig
 
 
-def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label="value (e.g. SUVR)"):
+def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label="value (e.g. SUVR)",
+                    single_color="#52606D"):
     """Explore the regional values (tab 1). One panel per region (left on top, right below):
     - x = None: the distribution of the values (one colour per group if groups is given);
     - x = a number column (e.g. age): each person as a dot, with a straight trend line per group - if the
       lines of two groups are not parallel, the trend differs between the groups (an interaction);
     - x = a category column (e.g. sex): a box per category, with the people as dots coloured by group.
     groups: a Series of group labels (e.g. sex, or age split into low/middle/high), same rows as data;
-    colors: {group: colour}. value_label: what the regional values are (axis label)."""
+    colors: {group: colour}; single_color: the colour without groups. value_label: what the regional values are
+    (axis label)."""
     values = data[list(regions)].apply(pd.to_numeric, errors="coerce")
     names = list(colors) if groups is not None else [None]
     member = {g: (groups == g) if g is not None else pd.Series(True, index=data.index) for g in names}
@@ -136,7 +138,7 @@ def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label
             ax.set_visible(False)
             continue
         for g in names:
-            color = colors[g] if g is not None else "#52606D"
+            color = colors[g] if g is not None else single_color
             y = values.loc[member[g], region]
             if x is None:
                 ax.hist(y.dropna(), bins=30, color=color, alpha=0.55 if g is not None else 1, label=g)
@@ -154,7 +156,7 @@ def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label
                        widths=0.5, showfliers=False, medianprops={"color": "#1F2933"})
             rng = np.random.default_rng(0)
             for g in names:
-                color = colors[g] if g is not None else "#52606D"
+                color = colors[g] if g is not None else single_color
                 for i, c in enumerate(categories, start=1):
                     y = values.loc[member[g] & (x_values.astype(str) == c), region].dropna()
                     ax.scatter(i + rng.uniform(-0.15, 0.15, len(y)), y, s=6, color=color, alpha=0.6,
@@ -201,7 +203,7 @@ def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
     return fig
 
 
-def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
+def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds"):
     """Average z-score per region in each subtype, tau+ people only (paper Fig. 1a/c, as a heatmap).
 
     Columns = subtypes (n = number of tau+ people), rows = regions, number in each cell = average z.
@@ -210,7 +212,7 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean().T   # regions x subtypes
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
     fig, ax = plt.subplots(figsize=(1.8 * len(means.columns) + 3, 0.45 * len(regions) + 1.8))
-    image = ax.imshow(means, cmap="Reds", vmin=0, vmax=vmax, aspect="auto")
+    image = ax.imshow(means, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
     ax.set_xticks(range(len(means.columns)), [f"{subtype_titles[k - 1]}\nn={counts[k]}" for k in means.columns])
     ax.set_yticks(range(len(regions)), regions)
     for (row, col), value in np.ndenumerate(means.to_numpy()):
@@ -228,12 +230,44 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12):
 SUBTYPE_COLORS = ["#00897B", "#E87BA4", "#8A5A00", "#9E9D24", "#AD1457", "#008300", "#6D4C41", "#9E9E9E"]
 
 
-def subtype_colors(k):
-    """One fixed colour per subtype (Subtype 1 = first colour), used by all tab-4 and tab-5 figures."""
-    return matplotlib.colors.to_rgba_array([SUBTYPE_COLORS[i % len(SUBTYPE_COLORS)] for i in range(k)])
+def subtype_colors(k, colors=None):
+    """One fixed colour per subtype (Subtype 1 = first colour), used by all tab-4 and tab-5 figures.
+    colors: the user's own colours (Subtype 1 first); missing ones are the default colours."""
+    colors = list(colors or []) + SUBTYPE_COLORS[len(colors or []):]
+    return matplotlib.colors.to_rgba_array([colors[i % len(colors)] for i in range(k)])
 
 
-def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
+def colour_list(text):
+    """Colours typed by the user, e.g. "#00897B, #E87BA4" (or names: red, teal) -> a list.
+    A code without "#" is accepted too; anything that is not a colour is left out."""
+    colours = []
+    for part in (text or "").split(","):
+        part = part.strip()
+        if len(part) == 6 and all(c in "0123456789abcdefABCDEF" for c in part):
+            part = "#" + part
+        if part and matplotlib.colors.is_color_like(part):
+            colours.append(part)
+    return colours
+
+
+def colour_map(text, default):
+    """A colour map from what the user typed: a matplotlib name (Reds, Blues, viridis, ...) or two or more
+    colours from low to high (e.g. "#FFFFFF, #B71C1C"). Anything else gives the default map."""
+    text = (text or "").strip()
+    if text in matplotlib.colormaps:
+        return text
+    colours = colour_list(text)
+    if len(colours) >= 2:
+        return matplotlib.colors.LinearSegmentedColormap.from_list("typed", colours)
+    return default
+
+
+def override_colors(colors, typed):
+    """{group: colour} with the user's typed colours (a list) used for the first groups, in order."""
+    return {g: typed[i] if i < len(typed) else c for i, (g, c) in enumerate(colors.items())}
+
+
+def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0, colors=None):
     """Every tau+ person inside a polygon with one subtype at each corner (paper Fig. 1b).
     Close to a corner = surely that subtype; towards the middle = a mix of subtypes.
     Corners: number (and %) of tau+ people in each subtype. Dashed box (as in the paper): the middle
@@ -253,7 +287,7 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
     inside = (np.abs(xy) <= 0.5).all(axis=1)             # inside the dashed box (before the jitter)
     xy = xy + np.random.default_rng(seed).normal(0, 0.02, xy.shape)
     ax.plot(*np.vstack([corners, corners[:1]]).T, color="gray", lw=2, zorder=1)
-    ax.scatter(xy[:, 0], xy[:, 1], c=subtype_colors(k)[subtype - 1], s=30, edgecolors="black", linewidths=0.5,
+    ax.scatter(xy[:, 0], xy[:, 1], c=subtype_colors(k, colors)[subtype - 1], s=30, edgecolors="black", linewidths=0.5,
                zorder=2)
     box = ax.add_patch(plt.Rectangle((-0.5, -0.5), 1, 1, fill=False, ls="--", lw=2, color="black", zorder=3))
     for n, ((x, y), title) in enumerate(zip(corners, subtype_titles), start=1):
@@ -271,7 +305,7 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0):
     return fig
 
 
-def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None):
+def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None, colors=None):
     """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
     (S0) is only counted in the legend, so its large bar does not squash the others.
     Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
@@ -280,7 +314,7 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None)
     person: this person's dot gets a black ring. subtype (1, 2, ...): only this subtype in colour in the
     middle and right panels, the others grey."""
     k = len(subtype_titles)
-    colors = subtype_colors(k)
+    colors = subtype_colors(k, colors)
     stages = np.arange(table["ml_stage"].max() + 1)
     fig = plt.figure(figsize=(13, 9))                    # top: counts; bottom: uncertainty + per subtype
     grid = fig.add_gridspec(2, 2, width_ratios=[3, 1])
@@ -367,7 +401,7 @@ def plot_model_choice(likelihoods, cross_validation=None, traces=None):
     return fig
 
 
-def plot_subtype_tree(subtypes_by_k):
+def plot_subtype_tree(subtypes_by_k, colors=None):
     """How people move between subtypes when one more subtype is allowed (paper Ext. Fig. 1f).
 
     subtypes_by_k: {k: Series of subtype numbers per person (0 = S0)}, same people for every k.
@@ -384,7 +418,7 @@ def plot_subtype_tree(subtypes_by_k):
         counts = subtypes_by_k[k][subtypes_by_k[k] > 0].value_counts().sort_index()
         y = 0
         for subtype, count in counts.items():
-            ax.add_patch(plt.Rectangle((x - 0.13, y), 0.26, count, color=subtype_colors(k)[subtype - 1]))
+            ax.add_patch(plt.Rectangle((x - 0.13, y), 0.26, count, color=subtype_colors(k, colors)[subtype - 1]))
             ax.text(x, y + count / 2, f"{subtype}\n{count} ({100 * count / counts.sum():.0f}%)",
                     ha="center", va="center", fontsize=8, color="white")
             tops[(k, subtype)] = y
@@ -400,7 +434,7 @@ def plot_subtype_tree(subtypes_by_k):
                 if n == 0:
                     continue
                 ax.fill_between([x + 0.13, x + 0.87], [left[a], right[b]], [left[a] + n, right[b] + n],
-                                color=subtype_colors(k1)[a - 1], alpha=0.35, lw=0)
+                                color=subtype_colors(k1, colors)[a - 1], alpha=0.35, lw=0)
                 # % of subtype a (model k1) that goes to subtype b (model k2), at the start of the band
                 ax.text(x + 0.15, left[a] + n / 2, f"→ {b}: {100 * n / flows.loc[a].sum():.0f}%",
                         ha="left", va="center", fontsize=8)
@@ -415,7 +449,7 @@ def plot_subtype_tree(subtypes_by_k):
     return fig
 
 
-def plot_person(person, z_person, regions, expected, prob_subtype, prob_stage, subtype_titles):
+def plot_person(person, z_person, regions, expected, prob_subtype, prob_stage, subtype_titles, colors=None):
     """One person's "fingerprint": their z-scores per region (bars) next to the average of the people
     in the same subtype and stage group (dots), plus their subtype and stage probabilities."""
     k = len(subtype_titles)
@@ -426,7 +460,7 @@ def plot_person(person, z_person, regions, expected, prob_subtype, prob_stage, s
     ax1.set_xticks(range(len(regions)), regions, rotation=45, ha="right")
     ax1.set_ylabel("z-score")
     ax1.legend(fontsize=8)
-    ax2.bar(range(k), prob_subtype, color=subtype_colors(k))
+    ax2.bar(range(k), prob_subtype, color=subtype_colors(k, colors))
     ax2.set_xticks(range(k), subtype_titles, rotation=45, ha="right")
     ax2.set_ylim(0, 1)
     ax2.set_ylabel("subtype probability")
@@ -437,12 +471,12 @@ def plot_person(person, z_person, regions, expected, prob_subtype, prob_stage, s
     return fig
 
 
-def plot_regional_contrasts(t_values, p_fdr, subtype_titles):
+def plot_regional_contrasts(t_values, p_fdr, subtype_titles, cmap="RdBu_r"):
     """Paper Fig. 1d: t-value per region and subtype (this subtype vs all other tau+ people, same
     stage). Red = more tau than the others, blue = less. * = FDR-corrected p < 0.05."""
     limit = max(np.nanmax(np.abs(t_values.to_numpy())), 1)
     fig, ax = plt.subplots(figsize=(1.8 * t_values.shape[1] + 3, 0.45 * t_values.shape[0] + 1.8))
-    image = ax.imshow(t_values, cmap="RdBu_r", vmin=-limit, vmax=limit, aspect="auto")
+    image = ax.imshow(t_values, cmap=cmap, vmin=-limit, vmax=limit, aspect="auto")
     ax.set_xticks(range(t_values.shape[1]), [subtype_titles[k - 1] for k in t_values.columns])
     ax.set_yticks(range(t_values.shape[0]), t_values.index)
     for (row, col), t in np.ndenumerate(t_values.to_numpy()):
@@ -454,11 +488,11 @@ def plot_regional_contrasts(t_values, p_fdr, subtype_titles):
     return fig
 
 
-def plot_stage_vs(table, values, label, subtype_titles):
+def plot_stage_vs(table, values, label, subtype_titles, colors=None):
     """Paper Fig. 3a/b: SuStaIn stage against a number (age, MMSE, ...) for tau+ people,
     coloured by subtype, with one straight line per subtype."""
     numeric = pd.to_numeric(values, errors="coerce")
-    colors = subtype_colors(len(subtype_titles))
+    colors = subtype_colors(len(subtype_titles), colors)
     fig, ax = plt.subplots(figsize=(8, 5))
     for k, title in enumerate(subtype_titles, start=1):
         people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0) & numeric.notna()
@@ -475,10 +509,10 @@ def plot_stage_vs(table, values, label, subtype_titles):
     return fig
 
 
-def plot_asymmetry(table, asymmetry, subtype_titles):
+def plot_asymmetry(table, asymmetry, subtype_titles, colors=None):
     """Paper Ext. Fig. 9: left-right asymmetry of tau per subtype (box plot) and against stage.
     Above 0 = more tau on the left, below 0 = more on the right."""
-    colors = subtype_colors(len(subtype_titles))
+    colors = subtype_colors(len(subtype_titles), colors)
     tau_pos = table["ml_stage"] > 0
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.8))
     data = [asymmetry[tau_pos & (table["ml_subtype"] == k)] for k in range(1, len(subtype_titles) + 1)]
@@ -517,12 +551,13 @@ def group_colors(groups):
     return colors
 
 
-def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4):
-    """One box plot per number column (MMSE, age, ...), one colored box per group, with every person as a dot."""
+def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4, colors=None):
+    """One box plot per number column (MMSE, age, ...), one colored box per group, with every person as a dot.
+    colors: {group: colour} (None = the diagnosis colours)."""
     n_rows = int(np.ceil(len(numbers) / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.4 * n_cols, 2.8 * n_rows), squeeze=False)
     labels = groups if group_col else ["All"]
-    colors = group_colors(labels) if group_col else {"All": "#11A0D9"}
+    colors = colors or (group_colors(labels) if group_col else {"All": "#11A0D9"})
     rng = np.random.default_rng(0)                                 # same dot positions every time
     for ax, col in zip(axes.flat, numbers):
         values = pd.to_numeric(data[col], errors="coerce")
@@ -549,7 +584,7 @@ def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4
     return fig
 
 
-def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
+def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4, colors=None):
     """One bar chart per category column (sex, APOE4, ...): % of each value, one bar per group
     (same colors as the box plots, so no legend here)."""
     n_rows = int(np.ceil(len(categories) / n_cols))
@@ -560,11 +595,11 @@ def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
         if group_col:
             group = data.loc[values.index, group_col].astype(str)
             table = pd.crosstab(values, group, normalize="columns")[groups] * 100
-            colors = [group_colors(groups)[g] for g in groups]
+            bar_colors = [(colors or group_colors(groups))[g] for g in groups]
         else:
             table = values.value_counts(normalize=True).to_frame("All") * 100
-            colors = ["#11A0D9"]
-        table.plot.bar(ax=ax, legend=False, rot=0, color=colors)
+            bar_colors = [(colors or {}).get("All", "#11A0D9")]
+        table.plot.bar(ax=ax, legend=False, rot=0, color=bar_colors)
         ax.set_title(col, fontsize=10)
         ax.set_xlabel("")
         ax.set_ylabel("%")
@@ -574,7 +609,7 @@ def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4):
     return fig
 
 
-def plot_correlations(data, numbers):
+def plot_correlations(data, numbers, cmap="RdBu"):
     """Spearman correlation between all number columns, as a triangle of circles (like R's corrplot):
     bigger circle = stronger correlation; blue = rise together, red = one falls when the other rises."""
     values = data[numbers].apply(pd.to_numeric, errors="coerce")
@@ -582,7 +617,7 @@ def plot_correlations(data, numbers):
     n = len(numbers)
     size = 0.42 * n + 2.5
     fig, ax = plt.subplots(figsize=(size + 1.2, size))
-    cmap = plt.get_cmap("RdBu")
+    cmap = plt.get_cmap(cmap)
     for row in range(n):
         for col in range(row, n):                         # upper triangle (and the diagonal)
             ax.add_patch(plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, edgecolor="#D9E2EC", lw=0.8))

@@ -14,7 +14,8 @@ from src.report import pysustain_info
 from src.results import (event_orders, load_sustain_result, mcmc_traces, model_likelihoods, size_order,
                          subject_table, subtype_summary)
 from src.sustain_model import make_z_vals
-from common import CONFIG, DATA_HELP, NORM_METHODS, REFERENCE_GROUPS, ROOT, figure_card, step_status, step_title
+from common import (CONFIG, DATA_HELP, NORM_METHODS, REFERENCE_GROUPS, ROOT, add_figure, add_table, figure_card,
+                    figure_tools, step_status, step_title, table_tools)
 
 panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
              ui.layout_sidebar(
@@ -47,8 +48,10 @@ panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
                                   ui.output_ui("run_progress_view")),
                      ui.nav_panel("Model choice", ui.output_ui("model_choice_status"),
                                   ui.output_data_frame("model_likelihood_table"),
+                                  table_tools("models", in_report=True),
                                   figure_card("How many subtypes?", DATA_HELP["model"],
-                                              ui.output_plot("model_choice_plot", height="330px")),
+                                              ui.output_plot("model_choice_plot", height="330px"),
+                                              figure_tools("model", in_report=False)),
                                   ui.output_ui("cv_folds_view")),
                      ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                   ui.input_select("result_model", "Model to look at", choices=[]),
@@ -265,21 +268,30 @@ def server(input, output, session, shared):
                     "with every extra subtype - use cross-validation (CVIC) to choose the number. "
                     "Figure: pySuStaIn's own MCMC likelihood plot.", class_="text-muted small")
 
-    @render.data_frame
-    def model_likelihood_table():
+    def make_models_table():
         table = model_likelihoods(req(shown_run()), shown_settings()["dataset_name"])
         cv_file = shown_run() / "cross_validation.csv"
         if cv_file.exists():                                # only after a run with cross-validation
             table = table.join(pd.read_csv(cv_file, index_col="subtypes"))
-        return render.DataGrid(table.round(1).reset_index())
+        return table.round(1)
 
-    @render.plot
-    def model_choice_plot():
+    @render.data_frame
+    def model_likelihood_table():
+        return render.DataGrid(make_models_table().reset_index())
+
+    def make_model_plot():
         """Small figure: fit per number of subtypes (+ CVIC) and the MCMC line of each model."""
         folder, dataset = req(shown_run()), shown_settings()["dataset_name"]
         cv_file = folder / "cross_validation.csv"
         cv = pd.read_csv(cv_file, index_col="subtypes") if cv_file.exists() else None
         return plot_model_choice(model_likelihoods(folder, dataset), cv, mcmc_traces(folder, dataset))
+
+    @render.plot
+    def model_choice_plot():
+        return make_model_plot()
+
+    add_table(shared["report_items"], "models", "Fit per number of subtypes", make_models_table)
+    add_figure(shared["report_items"], "model", "Fit and MCMC per number of subtypes", make_model_plot)
 
     @render.ui
     def cv_folds_view():

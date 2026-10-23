@@ -4,14 +4,14 @@ import pandas as pd
 from shiny import reactive, render, req, ui
 from shiny.types import SafeException
 
-from src.figures import plot_gmm_fit, plot_region_eda, plot_region_histograms
+from src.figures import colour_list, plot_gmm_fit, plot_region_eda, plot_region_histograms
 from src.qc import region_trend_tests
 from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_points, parse_z_max, sustain_inputs,
                                z_max_table)
 from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, fit_gmm,
                         reference_group_normal, zscore_regions, zscore_with_reference)
 from common import (CONFIG, DATA_HELP, DISEASE_WORDS, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES,
-                   SAMPLE_DATA, figure_card, step_status, step_title)
+                   SAMPLE_DATA, add_figure, add_table, figure_card, figure_tools, step_status, step_title)
 
 panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
              ui.layout_sidebar(
@@ -33,6 +33,10 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                                  "input.adjust_cov",
                                  ui.input_selectize("adjust_candidates", "Covariates to test", choices=[], multiple=True),
                                  ui.output_ui("adjust_warning"),
+                                 ui.input_selectize("adjust_interactions", "Interactions to test (optional)",
+                                                    choices=[], multiple=True),
+                                 ui.p("e.g. age x sex: does the effect of age differ between men and women?",
+                                      class_="text-muted small"),
                                  ui.input_checkbox("adjust_only_sig", "Remove only where significant", value=True),
                                  ui.panel_conditional(
                                      "input.adjust_only_sig",
@@ -69,7 +73,8 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                                   ui.output_data_frame("norm_reference")),
                      ui.nav_panel("GMM fit per region", figure_card("GMM fit of one region", DATA_HELP["gmm"],
                                                                     ui.output_ui("gmm_region_choice"),
-                                                                    ui.output_plot("gmm_fit_plot", height="420px"))),
+                                                                    ui.output_plot("gmm_fit_plot", height="420px"),
+                                                                    figure_tools("gmm", in_report=False))),
                      ui.nav_panel("Z-scores",
                                   ui.p("z = (value - normal mean) / normal SD. First 20 people:",
                                        class_="text-muted small"),
@@ -82,6 +87,7 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                                                                   choices={"": "(no split)"}),
                                                   col_widths=[4, 4]),
                                               ui.output_plot("z_hist", height="560px"),
+                                              figure_tools("zeda", "", in_report=False, colors_label="Colours (hex codes, in legend order; empty = automatic)"),
                                               ui.output_ui("zeda_tests_view"))),
                      ui.nav_panel("Events",
                                   ui.p("Number of people reaching each cut-point in each region.",
@@ -114,6 +120,7 @@ def server(input, output, session, shared):
     split_groups = shared["split_groups"]
     tests_grid = shared["tests_grid"]
     tests_view = shared["tests_view"]
+    report_items = shared["report_items"]
 
     def restored():
         """The z-scores of a run loaded in tab 3 (None if there is none, or after a new Normalize)."""
@@ -185,7 +192,9 @@ def server(input, output, session, shared):
         columns = chosen_columns()
         if not (columns.get("diagnosis") and columns.get("amyloid")):
             raise SafeException("The covariate adjustment needs the diagnosis and amyloid columns (tab 1).")
-        covariates = covariate_matrix(data.loc[complete.index], names).dropna()   # known values only
+        pairs = [tuple(pair.split(" x ")) for pair in input.adjust_interactions() or []]
+        pairs = [(a, b) for a, b in pairs if a in names and b in names]
+        covariates = covariate_matrix(data.loc[complete.index], names, pairs).dropna()   # known values only
         complete = complete.loc[covariates.index]
         in_reference = amyloid_negative_cn(data.loc[complete.index], columns["diagnosis"], columns["amyloid"],
                                            reference_labels())
@@ -208,7 +217,8 @@ def server(input, output, session, shared):
         """Everything Normalize depends on: method, GMM components, regions and the people (a hash)."""
         method = input.norm_method()
         return (method, input.gmm_components() if method == "gmm" else None, tuple(input.col_regions() or []),
-                input.adjust_cov(), tuple(input.adjust_candidates() or []), input.adjust_only_sig(),
+                input.adjust_cov(), tuple(input.adjust_candidates() or []),
+                tuple(input.adjust_interactions() or []), input.adjust_only_sig(),
                 input.adjust_alpha(),
                 int(pd.util.hash_pandas_object(analysis_data(), index=True).sum()))
 
@@ -277,8 +287,7 @@ def server(input, output, session, shared):
         regions = list(normalized()["z"].columns)
         return ui.input_select("gmm_region", "Region", choices=regions, selected=regions[0])
 
-    @render.plot
-    def gmm_fit_plot():
+    def make_gmm():
         result = normalized()
         req(result["method"] == "gmm")
         region = input.gmm_region()
@@ -290,17 +299,26 @@ def server(input, output, session, shared):
         return plot_gmm_fit(values, gmm, region, reference.loc["normal_mean", region],
                             reference.loc["normal_sd", region], region_cuts()[region])
 
+    @render.plot
+    def gmm_fit_plot():
+        return make_gmm()
+
     @render.data_frame
     def z_head():
         return normalized()["z"].head(20).round(2).reset_index(names="Subject")
 
-    @render.plot
-    def z_hist():
+    def make_z_figure():
         z = normalized()["z"]
         x, groups, colors = zeda_choice()
+        typed = colour_list(input.zeda_colors())
         if x is None and groups is None:
-            return plot_region_histograms(z, list(z.columns), xlabel="z-score")
-        return plot_region_eda(z_with_columns(), list(z.columns), x, groups, colors, value_label="z-score")
+            return plot_region_histograms(z, list(z.columns), xlabel="z-score", color=(typed or ["#4C72B0"])[0])
+        return plot_region_eda(z_with_columns(), list(z.columns), x, groups, colors, value_label="z-score",
+                               single_color=(typed or ["#52606D"])[0])
+
+    @render.plot
+    def z_hist():
+        return make_z_figure()
 
     @reactive.effect
     def _zeda_choices():
@@ -331,7 +349,7 @@ def server(input, output, session, shared):
         x = input.zeda_x() or None
         if x is not None and x not in data.columns:
             return None, None, None
-        return (x, *split_groups(data, input.zeda_split() or None))
+        return (x, *split_groups(data, input.zeda_split() or None, colour_list(input.zeda_colors())))
 
     @render.ui
     def zeda_tests_view():
@@ -342,9 +360,16 @@ def server(input, output, session, shared):
 
     @render.data_frame
     def zeda_tests():
+        return tests_grid(make_zeda_tests())
+
+    def make_zeda_tests():
         x, groups, _ = zeda_choice()
         req(x is not None)
-        return tests_grid(region_trend_tests(z_with_columns(), list(normalized()["z"].columns), x, groups))
+        return region_trend_tests(z_with_columns(), list(normalized()["z"].columns), x, groups)
+
+    add_figure(report_items, "gmm", "GMM fit of one region", make_gmm)
+    add_figure(report_items, "zeda", "Z-scores", make_z_figure)
+    add_table(report_items, "zeda_tests", "Z-scores: tests per region", make_zeda_tests)
 
     @reactive.calc
     def cut_points():
@@ -554,6 +579,15 @@ def server(input, output, session, shared):
         default = [roles[r] for r in ("age", "sex") if roles.get(r) in columns]
         ui.update_selectize("adjust_candidates", choices=columns, selected=default)
 
+    @reactive.effect
+    def _adjust_interaction_choices():
+        """Every pair of the covariates chosen above (age x sex, age x education, ...)."""
+        names = list(input.adjust_candidates() or [])
+        pairs = [f"{a} x {b}" for i, a in enumerate(names) for b in names[i + 1:]]
+        with reactive.isolate():
+            keep = [p for p in input.adjust_interactions() or [] if p in pairs]
+        ui.update_selectize("adjust_interactions", choices=pairs, selected=keep)
+
     @render.ui
     def adjust_warning():
         """Red note if a chosen covariate looks like a disease measure (MMSE, CDR, p-tau, ...)."""
@@ -591,7 +625,8 @@ def server(input, output, session, shared):
             return None
         return ui.TagList(ui.h6("Covariate adjustment per region: slope (p-value)"),
                           ui.p("Slope = change in SUVR per unit of the covariate in the healthy reference group "
-                               "(per year of age, per year of education, or vs the first category). "
+                               "(per year of age, per year of education, or vs the first category). An interaction (age x sex=M) = "
+                               "how much the age slope of men differs from that of women. "
                                "Bold with ✓ = removed from everyone's SUVR.", class_="text-muted small"),
                           ui.output_data_frame("slopes_table"),
                           ui.download_button("download_slopes", "Download covariate adjustment (CSV)"),

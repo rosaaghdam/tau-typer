@@ -1,6 +1,7 @@
-"""Put the figures and tables of one run into one ZIP file (tab 5, "Download report")."""
+"""The reports of one run (tab 6): a ZIP with the figures and tables, and a PDF."""
 import io
 import json
+import re
 import zipfile
 from importlib import metadata
 
@@ -37,40 +38,17 @@ def report_zip(figures, tables, texts):
     return buffer.getvalue()
 
 
-def build_report(d):
-    """Make every figure and put them, with the tables and texts, in one ZIP (bytes).
-    d: plain data only (numbers, tables, texts) - so this can run in a separate process while the app
-    keeps working. Made by the app's tab 5 (report_inputs)."""
-    return report_zip(report_figures(d), d["tables"], d["texts"])
+def file_names(items):
+    """{title: x} -> {"01_title_in_lower_case": x}, numbered in the order of the report."""
+    return {f"{n:02d}_" + re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_"): x
+            for n, (title, x) in enumerate(items.items(), start=1)}
 
 
-def report_figures(d):
-    """Every figure of the report, {file name: figure} (used by the ZIP and the PDF report)."""
-    from src.figures import (plot_asymmetry, plot_model_choice, plot_pvd, plot_regional_contrasts,
-                             plot_stage_progression, plot_stages, plot_subtype_patterns,
-                             plot_subtype_probabilities, plot_subtype_tree)
-    from src.results import pvd_order
-    from src.subtype_analysis import asymmetry_index
-
-    titles, likelihoods = d["titles"], d["likelihoods"]
-    figures = {
-        "01_pvd": plot_pvd(d["result"], d["Z_vals"], d["regions"], titles, None,
-                           subtype_order=pvd_order(d["result"], d["order"])),
-        "02_tau_patterns": plot_subtype_patterns(d["z"], d["table"], d["regions"], titles, d["vmax"]),
-        "03_stage_progression": plot_stage_progression(d["z"], d["table"], d["regions"], titles, d["edges"],
-                                                       None, vmax=d["vmax"]),
-        "04_subtype_probabilities": plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]],
-                                                               d["table"], titles),
-        "05_stages": plot_stages(d["table"], titles, d["sd_limit"]),
-        "06_model_choice": plot_model_choice(likelihoods[["mean log-likelihood"]],
-                                             likelihoods[["CVIC"]] if "CVIC" in likelihoods else None),
-        "07_subtype_tree": plot_subtype_tree(d["subtypes_by_k"]),
-        "08_regional_differences": plot_regional_contrasts(d["t_values"], d["p_fdr"], titles),
-    }
-    asymmetry = asymmetry_index(d["z"], d["regions"])
-    if asymmetry is not None:
-        figures["09_left_right_asymmetry"] = plot_asymmetry(d["table"], asymmetry, titles)
-    return figures
+def build_report(d, figures, tables):
+    """The ZIP report (bytes): the chosen figures ({title: figure}) and tables ({title: table}), the
+    results per person and the run's settings. d: the app's report inputs. Everything is plain data or
+    figures, so this can run in a separate process while the app keeps working."""
+    return report_zip(file_names(figures), {**file_names(tables), "per_person": d["per_person"]}, d["texts"])
 
 
 def run_summary(d):
@@ -125,15 +103,15 @@ def run_summary(d):
     return lines
 
 
-def build_pdf_report(d):
-    """A PDF report (bytes): a first page with the run, its settings and the summary, then every figure
-    and the main tables. Made with matplotlib only, in a separate process (like build_report)."""
+def build_pdf_report(d, figures, tables):
+    """A PDF report (bytes): a first page with the run, its settings and the summary, then the chosen
+    figures ({title: figure}) and tables ({title: table}). Made with matplotlib only, in a separate
+    process (like build_report)."""
     import textwrap
     from datetime import datetime
 
     from matplotlib.backends.backend_pdf import PdfPages
 
-    figures = report_figures(d)
     buffer = io.BytesIO()
     with PdfPages(buffer) as pdf:
         page = plt.figure(figsize=(8.27, 11.69))             # A4
@@ -149,18 +127,18 @@ def build_pdf_report(d):
         page.text(0.07, 0.92, "\n".join(lines), va="top", fontsize=9, family="sans-serif", linespacing=1.4)
         pdf.savefig(page)
         plt.close(page)
-        for name, fig in figures.items():
-            fig.suptitle(name[3:].replace("_", " ").capitalize(), fontsize=12, y=1.05)   # above the panels
+        for title, fig in figures.items():
+            fig.suptitle(title, fontsize=12, y=1.05)                 # above the panels
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
-        for name in ["table1", "model_choice"]:
-            table = d["tables"].get(name)
-            if table is None or len(table) == 0:
+        for title, table in tables.items():
+            if len(table) == 0:
                 continue
-            shown = table.reset_index().astype(str).iloc[:40]
+            shown = table.reset_index().astype(str).iloc[:40]      # a page holds about 40 rows
             fig, ax = plt.subplots(figsize=(11.69, 8.27))
             ax.axis("off")
-            ax.set_title(name.replace("_", " ").capitalize(), fontsize=12, loc="left")
+            ax.set_title(title + (" (first 40 rows; all in the ZIP)" if len(table) > 40 else ""),
+                         fontsize=12, loc="left")
             cells = ax.table(cellText=shown.values, colLabels=list(shown.columns), loc="upper center",
                              cellLoc="left")
             cells.auto_set_font_size(False)

@@ -2,12 +2,13 @@
 import sys
 from pathlib import Path
 
+import io
 import secrets
 import tempfile
 
 import matplotlib.pyplot as plt
 import yaml
-from shiny import ui
+from shiny import render, ui
 
 ROOT = Path(__file__).resolve().parent.parent          # project folder (one level above app/)
 sys.path.insert(0, str(ROOT))                           # so Python can find src/
@@ -99,6 +100,70 @@ def figure_card(title, help_text, *content):
     return ui.card(ui.card_header(title, info), *content, full_screen=True)
 
 
+def figure_tools(fig_id, colors=None, in_report=True, colors_label="Colours (hex codes, comma-separated)"):
+    """Under one figure: its colours (if colors is given: the starting text), save as PNG / PDF, and
+    "Include in report". The server side is add_figure(fig_id, ...)."""
+    parts = []
+    if colors is not None:
+        parts.append(ui.input_text(f"{fig_id}_colors", colors_label, value=colors, width="24rem"))
+    parts += [ui.download_button(f"{fig_id}_png", "Save PNG", class_="btn-sm btn-outline-secondary"),
+              ui.download_button(f"{fig_id}_pdf", "Save PDF", class_="btn-sm btn-outline-secondary"),
+              ui.input_checkbox(f"{fig_id}_report", "Include in report", value=in_report)]
+    return ui.div(*parts, class_="tt-tools")
+
+
+def table_tools(table_id, in_report=False):
+    """Under one table: save as CSV and "Include in report". The server side is add_table(table_id, ...)."""
+    return ui.div(ui.download_button(f"{table_id}_csv", "Save CSV", class_="btn-sm btn-outline-secondary"),
+                  ui.input_checkbox(f"{table_id}_report", "Include in report", value=in_report),
+                  class_="tt-tools")
+
+
+def add_figure(report_items, fig_id, title, make):
+    """Server side of figure_tools: the PNG and PDF downloads of one figure, and its place in the report.
+    make() draws the figure - the same function the page uses, so the files look like the page.
+    report_items: {"figures": {fig_id: (title, make)}, "tables": {...}}, shared by all tabs."""
+    report_items["figures"][fig_id] = (title, make)
+    for fmt in ("png", "pdf"):
+        save = figure_file(make, fmt)
+        save.__name__ = f"{fig_id}_{fmt}"                       # = the id of its download button
+        render.download_button(filename=f"tau_typer_{fig_id}.{fmt}")(save)
+
+
+def figure_file(make, fmt):
+    """A download function: draws the figure and gives it as a PNG (300 dpi) or PDF file."""
+    def save():
+        fig = make()
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format=fmt, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        yield buffer.getvalue()
+    return save
+
+
+def add_table(report_items, table_id, title, make):
+    """Server side of table_tools: the CSV download of one table (make() gives it) and its place in the report."""
+    report_items["tables"][table_id] = (title, make)
+
+    def save():
+        yield make().to_csv()
+    save.__name__ = f"{table_id}_csv"
+    render.download_button(filename=f"tau_typer_{table_id}.csv")(save)
+
+
+def chosen_for_report(input, items):
+    """{title: what make() gives} for the items whose "Include in report" box is ticked. Items that
+    cannot be made yet (e.g. no data uploaded) are left out."""
+    chosen = {}
+    for item_id, (title, make) in items.items():
+        try:
+            if input[f"{item_id}_report"]():
+                chosen[title] = make()
+        except Exception:                                  # box not drawn yet, or nothing to show yet
+            continue
+    return chosen
+
+
 def no_run_banner():
     """Shown above tabs 4 and 5 until a run is loaded."""
     return ui.div("No run shown yet: run SuStaIn, or load a saved run, in tab 3 (Run SuStaIn).",
@@ -119,10 +184,10 @@ def step_status(text, state="waiting"):
     return ui.span(text, class_=f"tt-step-status tt-{state}", title=text)   # full text on hover
 
 
-def as_picture(fig, width="100%"):
+def as_picture(fig, width="100%", dpi=110):
     """A figure saved as a PNG for render.image (deleted after showing), at its own size - so its labels are
     never squeezed or cut off by the page width."""
     path = Path(tempfile.gettempdir()) / f"tau_typer_figure_{secrets.token_hex(8)}.png"
-    fig.savefig(path, dpi=110, bbox_inches="tight")
+    fig.savefig(path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
     return {"src": str(path), "width": width}

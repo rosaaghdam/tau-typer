@@ -1,9 +1,6 @@
 """Tab 4 - Figures of the shown run: PVD, tau patterns, probabilities, stages, choosing k, person."""
 import base64
 import io
-import secrets
-import tempfile
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,11 +8,15 @@ import pandas as pd
 from shiny import reactive, render, req, ui
 from shiny.types import SafeException
 
-from src.figures import (plot_model_choice, plot_person, plot_pvd, plot_stage_progression, plot_stages,
-                         plot_subtype_patterns, plot_subtype_probabilities, plot_subtype_tree)
+from src.figures import (SUBTYPE_COLORS, colour_list, colour_map, plot_model_choice, plot_person, plot_pvd,
+                         plot_stage_progression, plot_stages, plot_subtype_patterns, plot_subtype_probabilities,
+                         plot_subtype_tree)
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
-from common import CONFIG, FIG_HELP, as_picture, figure_card, no_run_banner, step_status, step_title
+from common import (CONFIG, FIG_HELP, add_figure, add_table, as_picture, figure_card, figure_tools, no_run_banner,
+                    step_status, step_title, table_tools)
+
+HEAT_COLOURS = "Colours: a map name (Reds, Blues, viridis, ...) or hex codes from low to high"
 
 panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
              ui.layout_sidebar(
@@ -29,20 +30,30 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                           class_="text-muted small"),
                      ui.input_numeric("fig_vmax", "Colour scale maximum (z)",
                                       value=CONFIG["figures"]["heatmap_vmax"], min=1),
+                     ui.input_text("subtype_colors", "Subtype colours (hex codes, Subtype 1 first)",
+                                   value=", ".join(SUBTYPE_COLORS[:6])),
+                     ui.p("Used by every figure of tabs 4 and 5 and the report, so a subtype has the same colour "
+                          "everywhere. A code that is not a colour is ignored.", class_="text-muted small"),
                      width=320, open="always"),
                  ui.output_ui("fig_empty"),
                  ui.navset_tab(
                      ui.nav_panel("PVD", figure_card(
                          "Positional variance diagram", FIG_HELP["pvd"],
-                         ui.input_checkbox("pvd_all", "Show every model (1, 2, ... subtypes), not only the one "
-                                                      "chosen on the left", value=False),
-                         ui.panel_conditional("!input.pvd_all", ui.output_image("fig_pvd", height="auto")),
-                         ui.panel_conditional("input.pvd_all", ui.output_ui("fig_pvd_all")))),
+                         ui.output_ui("fig_pvd_title"),
+                         ui.output_image("fig_pvd", height="auto"),
+                         figure_tools("pvd"),                        # colours: pySuStaIn's own
+                         ui.input_selectize("pvd_more", "Also show the PVD of the model with", choices=[],
+                                            multiple=True, width="24rem"),
+                         ui.output_ui("fig_pvd_more"))),
                      ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
                                                               ui.output_plot("fig_patterns", height="520px"),
-                                                              ui.output_image("fig_progression", height="auto"))),
+                                                              figure_tools("patterns", "Reds", colors_label=HEAT_COLOURS),
+                                                              ui.output_image("fig_progression", height="auto"),
+                                                              figure_tools("progression", "Reds",
+                                                                           colors_label=HEAT_COLOURS))),
                      ui.nav_panel("Subtype probabilities", figure_card("Subtype probabilities", FIG_HELP["probs"],
-                                                                       ui.output_plot("fig_probs", height="560px"))),
+                                                                       ui.output_plot("fig_probs", height="560px"),
+                                                                       figure_tools("probs"))),
                      ui.nav_panel("Stages", figure_card(
                          "Stages and how sure they are", FIG_HELP["stages"],
                          ui.layout_columns(
@@ -52,14 +63,19 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                              ui.input_selectize("stages_person", "Person (circled)", choices=[]),
                              col_widths=[3, 3, 3]),
                          ui.output_plot("fig_stages", height="760px"),
+                         figure_tools("stages"),
                          ui.output_ui("uncertain_status"),
-                         ui.output_data_frame("uncertain_people"))),
+                         ui.output_data_frame("uncertain_people"),
+                         table_tools("uncertain"))),
                      ui.nav_panel("Choosing k", figure_card("How many subtypes?", FIG_HELP["choice"],
                                                             ui.output_plot("fig_choice", height="380px"),
-                                                            ui.output_plot("fig_tree", height="480px"))),
+                                                            figure_tools("choice"),
+                                                            ui.output_plot("fig_tree", height="480px"),
+                                                            figure_tools("tree"))),
                      ui.nav_panel("Person", figure_card("One person", FIG_HELP["person"],
                                                         ui.input_selectize("fig_person", "Person", choices=[]),
-                                                        ui.output_plot("fig_person_plot", height="420px"))))))
+                                                        ui.output_plot("fig_person_plot", height="420px"),
+                                                        figure_tools("person", in_report=False))))))
 
 
 def server(input, output, session, shared):
@@ -68,6 +84,7 @@ def server(input, output, session, shared):
     cut_points = shared["cut_points"]
     shown_run = shared["shown_run"]
     shown_settings = shared["shown_settings"]
+    report_items = shared["report_items"]
 
     @render.ui
     def fig_empty():
@@ -105,6 +122,10 @@ def server(input, output, session, shared):
         names = [name.strip() for name in input.subtype_names().split(",") if name.strip()]
         return names if len(names) == k else [f"Subtype {n}" for n in range(1, k + 1)]
 
+    def typed_subtype_colors():
+        """The subtype colours typed in the sidebar (the default ones for any missing)."""
+        return colour_list(input.subtype_colors())
+
     @reactive.calc
     def fig_data():
         return model_view(int(req(input.fig_model())))
@@ -113,62 +134,90 @@ def server(input, output, session, shared):
     def fig_titles():
         return subtype_titles(fig_data()["k"])
 
-    @render.image(delete_file=True)
-    def fig_pvd():
-        """Saved as a picture at its own size (a resized plot squeezes the labels together)."""
-        d = fig_data()
+    def make_pvd(k=None):
+        """The PVD of the model chosen on the left (or of the model with k subtypes)."""
+        d = fig_data() if k is None else model_view(k)
         n_levels = len(np.unique(d["Z_vals"][d["Z_vals"] > 0]))
         if n_levels > 6:                                         # pySuStaIn has colours for 6 values
             raise SafeException(f"pySuStaIn's PVD can show at most 6 different cut-point values; this run uses "
                                 f"{n_levels}. The other figures still work.")
-        path = Path(tempfile.gettempdir()) / f"tau_typer_pvd_{secrets.token_hex(8)}"   # deleted after showing
-        fig = plot_pvd(d["result"], d["Z_vals"], d["regions"], fig_titles(), str(path),
-                       subtype_order=pvd_order(d["result"], d["order"]))
-        plt.close(fig)
-        return {"src": f"{path}.png", "width": "100%"}
+        return plot_pvd(d["result"], d["Z_vals"], d["regions"], subtype_titles(d["k"]), None,
+                        subtype_order=pvd_order(d["result"], d["order"]))
 
     @render.ui
-    def fig_pvd_all():
-        """The PVD of every model of the run, 1 subtype first (pySuStaIn fits them one after the other)."""
-        req(input.pvd_all())
-        k_max = shown_settings()["n_subtypes_max"]
+    def fig_pvd_title():
+        k = fig_data()["k"]
+        return ui.h6(f"Model with {k} subtype{'s' if k > 1 else ''} (chosen on the left)")
+
+    @render.image(delete_file=True)
+    def fig_pvd():
+        """Saved as a picture at its own size (a resized plot squeezes the labels together)."""
+        return as_picture(make_pvd(), width="60%" if fig_data()["k"] == 1 else "100%", dpi=150)   # 1 panel: not too big
+
+    @reactive.effect
+    def _pvd_more_choices():
+        """'Also show' offers the other models of the run (1, 2, ... subtypes)."""
+        k_max, shown_k = shown_settings()["n_subtypes_max"], input.fig_model()
+        others = {str(k): f"{k} subtype{'s' if k > 1 else ''}" for k in range(1, k_max + 1) if str(k) != shown_k}
+        with reactive.isolate():
+            keep = [k for k in input.pvd_more() or [] if k in others]
+        ui.update_selectize("pvd_more", choices=others, selected=keep)
+
+    @render.ui
+    def fig_pvd_more():
+        """The PVDs of the other models chosen in 'Also show', fewest subtypes first."""
         pictures = []
-        for k in range(1, k_max + 1):
-            d = model_view(k)
+        for k in sorted(int(k) for k in input.pvd_more() or []):
+            if k > shown_settings()["n_subtypes_max"]:
+                continue
             buffer = io.BytesIO()
-            fig = plot_pvd(d["result"], d["Z_vals"], d["regions"], subtype_titles(k), None,
-                           subtype_order=pvd_order(d["result"], d["order"]))
+            fig = make_pvd(k)
             fig.savefig(buffer, format="png", dpi=90, bbox_inches="tight")
             plt.close(fig)
             source = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
-            pictures += [ui.h6(f"{k} subtype{'s' if k > 1 else ''}", class_="mt-3"),
-                         ui.img(src=source, style=f"width: {60 if k == 1 else 100}%;",   # 1 panel: not too big
+            pictures += [ui.h6(f"Model with {k} subtype{'s' if k > 1 else ''}", class_="mt-3"),
+                         ui.img(src=source, style=f"width: {60 if k == 1 else 100}%;",
                                 alt=f"PVD of the model with {k} subtypes")]
         return ui.TagList(*pictures)
 
+    def make_patterns():
+        d = fig_data()
+        return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12,
+                                     cmap=colour_map(input.patterns_colors(), "Reds"))
+
     @render.plot
     def fig_patterns():
+        return make_patterns()
+
+    def make_progression():
         d = fig_data()
-        return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12)
+        return plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
+                                      vmax=input.fig_vmax() or 12, cmap=colour_map(input.progression_colors(), "Reds"))
 
     @render.image(delete_file=True)
     def fig_progression():
         """Shown as a picture at its own size: squeezed into the page, its region names were cut off."""
+        return as_picture(make_progression())
+
+    def make_probs():
         d = fig_data()
-        return as_picture(plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"],
-                                                 None, vmax=input.fig_vmax() or 12))
+        return plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]], d["table"], fig_titles(),
+                                          colors=typed_subtype_colors())
 
     @render.plot
     def fig_probs():
-        d = fig_data()
-        return plot_subtype_probabilities(d["result"]["prob_subtype"][:, d["order"]], d["table"], fig_titles())
+        return make_probs()
 
-    @render.plot
-    def fig_stages():
+    def make_stages():
         d = fig_data()
         chosen = input.stages_subtype()
         subtype = int(chosen) if chosen and chosen != "all" else None
-        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.stages_person() or None, subtype)
+        return plot_stages(d["table"], fig_titles(), input.sd_limit(), input.stages_person() or None, subtype,
+                           colors=typed_subtype_colors())
+
+    @render.plot
+    def fig_stages():
+        return make_stages()
 
     @reactive.effect
     def _stages_subtype_choices():
@@ -207,16 +256,22 @@ def server(input, output, session, shared):
                                                   "prob_stage": "probability of this stage"})
         return render.DataGrid(above.round(3).reset_index(names="person"))
 
-    @render.plot
-    def fig_choice():
+    def make_choice():
         folder = req(shown_run())
         cv_file = folder / "cross_validation.csv"
         cv = pd.read_csv(cv_file, index_col="subtypes") if cv_file.exists() else None
         return plot_model_choice(model_likelihoods(folder, shown_settings()["dataset_name"]), cv)
 
     @render.plot
+    def fig_choice():
+        return make_choice()
+
+    def make_tree():
+        return plot_subtype_tree(subtypes_by_k(fig_data()["z"].index), colors=typed_subtype_colors())
+
+    @render.plot
     def fig_tree():
-        return plot_subtype_tree(subtypes_by_k(fig_data()["z"].index))
+        return make_tree()
 
     def subtypes_by_k(people):
         """Subtype of every person in each model 1, 2, ... (0 = S0), all numbered by size."""
@@ -234,8 +289,7 @@ def server(input, output, session, shared):
         tau_pos = list(table.index[table["ml_stage"] > 0])
         ui.update_selectize("fig_person", choices=list(table.index), selected=tau_pos[0] if tau_pos else None)
 
-    @render.plot
-    def fig_person_plot():
+    def make_person():
         d = fig_data()
         person = req(input.fig_person())
         req(person in d["table"].index)
@@ -245,7 +299,24 @@ def server(input, output, session, shared):
         expected = d["z"][same].mean() if row["ml_stage"] > 0 else None
         i = d["z"].index.get_loc(person)
         return plot_person(person, d["z"].loc[person], d["regions"], expected,
-                           d["result"]["prob_subtype"][i][d["order"]], d["result"]["prob_stage"][i], fig_titles())
+                           d["result"]["prob_subtype"][i][d["order"]], d["result"]["prob_stage"][i], fig_titles(),
+                           colors=typed_subtype_colors())
+
+    @render.plot
+    def fig_person_plot():
+        return make_person()
+
+    # Save as PNG / PDF and "Include in report", for every figure of this tab (in the report in this order)
+    for fig_id, title, make in [("pvd", "Positional variance diagram", make_pvd),
+                                ("patterns", "Tau per subtype", make_patterns),
+                                ("progression", "Tau per subtype and stage group", make_progression),
+                                ("probs", "Subtype probabilities", make_probs),
+                                ("stages", "Stages and how sure they are", make_stages),
+                                ("choice", "How many subtypes", make_choice),
+                                ("tree", "Subtype tree", make_tree),
+                                ("person", "One person", make_person)]:
+        add_figure(report_items, fig_id, title, make)
+    add_table(report_items, "uncertain", "People with an uncertain stage", uncertain_table)
 
     # what the later tabs use
     @render.ui
@@ -254,4 +325,5 @@ def server(input, output, session, shared):
             return step_status("Waiting for a run")
         return step_status(f"{input.fig_model() or '?'} subtypes", "done")
 
-    shared.update(model_view=model_view, subtype_titles=subtype_titles, subtypes_by_k=subtypes_by_k)
+    shared.update(model_view=model_view, subtype_titles=subtype_titles, subtypes_by_k=subtypes_by_k,
+                  typed_subtype_colors=typed_subtype_colors)

@@ -5,10 +5,11 @@ import pandas as pd
 import yaml
 from shiny import reactive, render, req, ui
 
-from src.figures import plot_asymmetry, plot_regional_contrasts, plot_stage_vs
+from src.figures import colour_map, plot_asymmetry, plot_regional_contrasts, plot_stage_vs
 from src.results import event_orders, load_sustain_result, model_likelihoods, size_order, subject_table
 from src.subtype_analysis import asymmetry_index, compare_runs, group_table, regional_contrasts, stage_association
-from common import CONFIG, AN_HELP, figure_card, no_run_banner, step_status, step_title
+from common import (CONFIG, AN_HELP, add_figure, add_table, figure_card, figure_tools, no_run_banner, step_status,
+                    step_title, table_tools)
 
 panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
              ui.layout_sidebar(
@@ -28,16 +29,22 @@ panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
                  ui.navset_tab(
                      ui.nav_panel("Table 1", figure_card("Table 1: the subtypes compared", AN_HELP["table1"],
                                                          ui.output_ui("an_status"),
-                                                         ui.output_data_frame("an_table1"))),
+                                                         ui.output_data_frame("an_table1"),
+                                                         table_tools("table1", in_report=True))),
                      ui.nav_panel("Regional differences", figure_card(
                          "Where does each subtype differ?", AN_HELP["regions"],
-                         ui.output_plot("an_regions_plot", height="520px"))),
+                         ui.output_plot("an_regions_plot", height="520px"),
+                         figure_tools("regions", "RdBu_r", colors_label="Colours: a map name (RdBu_r, PuOr, ...) or "
+                                                                        "hex codes from less to more tau"))),
                      ui.nav_panel("Stage vs variable", figure_card("Stage against a variable", AN_HELP["stage"],
                                                                    ui.output_data_frame("an_stage_table"),
-                                                                   ui.output_plot("an_stage_plot", height="460px"))),
+                                                                   table_tools("stage_table", in_report=True),
+                                                                   ui.output_plot("an_stage_plot", height="460px"),
+                                                                   figure_tools("stage_plot"))),
                      ui.nav_panel("Left-right asymmetry", figure_card(
                          "Left-right asymmetry", AN_HELP["asymmetry"], ui.output_ui("an_asymmetry_status"),
-                         ui.output_plot("an_asymmetry_plot", height="440px"))),
+                         ui.output_plot("an_asymmetry_plot", height="440px"),
+                         figure_tools("asymmetry"))),
                      ui.nav_panel("Compare runs", ui.p(AN_HELP["compare"], class_="text-muted small"),
                                   ui.layout_columns(
                                       ui.input_select("an_other_run", "Other finished run", choices=[]),
@@ -46,7 +53,8 @@ panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
                                                     accept=[".zip"]),
                                       col_widths=[4, 3, 5]),
                                   ui.output_ui("an_compare_summary"),
-                                  ui.output_data_frame("an_compare_table")))))
+                                  ui.output_data_frame("an_compare_table"),
+                                  table_tools("compare")))))
 
 
 def server(input, output, session, shared):
@@ -61,8 +69,9 @@ def server(input, output, session, shared):
     shown_settings = shared["shown_settings"]
     model_view = shared["model_view"]
     subtype_titles = shared["subtype_titles"]
-    subtypes_by_k = shared["subtypes_by_k"]
     runs_folder = shared["runs_folder"]
+    report_items = shared["report_items"]
+    typed_subtype_colors = shared["typed_subtype_colors"]
 
     @render.ui
     def step5_status():
@@ -133,16 +142,21 @@ def server(input, output, session, shared):
         return ui.p(f"Run {shown_run().name}, {an_data()['k']} subtype(s). Variables: {source}.",
                     class_="small " + ("text-danger" if covariates is None else "text-muted"))
 
+    def make_table1():
+        return group_table(an_data()["table"], covariates_or_stop(), list(input.an_variables() or []), adjust_for())
+
     @render.data_frame
     def an_table1():
-        covariates = covariates_or_stop()
-        return render.DataGrid(group_table(an_data()["table"], covariates, list(input.an_variables() or []),
-                                           adjust_for()))
+        return render.DataGrid(make_table1())
+
+    def make_regions():
+        t_values, p_fdr = an_contrasts()
+        return plot_regional_contrasts(t_values, p_fdr, subtype_titles(an_data()["k"]),
+                                       cmap=colour_map(input.regions_colors(), "RdBu_r"))
 
     @render.plot
     def an_regions_plot():
-        t_values, p_fdr = an_contrasts()
-        return plot_regional_contrasts(t_values, p_fdr, subtype_titles(an_data()["k"]))
+        return make_regions()
 
     @reactive.calc
     def an_contrasts():
@@ -150,15 +164,22 @@ def server(input, output, session, shared):
         d = an_data()
         return regional_contrasts(d["z"], d["table"], d["regions"], an_covariates()[0], adjust_for())
 
+    def make_stage_table():
+        variable = req(input.an_stage_variable())
+        return stage_association(an_data()["table"], covariates_or_stop()[variable])
+
     @render.data_frame
     def an_stage_table():
-        variable = req(input.an_stage_variable())
-        return render.DataGrid(stage_association(an_data()["table"], covariates_or_stop()[variable]))
+        return render.DataGrid(make_stage_table())
+
+    def make_stage_plot():
+        d, variable = an_data(), req(input.an_stage_variable())
+        return plot_stage_vs(d["table"], covariates_or_stop()[variable], variable, subtype_titles(d["k"]),
+                             colors=typed_subtype_colors())
 
     @render.plot
     def an_stage_plot():
-        d, variable = an_data(), req(input.an_stage_variable())
-        return plot_stage_vs(d["table"], covariates_or_stop()[variable], variable, subtype_titles(d["k"]))
+        return make_stage_plot()
 
     @render.ui
     def an_asymmetry_status():
@@ -166,12 +187,15 @@ def server(input, output, session, shared):
             return ui.p("No left/right region pairs found in the region names (e.g. L_MTL / R_MTL).",
                         class_="text-danger small")
 
-    @render.plot
-    def an_asymmetry_plot():
+    def make_asymmetry():
         d = an_data()
         asymmetry = asymmetry_index(d["z"], d["regions"])
         req(asymmetry is not None)
-        return plot_asymmetry(d["table"], asymmetry, subtype_titles(d["k"]))
+        return plot_asymmetry(d["table"], asymmetry, subtype_titles(d["k"]), colors=typed_subtype_colors())
+
+    @render.plot
+    def an_asymmetry_plot():
+        return make_asymmetry()
 
     compare_pick = reactive.value(None)  # a run just uploaded in Compare runs: select it in the list
 
@@ -232,6 +256,14 @@ def server(input, output, session, shared):
     def an_compare_table():
         return render.DataGrid(an_comparison()[0].reset_index())
 
+    # Save and "Include in report" for the figures and tables of this tab
+    add_table(report_items, "table1", "Table 1: the subtypes compared", lambda: make_table1().set_index("variable"))
+    add_figure(report_items, "regions", "Where does each subtype differ", make_regions)
+    add_table(report_items, "stage_table", "Stage against a variable", make_stage_table)
+    add_figure(report_items, "stage_plot", "Stage against a variable", make_stage_plot)
+    add_figure(report_items, "asymmetry", "Left-right asymmetry", make_asymmetry)
+    add_table(report_items, "compare", "Two runs compared", lambda: an_comparison()[0])
+
     def per_person_table():
         """One row per person: subtype, stage, probabilities and the other columns of the file."""
         d = an_data()
@@ -251,8 +283,7 @@ def server(input, output, session, shared):
         if cv_file.exists():
             likelihoods = likelihoods.join(pd.read_csv(cv_file, index_col="subtypes"))
         t_values, p_fdr = an_contrasts()
-        tables = {"per_person": per_person_table(), "model_choice": likelihoods,
-                  "regional_differences_t": t_values, "regional_differences_p_fdr": p_fdr}
+        tables = {}                                      # the tables the summary uses
         covariates = an_covariates()[0]
         if covariates is not None:
             tables["table1"] = group_table(d["table"], covariates, list(input.an_variables() or []),
@@ -263,15 +294,15 @@ def server(input, output, session, shared):
         readme = (f"Tau-typer report - run {folder.name}, model with {d['k']} subtype(s)\n"
                   f"Made {datetime.now():%Y-%m-%d %H:%M}. Subtypes are numbered by number of tau+ people "
                   f"(Subtype 1 = most). Subtype names: {', '.join(titles)}.\n"
-                  "figures/: PNG (300 dpi) and PDF. tables/: CSV. settings.yaml: everything the run used.\n")
+                  "figures/: PNG (300 dpi) and PDF. tables/: CSV (per_person = one row per person). "
+                  "Only the figures and tables ticked 'Include in report' are here. settings.yaml: everything "
+                  "the run used.\n")
         orders = event_orders(d["result"], d["Z_vals"], d["regions"], d["order"])
         return {"run": folder.name, "k": d["k"], "settings": settings,
-                "mcmc_orders": [mcmc for _, mcmc, _ in orders],
-                "result": d["result"], "Z_vals": d["Z_vals"], "regions": d["regions"], "order": d["order"],
-                "z": d["z"], "table": d["table"], "edges": d["edges"], "titles": titles,
-                "vmax": input.fig_vmax() or CONFIG["figures"]["heatmap_vmax"], "sd_limit": input.sd_limit(),
-                "likelihoods": likelihoods, "subtypes_by_k": subtypes_by_k(d["z"].index),
-                "t_values": t_values, "p_fdr": p_fdr, "tables": tables,
+                "mcmc_orders": [mcmc for _, mcmc, _ in orders], "regions": d["regions"],
+                "table": d["table"], "titles": titles, "sd_limit": input.sd_limit(),
+                "likelihoods": likelihoods, "t_values": t_values, "p_fdr": p_fdr, "tables": tables,
+                "per_person": per_person_table(),
                 "texts": {"README.txt": readme, "settings.yaml": (folder / "settings.yaml").read_text()},
                 "file_name": f"{folder.name}_{d['k']}subtypes_report.zip"}
 

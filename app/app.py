@@ -38,7 +38,8 @@ def server(input, output, session):
     private = CONFIG["runs"].get("private_per_visit", False)
     runs_folder = RUNS_FOLDER / f"visit_{secrets.token_hex(8)}" if private else RUNS_FOLDER
     shared = {"private": private, "runs_folder": runs_folder,   # each tab adds what the later tabs need
-              "restore": reactive.value(None)}   # a loaded run's data for tabs 1-2 (set in tab 3)
+              "restore": reactive.value(None),   # a loaded run's data for tabs 1-2 (set in tab 3)
+              "report_items": {"figures": {}, "tables": {}}}   # what can go into the report (see add_figure)
     for tab in TABS:
         tab.server(input, output, session, shared)
 

@@ -69,3 +69,39 @@ def test_region_trend_tests_find_an_interaction():
     data = pd.DataFrame({"age": age, "sex": sex, "R1": region})
     table = region_trend_tests(data, ["R1"], "age", data["sex"])
     assert table.loc["R1", "p: x by group (interaction)"] < 0.001
+
+
+def test_covariate_interaction_is_tested_and_kept_with_its_own_terms():
+    """age x sex: an age effect only in men is found, and sex stays in the model with the interaction."""
+    from src.zscore import covariate_adjustment, covariate_matrix
+    rng = np.random.default_rng(0)
+    data = pd.DataFrame({"age": rng.uniform(50, 85, 300), "sex": rng.choice(["F", "M"], 300)})
+    data["R1"] = 1 + 0.02 * data["age"] * (data["sex"] == "M") + rng.normal(0, 0.05, 300)
+    covariates = covariate_matrix(data, ["age", "sex"], [("age", "sex")])
+    assert list(covariates.columns) == ["age", "sex=M", "age x sex=M"]
+    _, p_values, _, slopes = covariate_adjustment(data, ["R1"], covariates, pd.Series(True, index=data.index))
+    assert p_values.loc["R1", "age x sex=M"] < 0.001
+    assert slopes.loc["R1", "age x sex=M"] == pytest.approx(0.02, abs=0.005)
+    assert slopes.loc["R1", "sex=M"] != 0                  # kept because the interaction is kept
+
+
+def test_typed_colours():
+    """Hex codes (with or without #) are used, wrong ones are ignored; maps by name or by colours."""
+    from src.figures import colour_list, colour_map, subtype_colors
+    assert colour_list("#00897B, 112233, nonsense") == ["#00897B", "#112233"]
+    assert colour_map("Blues", "Reds") == "Blues"
+    assert colour_map("oops", "Reds") == "Reds"
+    assert colour_map("#FFFFFF, #000000", "Reds").N == 256
+    assert tuple(subtype_colors(2, ["#000000"])[0]) == (0, 0, 0, 1)   # typed first, default after
+
+
+def test_report_holds_only_the_chosen_items():
+    """The ZIP has the chosen figures and tables (numbered in order), the results per person and texts."""
+    import matplotlib.pyplot as plt
+    from src.report import build_report
+    fig, ax = plt.subplots()
+    d = {"per_person": pd.DataFrame({"subtype": [1]}), "texts": {"README.txt": "hi"}}
+    data = build_report(d, {"Tau per subtype": fig}, {"Table 1: the subtypes compared": pd.DataFrame({"a": [1]})})
+    names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+    assert set(names) == {"figures/01_tau_per_subtype.png", "figures/01_tau_per_subtype.pdf",
+                          "tables/01_table_1_the_subtypes_compared.csv", "tables/per_person.csv", "README.txt"}
