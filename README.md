@@ -43,13 +43,29 @@ Try it with the simulated toy data: tab 1 → "Sample Data" → upload that file
 
 | Folder | Contents |
 |---|---|
-| `app/` | the Shiny app (user interface only) |
+| `app/` | the Shiny app (user interface only): `app.py` joins the tabs, one file per tab (`tab1_data.py` ... `tab_about.py`), `common.py` = shared settings and texts |
+| `tests/` | automatic checks of `src/` and of the app (run in memory, no browser) |
 | `src/` | all calculations (they only *call* pySuStaIn) |
 | `code/`, `steps/` | the step-by-step scripts used to build and check the pipeline |
 | `config.yaml` | every setting in one place |
 | `notes/` | plans, progress log, explanations (`SuStaIn.md`), review checklist |
 | `data/toy/` | simulated toy data (safe to share) |
 | `results/` | outputs and app runs - **not in git** |
+
+## Tests and speed
+
+From the project folder:
+
+```bash
+./env/bin/python -m pytest tests -q
+```
+
+```bash
+./env/bin/python code/03_benchmark_app.py
+```
+
+The app tests that show a run need a finished run in `results/app_runs/` (they are skipped otherwise).
+The benchmark times "show a saved run" and "switch model" with all tabs drawn at once.
 
 ## Data privacy
 

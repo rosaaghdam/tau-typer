@@ -965,3 +965,15 @@ SuStaIn input (+ downloads). Still open: "settings changed, click Normalize agai
 - Safety: uploaded pickles are read with NumbersOnlyUnpickler (src/results.py); ZIP names checked.
 - PVD legend + spacing; probabilities figure with n/% and poor-fit box; stages without S0 bar;
   tree with n/%.
+
+## 2026-10-23 - branch review-improvements (Claude's design review, to try before merging)
+- tests/ (11 checks, shiny.testserver) + code/03_benchmark_app.py; the tests found 2 bugs (covariate
+  table without adjustment; after the split, shiny run could not find src/) - both fixed.
+- app split into one file per tab (app.py 40 lines) + common.py; ids unchanged.
+- result files cached; regional differences computed once; report made in a background process
+  ("Make report" button), so the app keeps working; upload size limits in config.yaml (runs.*).
+- cards with (i) help popovers and full-screen buttons in tabs 4-5; "no run yet" banner; "shiny" theme.
+- SPEED (benchmark, all tabs drawn in memory, run_2026-10-21_5): before 3.60 s show run / 1.6 s
+  switch model; after 3.71 s / 1.65 s = no change. Profile: drawing figures ~4 s of 10 s, regional
+  statistics 1.2 s, reading result files 0.08 s - so caching cannot help much. Real gain: the report
+  (~7 s) no longer freezes the app for everyone. Faster figures would need fewer/lighter plots.
