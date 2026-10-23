@@ -1716,7 +1716,7 @@ def server(input, output, session):
 
     def adjustment_table():
         """For the download: per region and covariate the estimated slope, its p-value and removed (yes/no)."""
-        adjustment = normalized()["adjustment"]
+        adjustment = req(normalized()["adjustment"])
         table = pd.DataFrame(index=adjustment["p_values"].index)
         for col in adjustment["p_values"].columns:
             table[f"{col}: slope"] = adjustment["estimates"][col]
@@ -1727,7 +1727,7 @@ def server(input, output, session):
     @render.data_frame
     def slopes_table():
         """One column per covariate: 'slope (p = ...)', bold with ✓ where it was removed."""
-        adjustment = normalized()["adjustment"]
+        adjustment = req(normalized()["adjustment"])        # only after an adjusted normalization
         removed = adjustment["slopes"] != 0
         shown = pd.DataFrame(index=adjustment["p_values"].index)
         styles = []
