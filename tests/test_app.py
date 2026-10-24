@@ -219,3 +219,32 @@ def test_follow_up_scans_and_cohorts_of_a_run(one_run):
             assert ts.get_output("an_cohort_plot").status == "ok"
     finally:
         shutil.rmtree(copy, ignore_errors=True)
+
+
+def test_simulation_check_with_a_perfect_truth(one_run, tmp_path):
+    """Simulation check: a truth file that is exactly the run's own result (renamed) gives 100%."""
+    import pandas as pd
+    import yaml
+    from conftest import ROOT
+    from src.results import load_sustain_result, size_order, subject_table
+    folder = ROOT / "results" / "app_runs" / one_run
+    settings = yaml.safe_load(open(folder / "settings.yaml"))
+    result = load_sustain_result(folder, settings["dataset_name"], 2)
+    z = pd.read_csv(folder / "zscores.csv", index_col="subject", dtype={"subject": str})
+    table = subject_table(result, z.index, 0.5, size_order(result))
+    names = {"S0": "S0", "Subtype 1": "posterior", "Subtype 2": "limbic"}
+    truth = pd.DataFrame({"subject_id": table.index, "true_subtype": table["subtype"].map(names),
+                          "true_stage": table["ml_stage"]})
+    path = tmp_path / "truth.csv"
+    truth.to_csv(path, index=False)
+    with test_server(APP, timeout_secs=300) as ts:
+        ts.set_inputs(saved_run=one_run, **FIGURE_INPUTS)
+        load(ts, one_run)
+        for _ in range(2):
+            ts.set_inputs(truth_file=toy_upload(path), truth_id="subject_id", truth_subtype="true_subtype",
+                          truth_stage="true_stage", sim_model="2")
+        assert errors(ts) == {}
+        numbers = str(ts.get_output("sim_numbers").value)
+        assert "100%" in numbers and "Subtype 1 = posterior" in numbers
+        for name in ["sim_confusion_plot", "sim_stage_plot", "sim_subtype_table", "sim_people"]:
+            assert ts.get_output(name).status == "ok", name

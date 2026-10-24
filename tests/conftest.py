@@ -17,14 +17,16 @@ BUTTONS = {name: 0 for name in ["normalize", "pr_reset", "run_button", "cancel_r
                                      "make_report", "make_pdf"]}
 # under each figure / table: colours (where it has them) and "Include in report", as the app starts
 IN_REPORT = {"pvd", "patterns", "progression", "probs", "stages", "choice", "tree", "regions", "stage_plot",
-             "asymmetry", "table1", "stage_table", "models", "cohort_plot", "followup_plot"}
+             "asymmetry", "table1", "stage_table", "models", "cohort_plot", "followup_plot", "sim_confusion",
+             "sim_stages", "sim_subtypes"}
 NOT_IN_REPORT = {"person", "uncertain", "compare", "model", "demographics", "eda", "eda_tests", "covariates",
-                 "boxplots", "bars", "correlations", "gmm", "zeda", "zeda_tests", "cohort_table", "followup_table"}
+                 "boxplots", "bars", "correlations", "gmm", "zeda", "zeda_tests", "cohort_table", "followup_table",
+                 "sim_people"}
 TOOL_INPUTS = {**{f"{name}_report": True for name in IN_REPORT},
                **{f"{name}_report": False for name in NOT_IN_REPORT},
                "patterns_colors": "Reds", "progression_colors": "Reds", "regions_colors": "RdBu_r",
                "correlations_colors": "RdBu", "eda_colors": "", "boxplots_colors": "", "bars_colors": "",
-               "zeda_colors": "", "subtype_colors": "#00897B, #E87BA4, #8A5A00, #9E9D24, #AD1457, #008300",
+               "zeda_colors": "", "sim_confusion_colors": "Blues", "subtype_colors": "#00897B, #E87BA4, #8A5A00, #9E9D24, #AD1457, #008300",
                "pvd_more": [], "adjust_interactions": []}
 DATA_INPUTS = {**BUTTONS, **TOOL_INPUTS, "col_id": "subject_id", "col_age": "age", "col_sex": "sex", "col_diagnosis": "diagnosis",
                "col_amyloid": "amyloid_positive", "col_regions": REGIONS, "apply_rule": False, "col_cohort": "",
@@ -63,7 +65,8 @@ def finished_runs():
     """Finished runs in results/app_runs (not in git - the run tests are skipped without one)."""
     from src.app_runs import list_runs
     runs = list_runs(ROOT / "results" / "app_runs")
-    return list(runs.loc[runs["status"] == "finished", "run"]) if len(runs) else []
+    finished = list(runs.loc[runs["status"] == "finished", "run"]) if len(runs) else []
+    return [run for run in finished if not run.startswith("_")]   # "_..." = runs the tests make themselves
 
 
 def errors(ts):

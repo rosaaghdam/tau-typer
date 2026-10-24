@@ -19,10 +19,12 @@ import tab3_run
 import tab4_figures
 import tab5_analysis
 import tab6_report
+import tab7_simulation
 import tab_about
 from common import CONFIG, RUNS_FOLDER
 
-TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab6_report, tab_about]
+TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab6_report, tab7_simulation,
+        tab_about]
 
 # Atkinson Hyperlegible: a typeface made for legibility (the browser loads it from Google Fonts;
 # without internet the system font is used)

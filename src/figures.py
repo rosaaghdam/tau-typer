@@ -581,6 +581,63 @@ def plot_followup(scans, subtype_titles, time_label, colors=None):
     return fig
 
 
+def plot_truth_confusion(counts, pairing, cmap="Blues"):
+    """Simulation check: true subtype (rows) against the subtype SuStaIn found (columns), with the number
+    of people and the % of the true subtype in each cell. A dark box marks each found subtype's partner
+    (the true subtype it shares most people with); a perfect result has all people in those boxes."""
+    share = counts.div(counts.sum(axis=1), axis=0) * 100
+    fig, ax = plt.subplots(figsize=(1.5 * counts.shape[1] + 3, 0.7 * counts.shape[0] + 2))
+    image = ax.imshow(share, cmap=cmap, vmin=0, vmax=100, aspect="auto")
+    for (row, col), n in np.ndenumerate(counts.to_numpy()):
+        ax.text(col, row, f"{n}\n{share.iloc[row, col]:.0f}%", ha="center", va="center", fontsize=9,
+                color="white" if share.iloc[row, col] > 60 else "#1F2933")
+    partners = {"S0": "S0", **pairing}
+    for col, found in enumerate(counts.columns):
+        if partners.get(found) in counts.index:
+            row = list(counts.index).index(partners[found])
+            ax.add_patch(plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, lw=2.5, color="#1F2933"))
+    labels = [f"{found}\n= {pairing[found]}" if found in pairing else found for found in counts.columns]
+    ax.set_xticks(range(counts.shape[1]), labels, fontsize=9)
+    ax.set_yticks(range(counts.shape[0]), counts.index)
+    ax.set_xlabel("found by SuStaIn (= its true partner)")
+    ax.set_ylabel("true subtype")
+    for side in ax.spines.values():
+        side.set_visible(False)
+    fig.colorbar(image, ax=ax, label="% of the true subtype", shrink=0.8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_stage_truth(rows, pairing, n_subtypes, colors=None, seed=0):
+    """Simulation check: found SuStaIn stage against the true stage (true tau+ people), one dot per person
+    coloured like the found subtype that is the partner of their true subtype (grey = no partner).
+    Dashed line = perfect agreement. Right: how far off the stage is, per true subtype."""
+    shades = subtype_colors(n_subtypes, colors)
+    colour_of = {true: shades[int(found.split()[-1]) - 1] for found, true in pairing.items()}
+    tau = rows[(rows["true subtype"] != "S0") & rows["true stage"].notna()]
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.2), gridspec_kw={"width_ratios": [1.3, 1]})
+    jitter = np.random.default_rng(seed).uniform(-0.25, 0.25, (2, len(tau)))     # many people share a stage
+    names = sorted(tau["true subtype"].unique())
+    for true in names:
+        people = (tau["true subtype"] == true).to_numpy()
+        ax1.scatter(tau["true stage"][people] + jitter[0, people], tau["found stage"][people] + jitter[1, people],
+                    s=16, alpha=0.75, color=colour_of.get(true, "#9AA5B1"), label=f"{true} (n={people.sum()})")
+    top = max(tau["true stage"].max(), tau["found stage"].max()) + 1 if len(tau) else 1
+    ax1.plot([0, top], [0, top], "--", color="#52606D", lw=1)
+    ax1.set_xlabel("true stage")
+    ax1.set_ylabel("stage found by SuStaIn")
+    ax1.legend(title="true subtype", fontsize=8)
+    ax2.boxplot([tau.loc[tau["true subtype"] == t, "stage error"] for t in names], patch_artist=True,
+                medianprops={"color": "white"}, boxprops={"facecolor": "#9AA5B1"})
+    for patch, true in zip(ax2.patches, names):
+        patch.set_facecolor(colour_of.get(true, "#9AA5B1"))
+    ax2.axhline(0, ls="--", color="#52606D", lw=1)
+    ax2.set_xticks(range(1, len(names) + 1), names, rotation=30, ha="right")
+    ax2.set_ylabel("found - true stage (+ = found too late)")
+    fig.tight_layout()
+    return fig
+
+
 # Diagnosis colours (Rosa's palette; SCD a deeper violet and MCI a deeper yellow so that all four stay
 # apart for colour-blind readers - checked with validate_palette.js, all pairs pass)
 DIAGNOSIS_COLORS = {"CN": "#11A0D9", "CU": "#11A0D9", "HC": "#11A0D9", "control": "#11A0D9",

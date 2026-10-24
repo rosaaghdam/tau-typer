@@ -96,6 +96,8 @@ normalization:
   min_people_per_event: 10    # Young et al. 2018 dropped events reached by fewer than 10 people
   z_max_method: manual        # "manual" (typed values; default sustain.z_max everywhere) or "percentile"
   z_max_percentile: 95        # used by "percentile": among people with z >= the first cut-point
+  max_z_above_z_max: 10       # a run is blocked if a z-score is more than this above Z_max: pySuStaIn's
+                              # likelihood becomes 0 for such a person and the run fails
   # Healthy reference group (reference-group normalization + covariate adjustment), always
   # amyloid-negative: "cn_scd" = CN + SCD (Vogel/BioFINDER count SCD as unimpaired) or
   # "cn" = CN only (Young 2018). Default cn_scd - to check with Jake.

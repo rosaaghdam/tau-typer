@@ -572,8 +572,12 @@ def server(input, output, session, shared):
         data, Z_vals, Z_max = sustain_inputs(z, regions, cuts, z_max)
         minimum = CONFIG["normalization"]["min_people_per_event"]
         last_cuts = np.array([cuts[region][-1] for region in regions])
+        far = int((data > Z_max + CONFIG["normalization"]["max_z_above_z_max"]).any(axis=1).sum())
         checks = [("At least 2 regions", len(regions) >= 2),
                   ("Z_max above the last cut-point in every region", bool((Z_max > last_cuts).all())),
+                  (f"No z-score more than {CONFIG['normalization']['max_z_above_z_max']:g} above Z_max (pySuStaIn "
+                   "can fail on them)" + (f" - {far} people have one: raise Z_max, e.g. 'Percentile per region' "
+                                          "(tab 2, Events)" if far else ""), far == 0),
                   (f"Every event reached by at least {minimum} people",
                    bool((event_counts().fillna(minimum) >= minimum).all().all()))]
         return {"data": data, "Z_vals": Z_vals, "Z_max": Z_max, "regions": regions,

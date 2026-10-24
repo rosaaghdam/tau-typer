@@ -19,7 +19,8 @@ NORM_METHODS = {"gmm": "GMM on everyone", "reference": "Reference group: amyloid
 CONFIG = yaml.safe_load(open(ROOT / "config.yaml"))    # all settings live in config.yaml
 
 RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuStaIn run
-SAMPLE_DATA = ROOT / "data" / "toy" / "toy_tau_clinical.csv"   # simulated toy data + 10 clinical variables + SCD
+SAMPLE_DATA = ROOT / "data" / "toy" / "sim_tau_400.csv"         # simulated data: 400 people, 3 sites (no truth)
+SAMPLE_TRUTH = ROOT / "data" / "toy" / "sim_tau_400_truth.csv"  # its true subtype and stage (Simulation check)
 FIG_HELP = {    # short help text above each tab-4 figure
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Dark = SuStaIn "
            "is sure the event happens at that stage, pale = unsure. In each title, as pySuStaIn writes it: f = the "

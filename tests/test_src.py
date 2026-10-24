@@ -160,3 +160,21 @@ def test_staging_the_model_people_again_gives_their_stage(one_run):
     staged = stage_new_scans(z, settings["regions"], settings, result, 200)
     same = (staged["ml_stage"].ravel() == result["ml_stage"].ravel()[:80]).mean()
     assert same > 0.8
+
+
+def test_simulation_check_pairs_subtypes_by_people_not_by_name():
+    """SuStaIn's 'Subtype 1' can be the simulation's 'limbic': subtypes are paired by shared people."""
+    from src.simulation_check import compare_with_truth, read_truth, summary_numbers
+    found = pd.DataFrame({"subtype": ["S0", "Subtype 1", "Subtype 1", "Subtype 2", "Subtype 2", "Subtype 2"],
+                          "ml_stage": [0, 5, 6, 10, 12, 3], "prob_subtype": 0.9},
+                         index=["p1", "p2", "p3", "p4", "p5", "p6"])
+    truth = read_truth(pd.DataFrame({"id": ["p1", "p2", "p3", "p4", "p5", "p6", "p7"],
+                                     "true": ["none", "limbic", "limbic", "posterior", "posterior", "limbic", "S0"],
+                                     "stage": [0, 5, 7, 10, 12, 3, 0]}), "id", "true", "stage")
+    rows, pairing = compare_with_truth(found, truth)
+    assert pairing == {"Subtype 1": "limbic", "Subtype 2": "posterior"}
+    assert len(rows) == 6                                  # p7 is not in the run
+    numbers = summary_numbers(rows)
+    assert numbers["subtype right (tau+ in both)"] == pytest.approx(4 / 5)
+    assert numbers["S0 found (specificity)"] == 1
+    assert numbers["stage error (mean absolute)"] == pytest.approx(1 / 5)

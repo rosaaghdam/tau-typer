@@ -18,7 +18,7 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                  ui.sidebar(
                      ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
                      ui.download_link("download_sample", "Sample Data"),
-                     ui.p("Download simulated toy data (500 people, 10 regions, 10 clinical variables) to see "
+                     ui.p("Download simulated data (400 people, 10 regions, 3 sites, clinical variables) to see "
                           "the expected format.",
                           class_="text-muted small"),
                      ui.output_ui("column_matching"),           # filled in after an upload

@@ -25,7 +25,9 @@ def server(input, output, session, shared):
                  "cross-validation to choose the number of subtypes; every run is saved in its own folder.",
                  "4. Figures - PVD, tau patterns, subtype probabilities, stages, choosing k, one person.",
                  "5. Subtype analysis - Table 1, regional differences, stage vs age / cognition, "
-                 "left-right asymmetry, comparing runs, downloads and a full report."]
+                 "left-right asymmetry, comparing runs, downloads and a full report.",
+                 "Simulation check - for simulated data: upload the true subtype and stage of each person "
+                 "and see how well SuStaIn found them (the truth is never given to SuStaIn)."]
         papers = ["Vogel JW, Young AL, Oxtoby NP, et al. Four distinct trajectories of tau deposition identified "
                   "in Alzheimer's disease. Nature Medicine 27, 871-881 (2021).",
                   "Young AL, Marinescu RV, Oxtoby NP, et al. Uncovering the heterogeneity and temporal complexity "
