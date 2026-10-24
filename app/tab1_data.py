@@ -29,7 +29,7 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                  ui.sidebar(
                      ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
                      ui.download_link("download_sample", "Sample Data"),
-                     ui.p(f"Download simulated data ({SAMPLE_SUMMARY}) to see the expected format.",
+                     ui.p(f"Data is downloaded with {SAMPLE_SUMMARY}.",
                           class_="text-muted small"),
                      ui.output_ui("column_matching"),           # filled in after an upload
                      ui.output_ui("disease_choice"),
@@ -438,7 +438,7 @@ def server(input, output, session, shared):
 
     @render.image(delete_file=True)
     def correlation_plot():
-        return as_picture(make_correlations(), width="70%")
+        return as_picture(make_correlations(), width="85%")
 
     def make_correlations():
         numbers, _ = number_and_category_columns(analysis_data(), other_columns())

@@ -293,3 +293,16 @@ def test_every_column_of_the_downloadable_data_can_split_and_be_plotted_against(
                     ts.set_inputs(eda_x=x, eda_split=split)
                     assert errors(ts) == {}, (path.name, x, split)
                     assert ts.get_output("region_hist").status == "ok", (path.name, x, split)
+
+
+def test_z_max_too_low_for_the_data_is_flagged():
+    """Sample data with Z_max 15: in most regions more than 5% of the tau+ people go past it - tab 2 says so."""
+    from conftest import ROOT
+    with test_server(APP, timeout_secs=120) as ts:
+        ts.set_inputs(data_file=toy_upload(ROOT / "data" / "toy" / "sim_tau_400.csv"), **DATA_INPUTS, **NORM_INPUTS)
+        ts.set_inputs(normalize=1)
+        ts.set_inputs(normalize=2)
+        assert "below the 95th percentile" in str(ts.get_output("zmax_status").value)
+        for _ in range(2):
+            ts.set_inputs(z_max_method="percentile", z_max_percentile=95)
+        assert "covers the data" in str(ts.get_output("zmax_status").value)

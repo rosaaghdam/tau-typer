@@ -551,12 +551,24 @@ def server(input, output, session, shared):
     def zmax_status():
         if not norm_done():
             return ui.p("Click Normalize first.", class_="text-muted")
-        values = z_max_values()["Z_max used"]
+        table = z_max_values()
+        values = table["Z_max used"]
         too_low = [region for region, cuts in region_cuts().items() if values[region] <= cuts[-1]]
-        if not too_low:
-            return ui.p("Z_max is above the last cut-point in every region.", class_="text-success fw-bold")
-        return ui.p(f"Z_max must be above the region's last cut-point. Too low in: {', '.join(too_low)}",
-                    class_="text-danger fw-bold")
+        lines = [ui.p("Z_max is above the last cut-point in every region.", class_="text-success fw-bold")
+                 if not too_low else
+                 ui.p(f"Z_max must be above the region's last cut-point. Too low in: {', '.join(too_low)}",
+                      class_="text-danger fw-bold")]
+        below = [region for region in table.index if values[region] < table.loc[region, "p95"]]
+        if below:
+            lines.append(ui.p(f"But Z_max is below the 95th percentile (p95) in {len(below)} of {len(table)} regions "
+                              f"({', '.join(below)}): more than 5% of the people with abnormal tau there go past it, "
+                              "so it is too low for this data (and z-scores far above it can make pySuStaIn fail). "
+                              "Raise it, e.g. to the max column, or choose 'Percentile per region' (Events, left).",
+                              class_="text-danger fw-bold"))
+        else:
+            lines.append(ui.p("Z_max is at or above the 95th percentile in every region: it covers the data.",
+                              class_="text-success"))
+        return ui.TagList(*lines)
 
     @render.data_frame
     def zmax_table():
