@@ -55,7 +55,6 @@ panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
                                   ui.output_ui("cv_folds_view")),
                      ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                   ui.input_select("result_model", "Model to look at", choices=[]),
-                                  ui.output_ui("quick_numbers"),
                                   ui.output_data_frame("subtype_summary_table"),
                                   ui.download_button("download_subjects", "Download subtype + stage per person (CSV)"),
                                   ui.output_ui("event_order_view")),
@@ -168,7 +167,9 @@ def server(input, output, session, shared):
                  f"(stages 0-{n_events}); normalization: {NORM_METHODS[st['normalization']]}",
                  "Models: " + ("1 subtype only" if st["n_subtypes_max"] == 1
                                else f"1, 2, ... {st['n_subtypes_max']} subtypes (one model each)"),
-                 f"Start points: {st['n_startpoints']}, MCMC iterations: {st['n_iterations_mcmc']:,}, "
+                 f"Start points: {st['n_startpoints']}, MCMC iterations: {st['n_iterations_mcmc']:,} (pySuStaIn "
+                 "first runs 3 x 10,000 steps of its own per model to tune the MCMC - fixed inside pySuStaIn, so "
+                 "the log shows /10000 before your iterations), "
                  f"seed: {st['seed']}, parallel: {'yes' if st['use_parallel_startpoints'] else 'no'}",
                  "Cross-validation: " + (f"{st['n_folds']} folds" if st['n_folds'] else "off"),
                  "Cohorts: " + (", ".join(st["cohorts"]) + " (each normalized against its own normal)"
@@ -501,16 +502,6 @@ def server(input, output, session, shared):
             return None
         runs_changed.set(runs_changed() + 1)
         return folder
-
-    @render.ui
-    def quick_numbers():
-        """Four key numbers of the chosen model, above the table."""
-        table = shown_table()
-        tau = table[table["ml_stage"] > 0]
-        numbers = [(len(table), "people"), (f"{100 * len(tau) / len(table):.0f}%", "tau+ (stage above 0)"),
-                   (tau["ml_subtype"].nunique(), "subtypes with people"), (int(tau["poor_fit"].sum()), "poor fit")]
-        return ui.div(*[ui.div(ui.div(str(value), class_="tt-number-value"), ui.div(label, class_="tt-number-label"),
-                               class_="tt-number") for value, label in numbers], class_="tt-summary")
 
     @render.ui
     def step3_status():
