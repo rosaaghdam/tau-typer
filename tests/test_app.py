@@ -244,8 +244,8 @@ def test_simulation_check_with_a_perfect_truth(one_run, tmp_path):
             ts.set_inputs(truth_file=toy_upload(path), truth_id="subject_id", truth_subtype="true_subtype",
                           truth_stage="true_stage", sim_model="2")
         assert errors(ts) == {}
-        numbers = str(ts.get_output("sim_numbers").value)
-        assert "100%" in numbers and "Subtype 1 = posterior" in numbers
+        assert "Subtype 1 = posterior" in str(ts.get_output("sim_numbers").value)
+        assert "100.0" in str(ts.get_output("sim_subtype_table").value)     # every subtype found right
         for name in ["sim_confusion_plot", "sim_stage_plot", "sim_subtype_table", "sim_people"]:
             assert ts.get_output(name).status == "ok", name
 

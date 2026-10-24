@@ -5,7 +5,7 @@ from shiny import reactive, render, req, ui
 from shiny.types import SafeException
 
 from src.figures import colour_map, plot_stage_truth, plot_truth_confusion
-from src.simulation_check import compare_with_truth, confusion, per_true_subtype, read_truth, summary_numbers
+from src.simulation_check import compare_with_truth, confusion, per_true_subtype, read_truth
 from common import (CONFIG, SAMPLE_TRUTH, add_figure, add_table, figure_card, figure_tools, no_run_banner,
                     table_tools)
 
@@ -131,29 +131,14 @@ def server(input, output, session, shared):
 
     @render.ui
     def sim_numbers():
-        """The key numbers as cards: how well the truth was found."""
+        """Which found subtype is paired with which true subtype."""
         rows, pairing, k = sim()
-        numbers = summary_numbers(rows)
-        percent = lambda v: "-" if pd.isna(v) else f"{100 * v:.0f}%"   # noqa: E731
-        cards = [(numbers["people"], "people in both files"),
-                 (percent(numbers["tau+ found (sensitivity)"]), "true tau+ found as tau+"),
-                 (percent(numbers["S0 found (specificity)"]), "true S0 found as S0"),
-                 (percent(numbers["subtype right (tau+ in both)"]), "right subtype (tau+ in both)"),
-                 ("-" if pd.isna(numbers["adjusted Rand index"]) else f"{numbers['adjusted Rand index']:.2f}",
-                  "adjusted Rand index (1 = same groups)")]
-        if "stage correlation (Spearman)" in numbers:
-            cards += [(f"{numbers['stage correlation (Spearman)']:.2f}", "stage: Spearman rho with the truth"),
-                      (f"{numbers['stage error (mean absolute)']:.1f}", "stage: mean error (stages)"),
-                      (percent(numbers["stage within 2"]), "stage within 2 of the truth")]
         n_true = rows.loc[rows["true subtype"] != "S0", "true subtype"].nunique()
         found = sorted(rows.loc[rows["found subtype"] != "S0", "found subtype"].unique())
         note = (f"Model with {k} subtype(s); the truth has {n_true}. Pairs: "
                 + "; ".join(f"{f} = {pairing[f]}" if f in pairing else f"{f}: no partner (more subtypes found "
                             "than simulated)" for f in found) + ".")
-        return ui.TagList(
-            ui.div(*[ui.div(ui.div(str(v), class_="tt-number-value"), ui.div(label, class_="tt-number-label"),
-                            class_="tt-number") for v, label in cards], class_="tt-summary"),
-            ui.p(note, class_="small text-muted"))
+        return ui.p(note, class_="small text-muted")
 
     def make_confusion():
         rows, pairing, _ = sim()
