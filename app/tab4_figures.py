@@ -134,7 +134,7 @@ def server(input, output, session, shared):
     def fig_titles():
         return subtype_titles(fig_data()["k"])
 
-    def make_pvd(k=None):
+    def make_pvd(k=None, legend=True):
         """The PVD of the model chosen on the left (or of the model with k subtypes)."""
         d = fig_data() if k is None else model_view(k)
         n_levels = len(np.unique(d["Z_vals"][d["Z_vals"] > 0]))
@@ -142,7 +142,7 @@ def server(input, output, session, shared):
             raise SafeException(f"pySuStaIn's PVD can show at most 6 different cut-point values; this run uses "
                                 f"{n_levels}. The other figures still work.")
         return plot_pvd(d["result"], d["Z_vals"], d["regions"], subtype_titles(d["k"]), None,
-                        subtype_order=pvd_order(d["result"], d["order"]))
+                        subtype_order=pvd_order(d["result"], d["order"]), legend=legend)
 
     @render.ui
     def fig_pvd_title():
@@ -171,7 +171,7 @@ def server(input, output, session, shared):
             if k > shown_settings()["n_subtypes_max"]:
                 continue
             buffer = io.BytesIO()
-            fig = make_pvd(k)
+            fig = make_pvd(k, legend=False)                     # the legend of the first PVD holds for all
             fig.savefig(buffer, format="png", dpi=90, bbox_inches="tight")
             plt.close(fig)
             source = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()

@@ -13,13 +13,15 @@ from src.subtype_analysis import region_pairs
 plt.style.use(Path(__file__).with_name("tau_typer.mplstyle"))   # one look for every figure
 
 
-def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=5, subtype_order=None):
+def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=2, subtype_order=None,
+             legend=True):
     """Clearer positional variance diagram (PVD), drawn by pySuStaIn's plot_positional_var.
 
     Rows = regions, columns = SuStaIn stages. Red = region reaches z 2, magenta = z 5,
     blue = z 10. Dark square = SuStaIn is sure the event happens at that stage; pale = unsure.
     save_path is given without ".png" (None = do not save).
     subtype_order: which of pySuStaIn's subtypes to draw first, second, ... (None = pySuStaIn's choice).
+    stage_interval: a stage number every ... stages (2: 1, 3, 5, ...). legend: the colour legend on top.
     Each title gets pySuStaIn's f and n, as pySuStaIn writes them: f = the subtype's share of all people
     (mean over the MCMC samples), n = f x number of people.
     """
@@ -40,13 +42,14 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     fig = figs[0]
     for ax in fig.axes:
         ax.set_xlabel("")                                       # columns = stages (said in the app's help text)
-    fig.subplots_adjust(hspace=0.35, wspace=0.08, top=1 - 0.95 / fig.get_figheight())   # room for the legend
-    # one legend for the colours (pySuStaIn's colours: 1st cut-point red, 2nd magenta, 3rd blue, ...)
-    colours = ["red", "magenta", "blue", "#8000ff", "cyan", "#00ff80"]
-    levels = np.unique(Z_vals[Z_vals > 0])
-    handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
-    fig.legend(handles, [f"z-score {z:g}" for z in levels], loc="upper center", ncol=len(levels),
-               bbox_to_anchor=(0.5, 1), frameon=False, fontsize=11)                 # on top
+    top = 1 - (0.95 if legend else 0.5) / fig.get_figheight()          # room for the legend (and titles)
+    fig.subplots_adjust(hspace=0.35, wspace=0.08, top=top)
+    if legend:     # one legend for the colours (pySuStaIn's: 1st cut-point red, 2nd magenta, 3rd blue, ...)
+        colours = ["red", "magenta", "blue", "#8000ff", "cyan", "#00ff80"]
+        levels = np.unique(Z_vals[Z_vals > 0])
+        handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
+        fig.legend(handles, [f"z-score {z:g}" for z in levels], loc="upper center", ncol=len(levels),
+                   bbox_to_anchor=(0.5, 1), frameon=False, fontsize=11)             # on top
     if save_path is not None:
         fig.savefig(f"{save_path}.png", dpi=150, bbox_inches="tight")
     return fig
