@@ -658,6 +658,13 @@ def group_colors(groups):
     return colors
 
 
+def frame(ax):
+    """A light border on all four sides, so the small panels of a figure are clearly apart."""
+    for side in ax.spines.values():
+        side.set_visible(True)
+        side.set_color("#BCCCDC")
+
+
 def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4, colors=None):
     """One box plot per number column (MMSE, age, ...), one colored box per group, with every person as a dot.
     colors: {group: colour} (None = the diagnosis colours)."""
@@ -680,6 +687,7 @@ def plot_covariate_boxplots(data, numbers, group_col=None, groups=None, n_cols=4
             ax.scatter(x, group_values, s=6, color=colors[g], alpha=0.7)
         ax.set_xticks(range(1, len(labels) + 1), labels, fontsize=8)
         ax.set_title(col, fontsize=10)
+        frame(ax)
     for ax in axes.flat[len(numbers):]:
         ax.set_visible(False)
     if group_col:                                                  # one legend for all panels
@@ -708,6 +716,7 @@ def plot_category_bars(data, categories, group_col=None, groups=None, n_cols=4, 
             bar_colors = [(colors or {}).get("All", "#11A0D9")]
         table.plot.bar(ax=ax, legend=False, rot=0, color=bar_colors)
         ax.set_title(col, fontsize=10)
+        frame(ax)
         ax.set_xlabel("")
         ax.set_ylabel("%")
     for ax in axes.flat[len(categories):]:

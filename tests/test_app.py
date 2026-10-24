@@ -248,3 +248,18 @@ def test_simulation_check_with_a_perfect_truth(one_run, tmp_path):
         assert "100%" in numbers and "Subtype 1 = posterior" in numbers
         for name in ["sim_confusion_plot", "sim_stage_plot", "sim_subtype_table", "sim_people"]:
             assert ts.get_output(name).status == "ok", name
+
+
+def test_disease_columns_are_chosen_in_tab_1():
+    """The disease-related columns are guessed by name, can be changed in tab 1, are shown apart in
+    Demographics, and tab 2 warns only for the ones marked in tab 1."""
+    with test_server(APP, timeout_secs=120) as ts:
+        ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
+        ts.set_inputs(adjust_cov=True, adjust_candidates=["age", "MMSE"])
+        assert "MMSE is marked as disease-related" in str(ts.get_output("adjust_warning").value)   # by name
+        assert "Disease-related columns by diagnosis" in str(ts.get_output("covariates_view").value)
+        assert ts.get_output("disease_boxplots").status == "ok"
+        for _ in range(2):
+            ts.set_inputs(col_disease=["CDR_SB"])           # the user's own choice: MMSE not in it
+        assert ts.get_output("adjust_warning").value is None or "MMSE" not in str(ts.get_output("adjust_warning").value)
+        assert errors(ts) == {}

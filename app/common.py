@@ -56,6 +56,9 @@ DATA_HELP = {   # help (i) of the figures in tabs 1-3
     "covariates": "The other columns of the file per diagnosis group: numbers as box plots (one dot per "
                   "person), categories as bars (% per group), and the Spearman correlations between the "
                   "number columns and the mean of the regions.",
+    "disease": "The columns marked as disease-related in the sidebar (cognition, biomarkers, ...), per diagnosis "
+               "group: numbers as box plots (one dot per person), categories as bars (% per group). They should "
+               "differ between the groups - that is the disease. Change the list in the sidebar.",
     "correlations": "Spearman correlation between every pair of number columns (and the mean of the regions). "
                     "Bigger circle = stronger; blue = the two rise together, red = one falls when the other "
                     "rises; white = no relation.",
@@ -96,7 +99,7 @@ AN_HELP = {     # short help text in tab 5
 RULE_ROLES = ("age", "diagnosis", "amyloid")      # columns the inclusion rule needs
 REFERENCE_ROLES = ("diagnosis", "amyloid")       # columns the reference-group normalization needs
 REFERENCE_GROUPS = {"cn_scd": "Amyloid-negative CN + SCD", "cn": "Amyloid-negative CN only"}
-DISEASE_WORDS = CONFIG["normalization"]["disease_words"]   # covariate names that look like disease measures
+DISEASE_WORDS = CONFIG["normalization"]["disease_words"]   # first guess of the disease-related columns (tab 1)
 ROLE_LABELS = {"id": "Subject ID", "age": "Age", "sex": "Sex",
                "diagnosis": "Diagnosis", "amyloid": "Amyloid status",
                "cohort": "Cohort / site",               # z-scores are made in each cohort separately

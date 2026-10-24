@@ -6,9 +6,9 @@ from shiny.types import SafeException, SilentException
 
 from src.figures import (OTHER_COLORS, colour_list, colour_map, group_colors, override_colors, plot_category_bars,
                          plot_correlations, plot_covariate_boxplots, plot_region_eda, plot_region_histograms)
-from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns,
+from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns, guess_disease_columns,
                     number_and_category_columns, qc_summary, region_trend_tests, split_baseline)
-from common import (CONFIG, DATA_HELP, ROLE_LABELS, RULE_ROLES, add_figure, add_table, as_picture, figure_card,
+from common import (CONFIG, DATA_HELP, DISEASE_WORDS, ROLE_LABELS, RULE_ROLES, add_figure, add_table, as_picture, figure_card,
                     figure_tools, step_status, step_title, table_tools)
 
 GROUP_COLOURS = "Colours (hex codes, in legend order; empty = automatic)"
@@ -22,6 +22,7 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                           "the expected format.",
                           class_="text-muted small"),
                      ui.output_ui("column_matching"),           # filled in after an upload
+                     ui.output_ui("disease_choice"),
                      width=320, open="always"),          # always visible, like CMiNet
                  ui.navset_tab(
                      ui.nav_panel("Data Head", ui.output_ui("data_status"),
@@ -117,6 +118,38 @@ def server(input, output, session, shared):
                                  ui.div(regions, class_="d-none"))          # kept (empty) for the other steps
         return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions, ui.hr(),
                           ui.output_ui("inclusion_rule_ui"))
+
+    def disease_candidates():
+        """Columns that can be marked as disease-related: the other columns except diagnosis and amyloid
+        (these have their own roles)."""
+        roles = chosen_columns()
+        return [c for c in other_columns() if c not in (roles.get("diagnosis"), roles.get("amyloid"))]
+
+    @render.ui
+    def disease_choice():
+        """Which columns measure the disease itself (cognition, biomarkers, ...). Pre-filled by name."""
+        req(uploaded_data() is not None)
+        columns = disease_candidates()
+        with reactive.isolate():
+            chosen = disease_columns()
+        return ui.TagList(
+            ui.input_selectize("col_disease", "Disease-related columns (cognition, biomarkers, ...)",
+                               choices=columns, selected=[c for c in chosen if c in columns], multiple=True),
+            ui.p("Measures of the disease itself, e.g. MMSE, CDR, memory scores, p-tau, amyloid PET. Pre-filled "
+                 "from the column names - please check. Tab 2 warns if you adjust for one of them, and "
+                 "Demographics shows them apart.", class_="text-muted small"))
+
+    def disease_columns():
+        """The columns marked as disease-related in the sidebar. Before the box is drawn: those saved with a
+        loaded run, or the guess by name."""
+        try:
+            chosen = input.col_disease()
+        except SilentException:
+            chosen = None
+        if chosen is None:
+            saved = restore()["disease_columns"] if restore() is not None else None
+            chosen = saved if saved is not None else guess_disease_columns(disease_candidates(), DISEASE_WORDS)
+        return [c for c in chosen if c in other_columns()]
 
     def rule_ticked():
         """The inclusion-rule box; False until it exists (it is drawn when tab 1 is first opened)."""
@@ -280,18 +313,31 @@ def server(input, output, session, shared):
         columns = [c for c in other_columns() if c != diagnosis_groups()[0]]
         if not columns:
             return None
-        numbers, categories = number_and_category_columns(analysis_data(), columns)
+        parts = demographic_columns()
+        cards = []
+        if parts["disease numbers"] or parts["disease categories"]:
+            cards.append(figure_card(
+                "Disease-related columns by diagnosis", DATA_HELP["disease"],
+                *([ui.output_plot("disease_boxplots", height=plot_height(len(parts["disease numbers"]))),
+                   figure_tools("disease_boxplots", "", in_report=False, colors_label=GROUP_COLOURS)]
+                  if parts["disease numbers"] else []),
+                *([ui.output_plot("disease_bars", height=plot_height(len(parts["disease categories"]))),
+                   figure_tools("disease_bars", "", in_report=False, colors_label=GROUP_COLOURS)]
+                  if parts["disease categories"] else [])))
+        if parts["numbers"]:
+            cards.append(figure_card("Other number columns by diagnosis", DATA_HELP["covariates"],
+                                     ui.output_plot("covariate_boxplots", height=plot_height(len(parts["numbers"]))),
+                                     figure_tools("boxplots", "", in_report=False, colors_label=GROUP_COLOURS)))
+        if parts["categories"]:
+            cards.append(figure_card("Other category columns by diagnosis", DATA_HELP["covariates"],
+                                     ui.output_plot("category_bars", height=plot_height(len(parts["categories"]))),
+                                     figure_tools("bars", "", in_report=False, colors_label=GROUP_COLOURS)))
         return ui.TagList(
             ui.h6("All other columns", class_="mt-4"),
             ui.p("Numbers: mean (SD). Categories: % of each value (the 4 most common).", class_="text-muted small"),
             ui.output_data_frame("covariate_table"),
             table_tools("covariates"),
-            figure_card("Number columns by diagnosis", DATA_HELP["covariates"],
-                        ui.output_plot("covariate_boxplots", height=plot_height(len(numbers))),
-                        figure_tools("boxplots", "", in_report=False, colors_label=GROUP_COLOURS)),
-            figure_card("Category columns by diagnosis", DATA_HELP["covariates"],
-                        ui.output_plot("category_bars", height=plot_height(len(categories))),
-                        figure_tools("bars", "", in_report=False, colors_label=GROUP_COLOURS)),
+            *cards,
             figure_card("Correlations between number columns (and the mean of the regions)", DATA_HELP["correlations"],
                         ui.output_image("correlation_plot", height="auto"),
                         figure_tools("correlations", "RdBu", in_report=False,
@@ -316,27 +362,60 @@ def server(input, output, session, shared):
         group_col, groups = diagnosis_groups()
         return override_colors(group_colors(groups) if group_col else {"All": "#11A0D9"}, colour_list(typed_text))
 
-    def make_boxplots():
+    @reactive.calc
+    def demographic_columns():
+        """The other columns (not diagnosis) split into disease-related and the rest, numbers and categories."""
+        group_col = diagnosis_groups()[0]
+        disease = set(disease_columns())
+        columns = [c for c in other_columns() if c != group_col]
+        numbers, categories = number_and_category_columns(analysis_data(), columns)
+        return {"disease numbers": [c for c in numbers if c in disease],
+                "disease categories": [c for c in categories if c in disease],
+                "numbers": [c for c in numbers if c not in disease],
+                "categories": [c for c in categories if c not in disease]}
+
+    def boxplots_of(kind, typed_colours):
+        """Box plots per diagnosis of one kind of number columns ("disease numbers" or "numbers")."""
         group_col, groups = diagnosis_groups()
-        numbers, _ = number_and_category_columns(analysis_data(), [c for c in other_columns() if c != group_col])
-        req(numbers)
-        return plot_covariate_boxplots(analysis_data(), numbers, group_col, groups,
-                                       colors=diagnosis_colors(input.boxplots_colors()))
+        columns = demographic_columns()[kind]
+        req(columns)
+        return plot_covariate_boxplots(analysis_data(), columns, group_col, groups,
+                                       colors=diagnosis_colors(typed_colours))
+
+    def bars_of(kind, typed_colours):
+        """Bars per diagnosis of one kind of category columns ("disease categories" or "categories")."""
+        group_col, groups = diagnosis_groups()
+        columns = demographic_columns()[kind]
+        req(columns)
+        return plot_category_bars(analysis_data(), columns, group_col, groups, colors=diagnosis_colors(typed_colours))
+
+    def make_boxplots():
+        return boxplots_of("numbers", input.boxplots_colors())
+
+    def make_bars():
+        return bars_of("categories", input.bars_colors())
+
+    def make_disease_boxplots():
+        return boxplots_of("disease numbers", input.disease_boxplots_colors())
+
+    def make_disease_bars():
+        return bars_of("disease categories", input.disease_bars_colors())
 
     @render.plot
     def covariate_boxplots():
         return make_boxplots()
 
-    def make_bars():
-        group_col, groups = diagnosis_groups()
-        _, categories = number_and_category_columns(analysis_data(), [c for c in other_columns() if c != group_col])
-        req(categories)
-        return plot_category_bars(analysis_data(), categories, group_col, groups,
-                                  colors=diagnosis_colors(input.bars_colors()))
-
     @render.plot
     def category_bars():
         return make_bars()
+
+    @render.plot
+    def disease_boxplots():
+        return make_disease_boxplots()
+
+    @render.plot
+    def disease_bars():
+        return make_disease_bars()
 
     @render.image(delete_file=True)
     def correlation_plot():
@@ -515,12 +594,14 @@ def server(input, output, session, shared):
     add_figure(report_items, "eda", "Regional values", make_region_figure)
     add_table(report_items, "eda_tests", "Regional values: tests per region", make_eda_tests)
     add_table(report_items, "covariates", "Other columns per diagnosis", make_covariate_table)
-    add_figure(report_items, "boxplots", "Number columns by diagnosis", make_boxplots)
-    add_figure(report_items, "bars", "Category columns by diagnosis", make_bars)
+    add_figure(report_items, "disease_boxplots", "Disease-related number columns by diagnosis", make_disease_boxplots)
+    add_figure(report_items, "disease_bars", "Disease-related category columns by diagnosis", make_disease_bars)
+    add_figure(report_items, "boxplots", "Other number columns by diagnosis", make_boxplots)
+    add_figure(report_items, "bars", "Other category columns by diagnosis", make_bars)
     add_figure(report_items, "correlations", "Correlations between number columns", make_correlations)
 
     # what the later tabs use
     shared.update(analysis_data=analysis_data, chosen_columns=chosen_columns, missing_roles=missing_roles,
-                  followup_data=followup_data, cohort_labels=cohort_labels,
+                  followup_data=followup_data, cohort_labels=cohort_labels, disease_columns=disease_columns,
                   other_columns=other_columns, split_groups=split_groups, tests_grid=tests_grid,
                   tests_view=tests_view, uploaded_data=uploaded_data)

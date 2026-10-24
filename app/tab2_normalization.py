@@ -11,7 +11,7 @@ from src.sustain_model import (count_people_above, cuts_per_region, parse_cut_po
 from src.zscore import (amyloid_negative_cn, apply_covariate_adjustment, covariate_adjustment, covariate_matrix,
                         fit_gmm, reference_group_normal, reference_table, zscore_by_cohort, zscore_new_scans,
                         zscore_regions)
-from common import (CONFIG, DATA_HELP, DISEASE_WORDS, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES,
+from common import (CONFIG, DATA_HELP, NORM_METHODS, REFERENCE_GROUPS, REFERENCE_ROLES,
                    SAMPLE_DATA, add_figure, add_table, figure_card, figure_tools, step_status, step_title)
 
 panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
@@ -121,6 +121,7 @@ def server(input, output, session, shared):
     split_groups = shared["split_groups"]
     followup_data = shared["followup_data"]
     cohort_labels = shared["cohort_labels"]
+    disease_columns = shared["disease_columns"]
     tests_grid = shared["tests_grid"]
     tests_view = shared["tests_view"]
     report_items = shared["report_items"]
@@ -655,13 +656,12 @@ def server(input, output, session, shared):
 
     @render.ui
     def adjust_warning():
-        """Red note if a chosen covariate looks like a disease measure (MMSE, CDR, p-tau, ...)."""
-        risky = [c for c in (input.adjust_candidates() or []) if any(w in c.lower() for w in DISEASE_WORDS)]
+        """Red note if a chosen covariate is marked as disease-related in tab 1 (MMSE, CDR, p-tau, ...)."""
+        risky = [c for c in (input.adjust_candidates() or []) if c in disease_columns()]
         if risky:
-            verb = "looks like a disease measure" if len(risky) == 1 else "look like disease measures"
-            return ui.p(f"Careful: {', '.join(risky)} {verb}. Removing it would remove the disease signal "
-                        "SuStaIn should find. (Checked by name only, with the word list disease_words in "
-                        "config.yaml.)", class_="text-danger small fw-bold")
+            verb = "is marked as disease-related" if len(risky) == 1 else "are marked as disease-related"
+            return ui.p(f"Careful: {', '.join(risky)} {verb} in tab 1. Removing it would remove the disease "
+                        "signal SuStaIn should find.", class_="text-danger small fw-bold")
 
     def reference_labels():
         """Diagnosis labels of the healthy reference group (always used together with amyloid = 0)."""

@@ -21,11 +21,12 @@ IN_REPORT = {"pvd", "patterns", "progression", "probs", "stages", "choice", "tre
              "sim_stages", "sim_subtypes"}
 NOT_IN_REPORT = {"person", "uncertain", "compare", "model", "demographics", "eda", "eda_tests", "covariates",
                  "boxplots", "bars", "correlations", "gmm", "zeda", "zeda_tests", "cohort_table", "followup_table",
-                 "sim_people"}
+                 "sim_people", "disease_boxplots", "disease_bars"}
 TOOL_INPUTS = {**{f"{name}_report": True for name in IN_REPORT},
                **{f"{name}_report": False for name in NOT_IN_REPORT},
                "patterns_colors": "Reds", "progression_colors": "Reds", "regions_colors": "RdBu_r",
                "correlations_colors": "RdBu", "eda_colors": "", "boxplots_colors": "", "bars_colors": "",
+               "disease_boxplots_colors": "", "disease_bars_colors": "",
                "zeda_colors": "", "sim_confusion_colors": "Blues", "subtype_colors": "#00897B, #E87BA4, #8A5A00, #9E9D24, #AD1457, #008300",
                "pvd_more": [], "adjust_interactions": []}
 DATA_INPUTS = {**BUTTONS, **TOOL_INPUTS, "col_id": "subject_id", "col_age": "age", "col_sex": "sex", "col_diagnosis": "diagnosis",

@@ -68,6 +68,7 @@ def read_run_inputs(folder):
                   "inputs": None, "adjustment": None, "restored_from": folder.name, "cohorts": None,
                   "followup_z": None}
     return {"data": data, "columns": columns, "regions": settings["regions"], "normalized": normalized,
+            "disease_columns": settings.get("disease_columns"),
             "complete": complete, "run": folder.name}
 
 def read_reference(path):

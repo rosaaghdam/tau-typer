@@ -152,6 +152,7 @@ def server(input, output, session, shared):
                 "n_folds": input.n_folds() if input.do_cv() else None,       # None = no cross-validation
                 "dataset_name": CONFIG["runs"]["dataset_name"],
                 "columns": {role: col for role, col in chosen_columns().items() if col},   # for tab 5
+                "disease_columns": shared["disease_columns"](),
                 "cohorts": sorted(normalized()["reference"]) if normalized()["reference"] else None,
                 "n_followup_scans": 0 if followups is None else len(followups),
                 "pysustain": pysustain_info()}                                          # what was run

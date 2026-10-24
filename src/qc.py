@@ -33,6 +33,12 @@ def guess_columns(columns):
     return guesses
 
 
+def guess_disease_columns(columns, words):
+    """First guess of the disease-related columns (cognition, biomarkers, ...): names that contain one of the
+    words (config.yaml disease_words). The user checks it in tab 1."""
+    return [col for col in columns if any(word in col.lower() for word in words)]
+
+
 def visit_times(values):
     """A visit column as numbers, and their unit: numbers stay as they are (visit 1, 2, ... or years),
     dates become years (2019-07-02 -> 2019.5). Returns (numbers, "years" or "visits")."""
