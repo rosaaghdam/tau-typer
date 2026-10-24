@@ -3,7 +3,7 @@ Run from the project folder:   ./env/bin/python -m pytest tests -q
 """
 from shiny.testserver import test_server
 
-from conftest import (APP, DATA_INPUTS, FIGURE_INPUTS, NORM_INPUTS, errors, finished_runs, toy_upload,
+from conftest import (REGIONS, APP, DATA_INPUTS, FIGURE_INPUTS, NORM_INPUTS, errors, finished_runs, toy_upload,
                       two_cohort_file)
 
 
@@ -275,3 +275,21 @@ def test_sample_data_inclusion_rule_and_one_scan_note():
             ts.set_inputs(apply_rule=True, col_visit="age")
         assert "390 of 400 people kept" in str(ts.get_output("rule_note").value)
         assert "only one row, so nothing changes" in str(ts.get_output("data_status").value)
+
+
+def test_every_column_of_the_downloadable_data_can_split_and_be_plotted_against():
+    """Region distributions (tab 1): every other column of the sample data (and the old toy data), as 'Plot
+    against' and as 'Split by', draws without an error; number columns give 3 groups."""
+    import pandas as pd
+    from conftest import ROOT, TOY
+    for path in [ROOT / "data" / "toy" / "sim_tau_400.csv", TOY]:
+        data = pd.read_csv(path)
+        others = [c for c in data.columns if c not in REGIONS + ["subject_id"]]
+        with test_server(APP, timeout_secs=300) as ts:
+            ts.set_inputs(data_file=toy_upload(path), **DATA_INPUTS, **NORM_INPUTS)
+            for column in others:
+                for x, split in [("", column), (column, ""), ("age", column)]:
+                    ts.set_inputs(eda_x=x, eda_split=split)
+                    ts.set_inputs(eda_x=x, eda_split=split)
+                    assert errors(ts) == {}, (path.name, x, split)
+                    assert ts.get_output("region_hist").status == "ok", (path.name, x, split)

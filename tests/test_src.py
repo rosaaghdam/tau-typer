@@ -178,3 +178,21 @@ def test_simulation_check_pairs_subtypes_by_people_not_by_name():
     assert numbers["subtype right (tau+ in both)"] == pytest.approx(4 / 5)
     assert numbers["S0 found (specificity)"] == 1
     assert numbers["stage error (mean absolute)"] == pytest.approx(1 / 5)
+
+
+def test_three_groups_even_with_many_ties():
+    """A number column always gives 3 groups (if it has 3+ different values), named by their values."""
+    from src.qc import three_groups
+    cdr = pd.Series([0] * 70 + [0.5] * 10 + [1, 2, 3, 4.5, 6, 8.5] * 3 + [np.nan] * 2)
+    groups, names = three_groups(cdr)
+    assert len(names) == 3 and groups.isna().sum() == 2
+    age = pd.Series(np.arange(60.0, 90.0))
+    groups, names = three_groups(age)
+    assert names == ["60 to 69", "70 to 79", "80 to 89"]
+
+
+def test_numbers_with_empty_cells_are_still_numbers():
+    """memory_composite has empty cells: it is still a number column (not one category per value)."""
+    from src.qc import number_and_category_columns
+    data = pd.DataFrame({"memory": [0.5, -1.2, np.nan, np.nan, 0.3, 1.1], "sex": ["F", "M", "F", None, "M", "F"]})
+    assert number_and_category_columns(data, ["memory", "sex"]) == (["memory"], ["sex"])

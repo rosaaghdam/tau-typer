@@ -7,10 +7,21 @@ from shiny.types import SafeException, SilentException
 from src.figures import (OTHER_COLORS, colour_list, colour_map, group_colors, override_colors, plot_category_bars,
                          plot_correlations, plot_covariate_boxplots, plot_region_eda, plot_region_histograms)
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns, guess_disease_columns,
-                    number_and_category_columns, qc_summary, region_trend_tests, split_baseline)
-from common import (CONFIG, DATA_HELP, DISEASE_WORDS, ROLE_LABELS, RULE_ROLES, add_figure, add_table, as_picture, figure_card,
-                    figure_tools, step_status, step_title, table_tools)
+                    number_and_category_columns, qc_summary, region_trend_tests, split_baseline, three_groups,
+                    top_categories)
+from common import (CONFIG, DATA_HELP, DISEASE_WORDS, ROLE_LABELS, RULE_ROLES, SAMPLE_DATA, add_figure, add_table,
+                    as_picture, figure_card, figure_tools, step_status, step_title, table_tools)
 
+def sample_summary():
+    """e.g. "400 people, 10 regions, 3 sites, 16 variables" - counted from the sample file."""
+    data = pd.read_csv(SAMPLE_DATA)
+    guess = guess_columns(list(data.columns))
+    sites = data[guess["cohort"]].nunique() if guess["cohort"] else 1
+    variables = len(data.columns) - len(guess["regions"]) - bool(guess["id"]) - bool(guess["cohort"])
+    return f"{len(data)} people, {len(guess['regions'])} regions, {sites} sites, {variables} variables"
+
+
+SAMPLE_SUMMARY = sample_summary()
 GROUP_COLOURS = "Colours (hex codes, in legend order; empty = automatic)"
 
 panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
@@ -18,8 +29,7 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                  ui.sidebar(
                      ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
                      ui.download_link("download_sample", "Sample Data"),
-                     ui.p("Download simulated data (400 people, 10 regions, 3 sites, clinical variables) to see "
-                          "the expected format.",
+                     ui.p(f"Download simulated data ({SAMPLE_SUMMARY}) to see the expected format.",
                           class_="text-muted small"),
                      ui.output_ui("column_matching"),           # filled in after an upload
                      ui.output_ui("disease_choice"),
@@ -108,6 +118,12 @@ def server(input, output, session, shared):
         choices = {"": "(not in file)", **{col: col for col in columns}}
         selects = [ui.input_select(f"col_{role}", f"{label} (optional)", choices=choices, selected=guess[role] or "")
                    for role, label in ROLE_LABELS.items()]
+        id_col = guess["id"]
+        several_scans = bool(id_col) and id_col in data and data[id_col].duplicated().any()
+        if not several_scans:                             # one row per person: no visit to choose (box kept empty)
+            selects[list(ROLE_LABELS).index("visit")] = ui.div(
+                ui.input_select("col_visit", "Scan date or visit number", choices={"": "(not in file)"}),
+                class_="d-none")
         regions = ui.input_selectize("col_regions", "Region columns (the SuStaIn features)",
                                      choices=columns, selected=guess["regions"], multiple=True)
         if restore() is not None and not guess["regions"]:          # an older run without its regional values
@@ -132,13 +148,15 @@ def server(input, output, session, shared):
         columns = disease_candidates()
         with reactive.isolate():
             chosen = disease_columns()
-        return ui.TagList(
-            ui.input_selectize("col_disease", "Disease-related columns (cognition, biomarkers, ...)",
-                               choices=columns, selected=[c for c in chosen if c in columns], multiple=True),
-            ui.p("Measures of the disease itself, e.g. MMSE, CDR, memory scores, p-tau, amyloid PET. Pre-filled "
-                 "with the columns whose name contains: " + ", ".join(DISEASE_WORDS) + " (config.yaml "
-                 "disease_words) - please check and add your own. Tab 2 warns if you adjust for one of them, "
-                 "and Demographics shows them apart.", class_="text-muted small"))
+        info = ui.popover(ui.tags.button("ⓘ", type="button", class_="btn btn-link btn-sm p-0 ms-1",
+                                         **{"aria-label": "About: disease-related columns"}),
+                          "Measures of the disease itself (cognition, biomarkers, ...), e.g. MMSE, CDR, memory "
+                          "scores, p-tau, amyloid PET. Pre-filled with the columns whose name contains: "
+                          + ", ".join(DISEASE_WORDS) + " (config.yaml disease_words) - please check and add your "
+                          "own. Tab 2 warns if you adjust for one of them, and Demographics shows them apart.",
+                          title="Disease-related columns", placement="right")
+        return ui.input_selectize("col_disease", ui.span("Disease-related columns", info), choices=columns,
+                                  selected=[c for c in chosen if c in columns], multiple=True)
 
     def disease_columns():
         """The columns marked as disease-related in the sidebar. Before the box is drawn: those saved with a
@@ -468,32 +486,22 @@ def server(input, output, session, shared):
 
     def split_groups(data, split, typed=()):
         """(group of each person, {group: colour}) for 'Split by', or (None, None) for no split. A number column
-        is cut into thirds; the diagnosis keeps its own colours. typed: the user's colours, used first.
+        is cut into 3 groups (low / middle / high); a category with many values keeps its 7 most common;
+        the diagnosis keeps its own colours. typed: the user's colours, used first.
         Used by tab 1 (values) and tab 2 (z-scores)."""
         if split is None or split not in data.columns:
             return None, None
         numbers, _ = number_and_category_columns(data, [split])
         if numbers:
-            groups, names = number_groups(pd.to_numeric(data[split], errors="coerce"))
+            groups, names = three_groups(data[split])          # low / middle / high
         else:
-            groups = data[split].astype(str).where(data[split].notna())
-            names = sorted(groups.dropna().unique())
+            groups, names = top_categories(data[split])
         if split == chosen_columns().get("diagnosis"):
             names = diagnosis_groups()[1]
             colors = group_colors(names)
         else:
             colors = {g: OTHER_COLORS[i % len(OTHER_COLORS)] for i, g in enumerate(names)}
         return groups, override_colors(colors, list(typed))
-
-    def number_groups(values):
-        """A number column cut into about equal thirds, named by their value range (e.g. "18-27", ">27-30").
-        Fewer groups when many people share a value (e.g. MMSE = 30), so no group is empty."""
-        bins, edges = pd.qcut(values, 3, retbins=True, duplicates="drop")
-        edges[0] = values.min()                            # qcut moves the lowest edge a tiny bit down
-        names = [f"{'>' if i else ''}{low:.3g}-{high:.3g}"      # e.g. "18-27", ">27-30" (27 is in the first)
-                 for i, (low, high) in enumerate(zip(edges[:-1], edges[1:]))]
-        groups = bins.cat.rename_categories(names).astype(str).where(bins.notna())
-        return groups, names
 
     @render.ui
     def eda_tests_view():

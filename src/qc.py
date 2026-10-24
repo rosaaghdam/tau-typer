@@ -1,6 +1,7 @@
 """Tab 1 - checks (QC) for an uploaded tau-PET table."""
 import re
 
+import numpy as np
 import pandas as pd
 
 # Words that often appear in each column's name (lower case), most specific first.
@@ -31,6 +32,37 @@ def guess_columns(columns):
         guesses[role] = (exact + partial + [None])[0]
     guesses["regions"] = [col for col in columns if REGION_PATTERN.match(col)]
     return guesses
+
+
+def three_groups(values):
+    """A number column in 3 groups (low / middle / high), named by the values in each group, e.g. "18 to 26",
+    "27 to 29", "30". The groups are about equal thirds of the people; when many people share a value (e.g.
+    CDR = 0), equal thirds are impossible, so the different values are split into thirds instead.
+    Returns (group of each person, missing stays missing; group names low to high)."""
+    known = pd.to_numeric(values, errors="coerce").dropna()
+    bins = pd.qcut(known, 3, duplicates="drop").cat.codes
+    if bins.nunique() < 3 and known.nunique() >= 3:
+        cuts = np.quantile(np.unique(known), [1 / 3, 2 / 3])      # thirds of the different values
+        bins = pd.Series(np.searchsorted(cuts, known, side="left"), index=known.index)
+    names, groups = [], pd.Series(np.nan, index=values.index, dtype=object)
+    for code in sorted(bins.unique()):
+        members = known[bins == code]
+        low, high = members.min(), members.max()
+        name = f"{low:.3g}" if low == high else f"{low:.3g} to {high:.3g}"
+        names.append(name)
+        groups[members.index] = name
+    return groups, names
+
+
+def top_categories(values, keep=7):
+    """A category column as text; with many different values only the most common `keep` stay and the rest
+    become "other", so a figure legend stays readable. Returns (values, names in order)."""
+    text = values.astype(str).where(values.notna())
+    counts = text.value_counts()
+    if len(counts) > keep + 1:
+        text = text.where(text.isin(counts.index[:keep]) | text.isna(), "other")
+        return text, sorted(counts.index[:keep]) + ["other"]
+    return text, sorted(counts.index)
 
 
 def guess_disease_columns(columns, words):
@@ -147,11 +179,13 @@ def apply_inclusion_rule(data, columns, min_age_cn, cn_labels, impaired_labels):
 
 def number_and_category_columns(data, columns):
     """Split columns into numbers (e.g. MMSE, age) and categories (e.g. sex, APOE4 0/1).
-    A number column has almost only numbers and more than 2 different values."""
+    A number column has almost only numbers in its filled cells (empty cells do not count) and more than
+    2 different values."""
     numbers, categories = [], []
     for col in columns:
-        values = pd.to_numeric(data[col], errors="coerce")
-        if values.notna().mean() > 0.9 and data[col].nunique() > 2:
+        filled = data[col].dropna()
+        values = pd.to_numeric(filled, errors="coerce")
+        if len(filled) and values.notna().mean() > 0.9 and filled.nunique() > 2:
             numbers.append(col)
         else:
             categories.append(col)
