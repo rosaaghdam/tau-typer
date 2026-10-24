@@ -136,8 +136,9 @@ def server(input, output, session, shared):
             ui.input_selectize("col_disease", "Disease-related columns (cognition, biomarkers, ...)",
                                choices=columns, selected=[c for c in chosen if c in columns], multiple=True),
             ui.p("Measures of the disease itself, e.g. MMSE, CDR, memory scores, p-tau, amyloid PET. Pre-filled "
-                 "from the column names - please check. Tab 2 warns if you adjust for one of them, and "
-                 "Demographics shows them apart.", class_="text-muted small"))
+                 "with the columns whose name contains: " + ", ".join(DISEASE_WORDS) + " (config.yaml "
+                 "disease_words) - please check and add your own. Tab 2 warns if you adjust for one of them, "
+                 "and Demographics shows them apart.", class_="text-muted small"))
 
     def disease_columns():
         """The columns marked as disease-related in the sidebar. Before the box is drawn: those saved with a
@@ -556,6 +557,10 @@ def server(input, output, session, shared):
         columns = chosen_columns()
         first, later = scans()
         lines = []
+        if columns.get("visit") and len(first) == len(data):
+            lines.append(f"'{columns['visit']}' is chosen as the scan date or visit, but every person has only one "
+                         "row, so nothing changes: all rows are used and there are no follow-up scans. Choose "
+                         "'(not in file)' unless your file has several scans per person.")
         if columns.get("id") and len(first) < len(data):
             if columns.get("visit"):
                 lines.append(f"{len(data)} scans of {len(first)} people: the first scan of each person (earliest "

@@ -263,3 +263,15 @@ def test_disease_columns_are_chosen_in_tab_1():
             ts.set_inputs(col_disease=["CDR_SB"])           # the user's own choice: MMSE not in it
         assert ts.get_output("adjust_warning").value is None or "MMSE" not in str(ts.get_output("adjust_warning").value)
         assert errors(ts) == {}
+
+
+def test_sample_data_inclusion_rule_and_one_scan_note():
+    """The sample data: the inclusion rule leaves out 10 people, and a visit column with one scan per person
+    says that nothing changes."""
+    from conftest import ROOT
+    with test_server(APP, timeout_secs=120) as ts:
+        ts.set_inputs(data_file=toy_upload(ROOT / "data" / "toy" / "sim_tau_400.csv"), **DATA_INPUTS, **NORM_INPUTS)
+        for _ in range(2):
+            ts.set_inputs(apply_rule=True, col_visit="age")
+        assert "390 of 400 people kept" in str(ts.get_output("rule_note").value)
+        assert "only one row, so nothing changes" in str(ts.get_output("data_status").value)
