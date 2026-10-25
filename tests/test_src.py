@@ -225,3 +225,24 @@ def test_pvd_title_tau_plus_count_matches_the_tables(one_run):
     for n, title in enumerate(titles, start=1):
         tau_plus = ((table["ml_subtype"] == n) & (table["ml_stage"] > 0)).sum()
         assert title.endswith(f"tau+ {tau_plus})"), title
+
+
+def test_sample_data_has_age_and_sex_effects_that_the_adjustment_removes():
+    """The sample data: in the healthy group SUVR rises with age, more in men (age x sex); after the app's
+    covariate adjustment the z-scores no longer follow age, in women or men."""
+    from scipy import stats
+    from conftest import ROOT
+    from src.zscore import (amyloid_negative_cn, covariate_adjustment, covariate_matrix, zscore_by_cohort,
+                            zscore_regions)
+    data = pd.read_csv(ROOT / "data" / "toy" / "sim_tau_400.csv")
+    regions = [c for c in data.columns if c[:2] in ("L_", "R_")]
+    healthy = amyloid_negative_cn(data, "diagnosis", "amyloid_positive", ["CN", "SCD"])
+    covariates = covariate_matrix(data, ["age", "sex"], [("age", "sex")])
+    adjusted, p_values, _, _ = covariate_adjustment(data, regions, covariates, healthy, True, 0.05)
+    assert (p_values["age"] < 0.05).all() and (p_values["age x sex=M"] < 0.05).sum() >= 8
+    for values, should_follow_age in [(data, True), (adjusted, False)]:
+        z = zscore_by_cohort(values, regions, data["site"],
+                             lambda rows: zscore_regions(values[rows], regions, 2, 42)[1])[0]
+        men = healthy & (data["sex"] == "M")
+        rho = stats.spearmanr(data.loc[men, "age"], z.loc[men, "L_temporal"])[0]
+        assert (rho > 0.4) if should_follow_age else (abs(rho) < 0.2)

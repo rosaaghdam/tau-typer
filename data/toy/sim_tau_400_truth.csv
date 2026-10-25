@@ -5,7 +5,7 @@ SIM_0003,amyloid_neg,S0,0
 SIM_0004,tau_positive,S3_posterior,22
 SIM_0005,amyloid_pos_tau_neg,S0,0
 SIM_0006,tau_positive,S3_posterior,28
-SIM_0007,amyloid_pos_tau_neg,S0,0
+SIM_0007,amyloid_neg,S0,0
 SIM_0008,tau_positive,S3_posterior,19
 SIM_0009,tau_positive,S3_posterior,29
 SIM_0010,amyloid_neg,S0,0
@@ -26,7 +26,7 @@ SIM_0024,tau_positive,S4_lateral_temporal,28
 SIM_0025,amyloid_pos_tau_neg,S0,0
 SIM_0026,tau_positive,S1_limbic,5
 SIM_0027,tau_positive,S3_posterior,21
-SIM_0028,amyloid_pos_tau_neg,S0,0
+SIM_0028,amyloid_neg,S0,0
 SIM_0029,tau_positive,S4_lateral_temporal,24
 SIM_0030,tau_positive,S4_lateral_temporal,14
 SIM_0031,amyloid_pos_tau_neg,S0,0
@@ -112,7 +112,7 @@ SIM_0110,amyloid_pos_tau_neg,S0,0
 SIM_0111,amyloid_neg,S0,0
 SIM_0112,tau_positive,S2_MTL_sparing,24
 SIM_0113,amyloid_neg,S0,0
-SIM_0114,amyloid_pos_tau_neg,S0,0
+SIM_0114,amyloid_neg,S0,0
 SIM_0115,amyloid_neg,S0,0
 SIM_0116,amyloid_neg,S0,0
 SIM_0117,amyloid_neg,S0,0
@@ -157,7 +157,7 @@ SIM_0155,tau_positive,S3_posterior,23
 SIM_0156,amyloid_neg,S0,0
 SIM_0157,tau_positive,S4_lateral_temporal,27
 SIM_0158,amyloid_pos_tau_neg,S0,0
-SIM_0159,amyloid_pos_tau_neg,S0,0
+SIM_0159,amyloid_neg,S0,0
 SIM_0160,tau_positive,S1_limbic,22
 SIM_0161,tau_positive,S2_MTL_sparing,7
 SIM_0162,tau_positive,S1_limbic,28
@@ -326,7 +326,7 @@ SIM_0324,amyloid_neg,S0,0
 SIM_0325,tau_positive,S3_posterior,22
 SIM_0326,tau_positive,S4_lateral_temporal,30
 SIM_0327,tau_positive,S1_limbic,4
-SIM_0328,amyloid_pos_tau_neg,S0,0
+SIM_0328,amyloid_neg,S0,0
 SIM_0329,tau_positive,S1_limbic,23
 SIM_0330,amyloid_neg,S0,0
 SIM_0331,amyloid_neg,S0,0
