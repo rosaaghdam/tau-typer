@@ -55,30 +55,70 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     return fig
 
 
-def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12, cmap="Reds"):
+def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12, cmap="Reds",
+                           colors=None):
     """Average z-score per region for real people, grouped by subtype and stage (paper Fig. 1e idea).
 
-    One panel per subtype: rows = regions, columns = stage groups (e.g. 1-6, 7-12, ...).
-    Darker red = more tau on average. Reading left to right shows tau spreading with stage.
+    One panel per subtype: rows = regions, columns = stage groups (e.g. 1-6, 7-12, ...), n = people.
+    Darker = more tau on average. Reading left to right shows tau spreading with stage.
     """
     labels = [f"{a}-{b - 1}" for a, b in zip(stage_edges[:-1], stage_edges[1:])]
     stage_group = pd.cut(table["ml_stage"], stage_edges, right=False, labels=labels)
-    n = len(subtype_titles)                               # one panel per subtype + a thin colour-bar column
-    fig, axes = plt.subplots(1, n + 1, figsize=(2.6 * n + 1.5, 4.2), gridspec_kw={"width_ratios": [1] * n + [0.08]})
-    colorbar_ax, axes = axes[-1], axes[:-1]
-    for k, (ax, title) in enumerate(zip(axes, subtype_titles), start=1):
+    n = len(subtype_titles)
+    shades = subtype_colors(n, colors)
+    fig, axes = plt.subplots(1, n, figsize=(2.3 * n + 1.6, 0.36 * len(regions) + 2.2), squeeze=False)
+    for k, (ax, title) in enumerate(zip(axes[0], subtype_titles), start=1):
         people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0)      # this subtype, tau+ only
         means = z[people].groupby(stage_group[people], observed=False)[regions].mean().T  # regions x groups
         counts = stage_group[people].value_counts().reindex(labels)
-        image = ax.imshow(means, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
-        ax.set_xticks(range(len(labels)), [f"{lab}\nn={n}" for lab, n in zip(labels, counts)], fontsize=9)
-        ax.set_yticks(range(len(regions)), regions if k == 1 else [])   # region names only on the left
-        ax.set_title(title)                               # columns = stage groups (said in the help text)
-    fig.colorbar(image, cax=colorbar_ax, label="average z-score")
-    fig.tight_layout()
+        image = heat_cells(ax, means.to_numpy(), cmap, vmax, numbers=False)
+        ax.set_xticks(range(len(labels)), [f"{lab}\nn={c}" for lab, c in zip(labels, counts)], fontsize=8)
+        ax.set_yticks(range(len(regions)), [nice_region(r) for r in regions] if k == 1 else [])
+        subtype_header(ax, title, shades[k - 1], f"{int(people.sum())} tau+ people")
+    axes[0, 0].set_xlabel("stage group", fontsize=9, color="#52606D")
+    bar = fig.colorbar(image, ax=axes[0].tolist(), orientation="horizontal", fraction=0.05, pad=0.16, aspect=50)
+    style_colorbar(bar, "average z-score")
     if save_path:                                         # the app shows the figure without saving
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
     return fig
+
+
+def nice_region(name):
+    """L_MTL -> "L MTL" (easier to read in a figure)."""
+    return name.replace("_", " ")
+
+
+def heat_cells(ax, values, cmap, vmax, numbers=True):
+    """A heat map with a thin white gap around every cell, no frame and no tick marks; numbers=True writes
+    each value in its cell (white on dark cells). Returns the image (for a colour bar)."""
+    image = ax.imshow(values, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
+    rows, cols = values.shape
+    ax.set_xticks(np.arange(-0.5, cols), minor=True)
+    ax.set_yticks(np.arange(-0.5, rows), minor=True)
+    ax.grid(which="minor", color="white", linewidth=2.5)
+    ax.tick_params(which="both", length=0)
+    for side in ax.spines.values():
+        side.set_visible(False)
+    if numbers:
+        for (row, col), value in np.ndenumerate(values):
+            if not np.isnan(value):
+                ax.text(col, row, f"{value:.1f}", ha="center", va="center", fontsize=9,
+                        color="white" if value > 0.55 * vmax else "#1F2933")
+    return image
+
+
+def subtype_header(ax, title, colour, note):
+    """Above a panel: a strip in the subtype's colour, its name in bold and a small note (e.g. n)."""
+    ax.set_title(f"{title}\n", fontsize=11, fontweight="bold", color="#1F2933", pad=14)
+    ax.text(0.5, 1.035, note, transform=ax.transAxes, ha="center", va="bottom", fontsize=8.5, color="#52606D")
+    ax.add_patch(plt.Rectangle((0, 1.005), 1, 0.022, transform=ax.transAxes, color=colour, clip_on=False))
+
+
+def style_colorbar(bar, label):
+    """A quiet colour bar: no outline, small ticks, label in ink."""
+    bar.outline.set_visible(False)
+    bar.ax.tick_params(length=0, labelsize=8, colors="#52606D")
+    bar.set_label(label, fontsize=9, color="#1F2933")
 
 
 def left_right_layout(regions, max_cols=6):
@@ -213,23 +253,27 @@ def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
     return fig
 
 
-def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds"):
-    """Average z-score per region in each subtype, tau+ people only (paper Fig. 1a/c, as a heatmap).
+def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds", colors=None):
+    """Average z-score per region in each subtype, tau+ people only (paper Fig. 1a/c, as a heat map).
 
-    Columns = subtypes (n = number of tau+ people), rows = regions, number in each cell = average z.
+    Columns = subtypes (a strip in the subtype's colour on top, n = number of tau+ people), rows = regions,
+    number in each cell = average z.
     """
     tau_pos = table["ml_stage"] > 0
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean().T   # regions x subtypes
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
-    fig, ax = plt.subplots(figsize=(1.8 * len(means.columns) + 3, 0.45 * len(regions) + 1.8))
-    image = ax.imshow(means, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
-    ax.set_xticks(range(len(means.columns)), [f"{subtype_titles[k - 1]}\nn={counts[k]}" for k in means.columns])
-    ax.set_yticks(range(len(regions)), regions)
-    for (row, col), value in np.ndenumerate(means.to_numpy()):
-        ax.text(col, row, f"{value:.1f}", ha="center", va="center", fontsize=8,
-                color="white" if value > 0.6 * vmax else "black")
-    fig.colorbar(image, ax=ax, label="average z-score")
-    fig.tight_layout()
+    shades = subtype_colors(len(subtype_titles), colors)
+    fig, ax = plt.subplots(figsize=(1.35 * len(means.columns) + 2.4, 0.42 * len(regions) + 2.0))
+    image = heat_cells(ax, means.to_numpy(), cmap, vmax)
+    ax.xaxis.tick_top()
+    ax.set_xticks(range(len(means.columns)), [f"{subtype_titles[k - 1]}\nn = {counts[k]}" for k in means.columns],
+                  fontsize=10, color="#1F2933")
+    ax.tick_params(axis="x", pad=12)
+    for col, k in enumerate(means.columns):                # subtype colour strip above each column
+        ax.add_patch(plt.Rectangle((col - 0.45, -0.62), 0.9, 0.1, color=shades[k - 1], clip_on=False))
+    ax.set_yticks(range(len(regions)), [nice_region(r) for r in regions], fontsize=10, color="#1F2933")
+    bar = fig.colorbar(image, ax=ax, orientation="horizontal", fraction=0.04, pad=0.04, aspect=40)
+    style_colorbar(bar, "average z-score of the tau+ people (0 = normal)")
     return fig
 
 

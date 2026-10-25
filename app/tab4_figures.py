@@ -183,6 +183,7 @@ def server(input, output, session, shared):
     def make_patterns():
         d = fig_data()
         return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12,
+                                     colors=typed_subtype_colors(),
                                      cmap=colour_map(input.patterns_colors(), "Reds"))
 
     @render.plot
@@ -192,6 +193,7 @@ def server(input, output, session, shared):
     def make_progression():
         d = fig_data()
         return plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
+                                      colors=typed_subtype_colors(),
                                       vmax=input.fig_vmax() or 12, cmap=colour_map(input.progression_colors(), "Reds"))
 
     @render.image(delete_file=True)
