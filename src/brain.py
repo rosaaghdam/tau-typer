@@ -1,120 +1,196 @@
-"""A schematic brain map: tau per subtype drawn on the lobes of a simple side view of the brain.
+"""Brain figures: tau per subtype (and per stage group) drawn on the cortex, with the outlines of the
+Desikan-Killiany atlas from the ggseg package (python-ggseg, the Python port of the ggseg brain plots used
+in many papers). Lateral and medial views of both hemispheres.
 
-Only a drawing to see the pattern at a glance - not anatomical. Regions are matched to lobes by their
-names (e.g. L_frontal, R_MTL): frontal, parietal, occipital, temporal and MTL (medial temporal lobe:
-hippocampus, entorhinal, amygdala), left or right by the start of the name (L_, R_, lh_, rh_, left_, right_).
+Our regions are matched by name. A region named after a lobe (e.g. L_frontal, R_MTL) colours every atlas
+region of that lobe; a region named after an atlas region (e.g. L_entorhinal) colours just that one.
+Left or right from the start of the name (L_, R_, lh_, rh_, left_, right_).
 """
+import functools
+import os.path as op
 import re
 
+import ggseg
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Ellipse, Polygon
-from scipy.interpolate import splev, splprep
+from ggseg import _svg_parse_
+from matplotlib.patches import PathPatch, Rectangle
+from matplotlib.path import Path
+from matplotlib.transforms import Affine2D
 
-LOBE_WORDS = {"mtl": ["mtl", "medial_temporal", "medialtemporal", "hippocamp", "entorhinal", "amygdala",
-                      "parahippocamp"],
-              "temporal": ["temporal"], "parietal": ["parietal"], "occipital": ["occipital"],
-              "frontal": ["frontal"]}
+ATLAS = op.join(op.dirname(ggseg.__file__), "data", "dk")
+LOBES = {    # Desikan-Killiany regions of each lobe (cingulate and insula belong to none)
+    "frontal": ["superiorfrontal", "rostralmiddlefrontal", "caudalmiddlefrontal", "parsopercularis",
+                "parstriangularis", "parsorbitalis", "lateralorbitofrontal", "medialorbitofrontal", "precentral",
+                "paracentral"],
+    "parietal": ["superiorparietal", "inferiorparietal", "supramarginal", "postcentral", "precuneus"],
+    "temporal": ["superiortemporal", "middletemporal", "inferiortemporal", "bankssts", "fusiform",
+                 "transversetemporal"],
+    "occipital": ["lateraloccipital", "lingual", "cuneus", "pericalcarine"],
+    "mtl": ["entorhinal", "parahippocampal"],
+}
+LOBE_WORDS = {"mtl": ["mtl", "medial_temporal", "medialtemporal", "hippocamp"], "temporal": ["temporal"],
+              "parietal": ["parietal"], "occipital": ["occipital"], "frontal": ["frontal"]}
+ATLAS_REGIONS = sorted({r for regions in LOBES.values() for r in regions} |
+                       {"caudalanteriorcingulate", "rostralanteriorcingulate", "posteriorcingulate",
+                        "isthmuscingulate", "insula"})
+NO_DATA = "#E4E7EB"
 
-# left hemisphere seen from the side, front (frontal pole) on the left; x 0-1, y 0-0.72
-OUTLINE = [(0.02, 0.35), (0.06, 0.52), (0.18, 0.64), (0.36, 0.71), (0.56, 0.71), (0.74, 0.65), (0.88, 0.55),
-           (0.97, 0.43), (0.99, 0.31), (0.94, 0.20), (0.84, 0.15), (0.72, 0.12), (0.60, 0.05), (0.45, 0.02),
-           (0.32, 0.05), (0.24, 0.12), (0.19, 0.20), (0.10, 0.22), (0.04, 0.27)]
-LOBES = {"frontal": [(-0.1, 0.20), (0.17, 0.22), (0.24, 0.31), (0.44, 0.37), (0.52, 0.8), (-0.1, 0.8)],
-         "parietal": [(0.44, 0.37), (0.52, 0.8), (0.82, 0.8), (0.80, 0.40), (0.64, 0.37)],
-         "occipital": [(0.82, 0.8), (1.1, 0.8), (1.1, -0.1), (0.78, -0.1), (0.78, 0.25), (0.80, 0.40)],
-         "temporal": [(0.17, 0.22), (0.24, 0.31), (0.64, 0.37), (0.80, 0.40), (0.78, 0.25), (0.78, -0.1),
-                      (0.1, -0.1), (0.1, 0.2)]}
-TEXT_AT = {"frontal": (0.22, 0.50), "parietal": (0.64, 0.56), "occipital": (0.89, 0.37), "temporal": (0.62, 0.24)}
-MTL_AT, MTL_SIZE = (0.40, 0.15), (0.24, 0.075)
+
+def side_of(region):
+    """"L", "R" or None (both) from the start of a region name."""
+    match = re.match(r"^(l|lh|left|r|rh|right)[_\-.]", region.lower())
+    return None if not match else ("L" if match.group(1).startswith("l") else "R")
+
+
+def atlas_regions_of(region):
+    """The atlas regions one of our regions stands for: itself if it is named after one (entorhinal,
+    precuneus, ...), else every region of its lobe; [] if the name matches nothing."""
+    name = region.lower().replace("-", "").replace(" ", "")
+    for atlas_region in sorted(ATLAS_REGIONS, key=len, reverse=True):     # longest name first
+        if atlas_region in name:
+            return [atlas_region]
+    for lobe, words in LOBE_WORDS.items():                                # MTL before temporal
+        if any(word in name for word in words):
+            return LOBES[lobe]
+    return []
 
 
 def lobe_of(region):
-    """(side "L" / "R" / None, lobe) of a region name, or None if it is not a lobe the map knows."""
-    name = region.lower()
-    side = None
-    match = re.match(r"^(l|lh|left|r|rh|right)[_\-.]", name)
-    if match:
-        side = "L" if match.group(1).startswith("l") else "R"
-    for lobe, words in LOBE_WORDS.items():               # MTL first: "medial_temporal" is not "temporal"
-        if any(word in name for word in words):
-            return side, lobe
-    return None
+    """True-ish if the brain figure can place this region (kept for the app's check)."""
+    return bool(atlas_regions_of(region))
 
 
-def lobe_values(means):
-    """{(side, lobe): average} from {region: value}; a region without side counts for both sides."""
+def atlas_values(means):
+    """{(side, atlas region): value} from {our region: value}; a region without a side counts for both."""
     found = {}
     for region, value in means.items():
-        place = lobe_of(region)
-        if place is None:
-            continue
-        side, lobe = place
-        for s in ([side] if side else ["L", "R"]):
-            found.setdefault((s, lobe), []).append(value)
-    return {key: float(np.mean(values)) for key, values in found.items()}
+        side = side_of(region)
+        for atlas_region in atlas_regions_of(region):
+            for s in ([side] if side else ["L", "R"]):
+                found.setdefault((s, atlas_region), []).append(value)
+    return {key: float(np.mean(v)) for key, v in found.items()}
 
 
-def smooth_outline():
-    """The brain outline as a smooth closed curve (points x, y)."""
-    points = np.array(OUTLINE + OUTLINE[:1])
-    tck, _ = splprep([points[:, 0], points[:, 1]], s=0, per=True)
-    return np.column_stack(splev(np.linspace(0, 1, 200), tck))
+@functools.lru_cache(maxsize=None)
+def outline(name):
+    """The matplotlib Path of one atlas file (a region, or a whole view such as lateral_left)."""
+    codes, verts = _svg_parse_(open(op.join(ATLAS, name)).read())
+    return Path(verts, codes)
 
 
-def draw_hemisphere(ax, values, side, x0, mirror, cmap, vmax):
-    """One hemisphere at x offset x0 (mirror = facing right), lobes coloured by values[(side, lobe)]."""
-    flip = (lambda pts: [(x0 + 1 - x, y) for x, y in pts]) if mirror else (lambda pts: [(x0 + x, y) for x, y in pts])
-    outline = Polygon(flip(smooth_outline()), closed=True, facecolor="none", edgecolor="#52606D", lw=1.2, zorder=4)
-    ax.add_patch(outline)
+@functools.lru_cache(maxsize=None)
+def view_box(view):
+    """(x0, y0, x1, y1) of one view (lateral_left, medial_left, lateral_right, medial_right) in atlas units."""
+    path = outline(view)
+    points = path.vertices[path.codes != Path.CLOSEPOLY]
+    return (*points.min(axis=0), *points.max(axis=0))
+
+
+def draw_view(ax, view, values, x, y, cmap, vmax):
+    """One view of one hemisphere with its top-left corner at (x, y) in the axes (y grows down), each atlas
+    region coloured by values[(side, region)]. Returns the view's width and height."""
+    side = "L" if view.endswith("left") else "R"
+    x0, y0, x1, y1 = view_box(view)
+    move = Affine2D().translate(x - x0, y - y0) + ax.transData
+    clip = Rectangle((x0 - 2, y0 - 2), x1 - x0 + 4, y1 - y0 + 4, transform=move, visible=False)
+    ax.add_patch(clip)
     colours = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
-    for lobe, corners in LOBES.items():
-        value = values.get((side, lobe))
-        face = "#E4E7EB" if value is None else colours(float(np.clip(value / vmax, 0, 1)))
-        patch = Polygon(flip(corners), closed=True, facecolor=face, edgecolor="white", lw=1.5, zorder=2,
-                        hatch="///" if value is None else None)
+    background = PathPatch(outline(view), facecolor="#C9CED6", edgecolor="white", lw=0.4, transform=move)
+    ax.add_patch(background)
+    background.set_clip_path(clip)
+    hemisphere = "left" if side == "L" else "right"
+    for region in ATLAS_REGIONS:
+        value = values.get((side, region))
+        face = NO_DATA if value is None else colours(float(np.clip(value / vmax, 0, 1)))
+        patch = PathPatch(outline(f"{region}_{hemisphere}"), facecolor=face, edgecolor="white", lw=0.4,
+                          transform=move)
         ax.add_patch(patch)
-        patch.set_clip_path(outline)
-        if value is not None:
-            (x, y), = flip([TEXT_AT[lobe]])
-            ax.text(x, y, f"{value:.1f}", ha="center", va="center", fontsize=7, zorder=6,
-                    color="white" if value > 0.55 * vmax else "#1F2933")
-    value = values.get((side, "mtl"))
-    (x, y), = flip([MTL_AT])
-    ax.add_patch(Ellipse((x, y), *MTL_SIZE, facecolor="#E4E7EB" if value is None else
-                         colours(float(np.clip(value / vmax, 0, 1))), edgecolor="#1F2933", lw=1, ls="--", zorder=5))
-    ax.text(x, y, "MTL" if value is None else f"MTL {value:.1f}", ha="center", va="center", fontsize=6.5, zorder=6,
-            color="white" if value is not None and value > 0.55 * vmax else "#1F2933")
-    ax.text(x0 + 0.5, -0.06, "left" if side == "L" else "right", ha="center", va="top", fontsize=8, color="#52606D")
+        patch.set_clip_path(clip)
+    return x1 - x0, y1 - y0
+
+
+def draw_brain(ax, values, views, cmap, vmax, gap=40):
+    """Several views side by side in one axes (e.g. lateral and medial of both hemispheres)."""
+    x, height = 0, 0
+    for view in views:
+        width, h = draw_view(ax, view, values, x, 0, cmap, vmax)
+        x, height = x + width + gap, max(height, h)
+    ax.set_xlim(-gap / 2, x - gap / 2)
+    ax.set_ylim(height + gap / 2, -gap / 2)                     # atlas y grows downwards
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+
+ALL_VIEWS = ["lateral_left", "medial_left", "medial_right", "lateral_right"]
+
+
+def colour_bar(fig, axes, cmap, vmax, label):
+    bar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(0, vmax), cmap=cmap), ax=axes, fraction=0.025,
+                       pad=0.02, shrink=0.8)
+    bar.outline.set_visible(False)
+    bar.ax.tick_params(length=0)
+    bar.set_label(label)
 
 
 def plot_brain_map(z, table, regions, subtype_titles, vmax=12, cmap="Reds"):
-    """Average z-score of each subtype's tau+ people on a schematic side view of both hemispheres (left
-    one facing left, right one facing right). The MTL is on the inner side of the brain, so it is drawn as
-    the dashed oval. Grey hatched = no region of the data in that lobe. Returns None if no region name
-    matches a lobe."""
+    """Average z-score of each subtype's tau+ people on the cortex: one row per subtype, lateral and medial
+    views of the left and right hemisphere. Grey = no region of the data there. None if no region name
+    matches the atlas."""
+    if not any(atlas_regions_of(r) for r in regions):
+        return None
     tau_pos = table["ml_stage"] > 0
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean()   # subtypes x regions
-    if not any(lobe_of(r) for r in regions):
-        return None
-    k = len(subtype_titles)
-    n_cols = min(k, 2)
-    n_rows = int(np.ceil(k / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.2 * n_cols + 1, 2.3 * n_rows + 0.4), squeeze=False)
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
-    for ax, (n, title) in zip(axes.flat, enumerate(subtype_titles, start=1)):
-        values = lobe_values(means.loc[n]) if n in means.index else {}
-        draw_hemisphere(ax, values, "L", 0, False, cmap, vmax)
-        draw_hemisphere(ax, values, "R", 1.15, True, cmap, vmax)
-        ax.set_title(f"{title} (n = {counts.get(n, 0)})")
-        ax.set_xlim(-0.05, 2.2)
-        ax.set_ylim(-0.12, 0.76)
-        ax.set_aspect("equal")
-        ax.axis("off")
-    for ax in axes.flat[k:]:
-        ax.set_visible(False)
-    bar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(0, vmax), cmap=cmap), ax=axes.ravel().tolist(),
-                       fraction=0.025, pad=0.02, shrink=0.8)
-    bar.outline.set_visible(False)
-    bar.set_label("average z-score (tau+ people)")
+    k = len(subtype_titles)
+    fig, axes = plt.subplots(k, 1, figsize=(8.5, 1.45 * k + 0.5), squeeze=False)
+    for row, (ax, title) in enumerate(zip(axes[:, 0], subtype_titles), start=1):
+        draw_brain(ax, atlas_values(means.loc[row]) if row in means.index else {}, ALL_VIEWS, cmap, vmax)
+        ax.set_title(f"{title} (n = {counts.get(row, 0)})", loc="left", fontsize=9)
+    for position, text in [(0.125, "left, lateral"), (0.375, "left, medial"), (0.625, "right, medial"),
+                           (0.875, "right, lateral")]:                # under the last row
+        axes[-1, 0].text(position, -0.08, text, transform=axes[-1, 0].transAxes, ha="center", fontsize=8,
+                         color="#52606D")
+    colour_bar(fig, axes.ravel().tolist(), cmap, vmax, "average z-score (tau+ people)")
+    return fig
+
+
+def plot_brain_stages(z, table, regions, subtype_titles, stage_edges, vmax=12, cmap="Reds"):
+    """How tau spreads with stage, on the brain: one row per subtype, one column per stage group (e.g.
+    1-6, 7-12, ...), each cell the average z-score of the tau+ people of that subtype and stage group on
+    the left hemisphere (lateral above, medial below). n = people in the cell; empty cell = nobody."""
+    import pandas as pd
+    if not any(atlas_regions_of(r) for r in regions):
+        return None
+    labels = [f"{a}-{b - 1}" for a, b in zip(stage_edges[:-1], stage_edges[1:])]
+    group = pd.cut(table["ml_stage"], stage_edges, right=False, labels=labels)
+    k, g = len(subtype_titles), len(labels)
+    fig, axes = plt.subplots(k, g, figsize=(1.75 * g + 1.6, 1.6 * k + 0.6), squeeze=False)
+    for row, title in enumerate(subtype_titles, start=1):
+        people = (table["ml_subtype"] == row) & (table["ml_stage"] > 0)
+        for col, label in enumerate(labels):
+            ax = axes[row - 1, col]
+            members = people & (group == label)
+            if members.sum() == 0:
+                ax.axis("off")
+                ax.text(0.5, 0.5, "nobody", ha="center", va="center", fontsize=8, color="#9AA5B1",
+                        transform=ax.transAxes)
+            else:
+                values = atlas_values(z[members][regions].mean())
+                width, height = draw_view(ax, "lateral_left", values, 0, 0, cmap, vmax)
+                draw_view(ax, "medial_left", values, 0, height + 30, cmap, vmax)
+                medial = view_box("medial_left")
+                ax.set_xlim(-20, max(width, medial[2] - medial[0]) + 20)
+                ax.set_ylim(height + 30 + medial[3] - medial[1] + 20, -20)
+                ax.set_aspect("equal")
+                ax.axis("off")
+                ax.text(0.5, -0.04, f"n={int(members.sum())}", transform=ax.transAxes, ha="center", va="top",
+                        fontsize=7, color="#52606D")
+            if row == 1:
+                ax.set_title(f"stages {label}", fontsize=9)
+        axes[row - 1, 0].text(-0.12, 0.5, title, transform=axes[row - 1, 0].transAxes, ha="right", va="center",
+                              fontsize=9, fontweight="bold")
+    colour_bar(fig, axes.ravel().tolist(), cmap, vmax, "average z-score")
+    fig.text(0.5, 0.0, "left hemisphere: lateral view above, medial view below", ha="center", fontsize=8,
+             color="#52606D")
     return fig

@@ -8,7 +8,7 @@ from shiny.types import SafeException
 from src.figures import (SUBTYPE_COLORS, colour_list, colour_map, plot_model_choice, plot_person, plot_pvd,
                          plot_stage_progression, plot_stages, plot_subtype_probabilities,
                          plot_subtype_tree)
-from src.brain import lobe_of, plot_brain_map
+from src.brain import lobe_of, plot_brain_map, plot_brain_stages
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
 from common import (CONFIG, FIG_HELP, add_figure, add_table, as_picture, figure_card, figure_tools, no_run_banner,
@@ -183,17 +183,24 @@ def server(input, output, session, shared):
     @render.ui
     def fig_brain_status():
         if not any(lobe_of(r) for r in fig_data()["regions"]):
-            return ui.p("The brain map needs region names with a lobe in them (frontal, parietal, occipital, "
-                        "temporal, MTL / hippocampus / entorhinal), e.g. L_frontal.", class_="text-muted small")
+            return ui.p("The brain figures need region names with a lobe (frontal, parietal, occipital, temporal, "
+                        "MTL) or a Desikan-Killiany region in them (e.g. L_frontal, R_entorhinal); without them the "
+                        "stage figure is drawn as a heat map.", class_="text-muted small")
 
     @render.image(delete_file=True)
     def fig_brain():
         return as_picture(make_brain())
 
     def make_progression():
+        """Tau per subtype and stage group on the brain; as a heat map when the region names match no
+        brain region."""
         d = fig_data()
-        return plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
-                                      vmax=input.fig_vmax() or 12, cmap=colour_map(input.progression_colors(), "Reds"))
+        cmap = colour_map(input.progression_colors(), "Reds")
+        fig = plot_brain_stages(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], input.fig_vmax() or 12,
+                                cmap=cmap)
+        return fig if fig is not None else plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(),
+                                                                  d["edges"], None, vmax=input.fig_vmax() or 12,
+                                                                  cmap=cmap)
 
     @render.image(delete_file=True)
     def fig_progression():

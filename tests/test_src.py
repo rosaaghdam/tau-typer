@@ -246,3 +246,14 @@ def test_sample_data_has_age_and_sex_effects_that_the_adjustment_removes():
         men = healthy & (data["sex"] == "M")
         rho = stats.spearmanr(data.loc[men, "age"], z.loc[men, "L_temporal"])[0]
         assert (rho > 0.4) if should_follow_age else (abs(rho) < 0.2)
+
+
+def test_brain_figures_colour_the_right_atlas_regions():
+    """Lobe names colour all atlas regions of the lobe, atlas names just that region, sides kept apart."""
+    from src.brain import atlas_regions_of, atlas_values
+    assert "entorhinal" in atlas_regions_of("L_MTL") and "superiortemporal" not in atlas_regions_of("L_MTL")
+    assert "superiortemporal" in atlas_regions_of("R_temporal")
+    assert atlas_regions_of("lh_precuneus") == ["precuneus"]
+    assert atlas_regions_of("subject_id") == []
+    values = atlas_values({"L_frontal": 3.0, "R_frontal": 1.0})
+    assert values[("L", "superiorfrontal")] == 3.0 and values[("R", "superiorfrontal")] == 1.0

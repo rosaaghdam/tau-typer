@@ -28,14 +28,12 @@ FIG_HELP = {    # short help text above each tab-4 figure
            "people as pySuStaIn estimates it (the S0 people, who have no abnormal tau, are shared out over the "
            "subtypes too) and n = f x number of people, as pySuStaIn writes them; tau+ = the people with abnormal "
            "tau (stage > 0) assigned to this subtype - the number in Quick result and the other figures.",
-    "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people, "
-                "drawn on the brain (the number on each lobe). Bottom: the same, split into stage groups (early stages on the left, late "
-                "on the right), so you can see where tau spreads as the stage rises. n = number of people.",
-    "brain": "The numbers of the figure above drawn on a simple side view of each hemisphere (left one facing "
-             "left, right one facing right): each lobe coloured by the subtype's average z-score. The MTL "
-             "(hippocampus, entorhinal) lies on the inner side of the brain, so it is drawn as the dashed oval. "
-             "Only a drawing to see the pattern at a glance - the lobes are not to scale. Grey hatched = no "
-             "region of the data in that lobe.",
+    "patterns": "Top: how much tau each subtype has - the average z-score of its tau+ people - on the cortex "
+                "(Desikan-Killiany atlas outlines from the ggseg package): lateral and medial views of both "
+                "hemispheres. Each of the data's regions colours the atlas regions of its lobe (e.g. MTL = "
+                "entorhinal and parahippocampal); grey = no region of the data there (e.g. cingulate, insula). "
+                "Bottom: the same per stage group (early stages on the left, late on the right) on the left "
+                "hemisphere, so you can see where tau spreads as the stage rises. n = number of people.",
     "probs": "How clearly each tau+ person belongs to one subtype. Each dot is a person, each "
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "

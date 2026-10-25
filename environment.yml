@@ -25,3 +25,4 @@ dependencies:
   - pip:
       # original pySuStaIn, pinned to one commit; brings pathos, kde_ebm, awkde, tqdm
       - git+https://github.com/ucl-pond/pySuStaIn@708fa22d89c9692dbeafcc2c31a1c8460ced5640
+      - ggseg==0.1           # brain outlines (Desikan-Killiany atlas) for the brain figures of tab 4
