@@ -49,7 +49,11 @@ FIG_HELP = {    # short help text above each tab-4 figure
               "grey; the person chosen above is circled. Dashed red line = your limit; the people above it are "
               "listed below.",
     "choice": "Top: log-likelihood (rises with every extra subtype) and CVIC after cross-validation (lowest = "
-              "best). Bottom: subtype tree - where people go when one more subtype is allowed.",
+              "best). Bottom: subtype tree - where people go when one more subtype is allowed. Subtype numbers are given "
+              "again in each model (by size), so Subtype 1 of 2 subtypes is not the same group as Subtype 1 of "
+              "3; a new subtype is placed level with where most of its people come from. Under the tree: for "
+              "each subtype, the % of its pairs of people who are still in one subtype after the next split "
+              "(100% = it stays together; dashed line = everyone).",
     "person": "Bars: this person's z-scores. Dots: average of people in the same subtype and stage group. "
               "Middle: subtype probabilities. Right: stage probabilities.",
 }

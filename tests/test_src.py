@@ -272,3 +272,12 @@ def test_best_mcmc_sample_is_the_highest_likelihood_one(one_run):
     assert best == int(np.argmax(result["samples_likelihood"].ravel())) + 1
     em = [e for e, _, _ in event_orders(result, Z_vals, settings["regions"], size_order(result))]
     assert all(sorted(o) == sorted(e) for o, e in zip(orders, em))      # the same events, maybe another order
+
+
+def test_pairs_together():
+    """Pairs of people of one subtype still in one subtype of the next model."""
+    from src.figures import pairs_together
+    flows = pd.DataFrame([[3, 1], [0, 2]], index=[1, 2], columns=[1, 2])
+    per_subtype, everyone = pairs_together(flows)
+    assert per_subtype[1] == 50 and per_subtype[2] == 100      # 3 of 6 pairs; 1 of 1 pair
+    assert round(everyone, 1) == round(100 * 4 / 7, 1)

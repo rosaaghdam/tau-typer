@@ -504,6 +504,16 @@ def plot_model_choice(likelihoods, cross_validation=None, traces=None):
     return fig
 
 
+def pairs_together(flows):
+    """flows: people from each subtype of model k (rows) to each subtype of model k+1 (columns).
+    Of all pairs of people in one subtype of model k, the % still in one subtype of model k+1:
+    per subtype of model k, and for everyone. 100% = the subtype stays together (or only grows)."""
+    pairs = flows * (flows - 1) / 2                       # pairs inside each ribbon
+    before = flows.sum(axis=1) * (flows.sum(axis=1) - 1) / 2
+    per_subtype = 100 * pairs.sum(axis=1) / before.where(before > 0)
+    return per_subtype, 100 * pairs.values.sum() / max(before.sum(), 1)
+
+
 def plot_subtype_tree(subtypes_by_k, colors=None):
     """How people move between subtypes when one more subtype is allowed (paper Ext. Fig. 1f), drawn to
     show how stable the subtypes are.
@@ -514,9 +524,13 @@ def plot_subtype_tree(subtypes_by_k, colors=None):
     subtype that stays together runs straight across. The main ribbon of each subtype (where most of its
     people go) is drawn strong and labelled with n and %; the others are light. Above each step: the % of
     people who follow their subtype's main ribbon. S0 (no tau) is left out.
+    Subtype numbers are given again in each model (by size), so Subtype 1 of one model is not the same
+    group as Subtype 1 of the next. Bottom: for each subtype, the % of its pairs of people still together
+    in one subtype in the next model (pairs_together) - how well the subtype holds together.
     """
     ks = sorted(subtypes_by_k)
-    fig, ax = plt.subplots(figsize=(2.8 * len(ks) + 1, 5.8))
+    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(2.8 * len(ks) + 1, 8.4), sharex=True,
+                                  gridspec_kw={"height_ratios": [5.8, 2.2], "hspace": 0.15})
     n_people = max((s > 0).sum() for s in subtypes_by_k.values())
     gap, width = 0.04 * n_people, 0.22
     flows_of = {}
@@ -571,7 +585,26 @@ def plot_subtype_tree(subtypes_by_k, colors=None):
                         f"{n} ({100 * n / flows.loc[a].sum():.0f}%)", ha="center", va="center", fontsize=8,
                         zorder=5, bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "none", "alpha": 0.8})
             out[a] += n
-    ax.set_xticks(range(len(ks)), [f"{k} subtype{'s' if k > 1 else ''}" for k in ks])
+        per_subtype, everyone = pairs_together(flows)      # bottom: pairs still together, per subtype
+        subtypes = [a for a in order[k1] if a in flows.index]
+        step = 0.6 / len(subtypes)
+        for i, a in enumerate(subtypes):
+            x_bar = x + 0.5 - 0.3 + step * (i + 0.5)
+            value = per_subtype[a] if pd.notna(per_subtype[a]) else 0
+            ax2.bar(x_bar, value, width=step * 0.85, color=subtype_colors(k1, colors)[a - 1])
+            ax2.text(x_bar, value + 2, f"{value:.0f}", ha="center", va="bottom", fontsize=7)
+            ax2.text(x_bar, -4, str(a), ha="center", va="top", fontsize=7, color="#52606D")
+        ax2.plot([x + 0.2, x + 0.8], [everyone, everyone], color="#1F2933", lw=1, ls="--")
+        ax2.text(x + 0.82, everyone, f"all: {everyone:.0f}%", va="center", fontsize=7, color="#1F2933")
+    ax2.set_ylim(0, 115)
+    ax2.set_yticks([0, 50, 100])
+    ax2.set_ylabel("% of pairs\nstill together")
+    ax2.tick_params(axis="x", length=0)
+    for name in ("top", "right"):
+        ax2.spines[name].set_visible(False)
+    ax2.text(0.5, 1.0, "How well each subtype (number under its bar) holds together: % of its pairs of people "
+             "still in one subtype after the next split", transform=ax2.transAxes, ha="center", va="bottom", fontsize=8, color="#52606D")
+    ax2.set_xticks(range(len(ks)), [f"{k} subtype{'s' if k > 1 else ''}" for k in ks])
     ax.tick_params(axis="x", length=0)
     ax.set_xlim(-0.5, len(ks) - 0.5)
     ax.set_ylim(-0.16 * n_people, None)
@@ -579,7 +612,6 @@ def plot_subtype_tree(subtypes_by_k, colors=None):
     for side in ax.spines.values():
         side.set_visible(False)
     ax.set_ylabel("tau+ people")
-    fig.tight_layout()
     return fig
 
 
