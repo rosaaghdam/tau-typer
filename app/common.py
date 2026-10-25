@@ -33,16 +33,16 @@ FIG_HELP = {    # short help text above each tab-4 figure
                 "(ggseg). Top: each subtype's average z-score (its tau+ people): the left and right hemisphere "
                 "from the side (above) and from the middle (below), with each region's value; the MTL "
                 "(entorhinal, parahippocampal) is only visible from the middle - its value is under it, with an "
-                "arrow. Bottom: each subtype through the SuStaIn stages (columns 6, 11, 16, ...: each brain is "
-                "the mean of the people at that stage and up to four stages lower), left hemisphere only, as in "
-                "the paper. Grey = below the first cut-point (normal); red to yellow = more tau. n = people.",
+                "arrow. Bottom: each subtype through the SuStaIn stages, early to late (each brain is the mean "
+                "of the people in a group of five stages: 2-6, 7-11, ...), in the same four views. No single "
+                "view shows all five lobes: the MTL is on the inner side, the temporal lobe mostly on the outer "
+                "side, so both views of both hemispheres are needed. Grey = below the first cut-point (normal); red to yellow = more tau. n = people.",
     "probs": "How clearly each tau+ person belongs to one subtype. Each dot is a person, each "
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
              "it.",
-    "stages": "Top: % of all people at each SuStaIn stage. Left, own axis: S0 (stage 0) = no abnormal tau, so no "
-              "subtype (at stage 0 every subtype looks the same). Right: stages 1, 2, ... coloured by subtype. "
-              "Bottom left: how sure SuStaIn is about each "
+    "stages": "Top: % of the tau+ people at each SuStaIn stage, coloured by subtype (the S0 people - stage 0, no "
+              "abnormal tau, so no subtype - are not shown; their number is under the axis). Bottom left: how sure SuStaIn is about each "
               "person's stage (SD of their stage probabilities) - low = sure, high = the stage could be one of "
               "several (often higher in the middle stages, where events overlap - the pale squares of the PVD). "
               "Bottom right: the same per subtype. Choosing a subtype above shows it in colour and the others "

@@ -26,8 +26,6 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                      ui.p("Comma-separated, Subtype 1 first. Subtype 1 = the subtype with the most "
                           "tau+ people, Subtype 2 the next, ... (the same numbers in every figure and table).",
                           class_="text-muted small"),
-                     ui.input_numeric("fig_vmax", "Colour scale maximum (z)",
-                                      value=CONFIG["figures"]["heatmap_vmax"], min=1),
                      ui.input_text("subtype_colors", "Subtype colours (hex codes, Subtype 1 first)",
                                    value=", ".join(SUBTYPE_COLORS[:6])),
                      ui.p("Used by every figure of tabs 4 and 5 and the report, so a subtype has the same colour "
@@ -177,11 +175,12 @@ def server(input, output, session, shared):
         d = fig_data()
         cuts = d["Z_vals"][d["Z_vals"] > 0]
         cmap = colour_map(input.brain_colors(), None)        # None: the colours of the paper
-        fig = plot_brain_figure(d["z"], d["table"], d["regions"], fig_titles(), len(cuts), input.fig_vmax() or 12,
+        vmax = CONFIG["figures"]["heatmap_vmax"]
+        fig = plot_brain_figure(d["z"], d["table"], d["regions"], fig_titles(), len(cuts), vmax,
                                 cmap=cmap, low=float(cuts.min()), colors=typed_subtype_colors())
         if fig is None:
             fig = plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
-                                         vmax=input.fig_vmax() or 12, cmap=cmap or "Reds")
+                                         vmax=vmax, cmap=cmap or "Reds")
         return fig
 
     @render.ui

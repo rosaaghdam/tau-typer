@@ -405,9 +405,8 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0, colo
 
 
 def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None, colors=None):
-    """Top: % of all people at each SuStaIn stage (paper Ext. Fig. 2). Left: S0 (stage 0, no abnormal tau -
-    no subtype, since at stage 0 all subtypes look the same); right: stages 1, 2, ... per subtype. Each panel
-    has its own axis, because S0 is usually far bigger than any single stage.
+    """Top: % of the tau+ people at each SuStaIn stage 1, 2, ..., per subtype (paper Ext. Fig. 2). The S0
+    people (stage 0, no abnormal tau - no subtype) are not drawn; their number is written under the axis.
     Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
     stage (high where events overlap - the pale squares of the PVD).
     Right: the same uncertainty per subtype. Dashed red line = sd_limit (above = uncertain stage).
@@ -418,29 +417,21 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None,
     stages = np.arange(table["ml_stage"].max() + 1)
     fig = plt.figure(figsize=(13, 9))                    # top: S0 + stages; bottom: uncertainty + per subtype
     grid = fig.add_gridspec(2, 1)
-    top_row = grid[0].subgridspec(1, 2, width_ratios=[1, 14], wspace=0.08)
+    ax1 = fig.add_subplot(grid[0])
     bottom_row = grid[1].subgridspec(1, 2, width_ratios=[3, 1])
-    ax0, ax1 = fig.add_subplot(top_row[0]), fig.add_subplot(top_row[1])
     ax2, ax3 = fig.add_subplot(bottom_row[0]), fig.add_subplot(bottom_row[1])
     bottom = np.zeros(len(stages))
-    everyone = len(table)
+    n_tau = max(int((table["ml_stage"] > 0).sum()), 1)
     n_s0 = int((table["ml_stage"] == 0).sum())
     for n, title in enumerate(subtype_titles, start=1):
         counts = table.loc[(table["ml_subtype"] == n) & (table["ml_stage"] > 0), "ml_stage"]
-        heights = 100 * counts.value_counts().reindex(stages, fill_value=0).to_numpy() / everyone
+        heights = 100 * counts.value_counts().reindex(stages, fill_value=0).to_numpy() / n_tau
         ax1.bar(stages, heights, bottom=bottom, color=colors[n - 1],
-                label=f"{title}: {100 * len(counts) / everyone:.0f}% of all (n={len(counts)})")
+                label=f"{title}: {100 * len(counts) / n_tau:.0f}% of tau+ (n={len(counts)})")
         bottom += heights
-    ax0.bar(0, 100 * n_s0 / everyone, color="#BCCCDC", width=0.6)       # S0: its own axis
-    ax0.text(0, 100 * n_s0 / everyone, f"{100 * n_s0 / everyone:.0f}%\n(n={n_s0})", ha="center", va="bottom",
-             fontsize=8)
-    ax0.set_ylim(0, 100 * n_s0 / everyone * 1.3 + 1)
-    ax0.set_xlim(-0.6, 0.6)
-    ax0.set_xticks([0], ["S0"])
-    ax0.set_ylabel("% of all people")
-    ax0.set_title("no abnormal tau", fontsize=8, fontweight="normal", color="#52606D")
-    ax1.set_xlabel("most likely SuStaIn stage (abnormal tau, per subtype)")
-    ax1.set_ylabel("% of all people")
+    ax1.set_xlabel(f"most likely SuStaIn stage (tau+ people, n = {n_tau}; not shown: S0, no abnormal tau, "
+                   f"n = {n_s0})")
+    ax1.set_ylabel("% of tau+ people")
     ax1.legend()
 
     tau = table[table["ml_stage"] > 0]

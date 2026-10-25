@@ -191,10 +191,12 @@ def lobe_labels(means, regions, side, view):
     return labels
 
 
-def draw_four_views(ax, values, means, regions, cmap, vmax, low):
-    """One subtype as in Vogel et al. 2021 Fig. 1c: lateral views of the left and right hemisphere on top,
-    their medial views below, each region's value written on it."""
+def draw_four_views(ax, values, means, regions, cmap, vmax, low, sides=True):
+    """One brain as in Vogel et al. 2021 Fig. 1c: lateral views of the left and right hemisphere on top,
+    their medial views below. means given: each region's value written on it. sides: "left" and "right"
+    written above the two hemispheres."""
     rows = [["lateral_left", "lateral_right"], ["medial_left", "medial_right"]]
+    room = 110 if means is not None else 30                  # under the medial views: the MTL value
     y, width = 0, 0
     for views in rows:
         x, height = 0, 0
@@ -202,10 +204,13 @@ def draw_four_views(ax, values, means, regions, cmap, vmax, low):
             side = "L" if view.endswith("left") else "R"
             labels = lobe_labels(means, regions, side, view) if means is not None else []
             w, h = draw_view(ax, view, values, x, y, cmap, vmax, labels, low)
+            if sides and y == 0:
+                ax.text(x + w / 2, -25, "left" if side == "L" else "right", ha="center", va="bottom",
+                        fontsize=8, color="#52606D")
             x, height = x + w + 30, max(height, h)
-        y, width = y + height + 110, max(width, x - 30)       # room under the medial views for the MTL value
+        y, width = y + height + room, max(width, x - 30)
     ax.set_xlim(-10, width + 10)
-    ax.set_ylim(y, -10)
+    ax.set_ylim(y, -150 if sides else -10)
     ax.set_aspect("equal")
     ax.axis("off")
 
@@ -214,8 +219,8 @@ def plot_brain_figure(z, table, regions, subtype_titles, n_events, vmax=12, cmap
     """Tau of the subtypes on the brain in one figure, following Vogel et al. 2021 (Fig. 1c and 1e).
     Top: each subtype's average z-score (its tau+ people), lateral and medial views of both hemispheres,
     with each region's value. Bottom: each subtype through the SuStaIn stages - columns at stages 6, 11,
-    16, ...; each brain is the mean of the people at that stage and up to four stages lower; only the left
-    hemisphere (medial above, lateral below), as in the paper. Grey = below the first cut-point (normal).
+    16, ...; each brain is the mean of the people at that stage and up to four stages lower; the same four
+    views as on top. Grey = below the first cut-point (normal).
     None if no region name matches the atlas."""
     from matplotlib.colors import LinearSegmentedColormap
     from matplotlib.patches import FancyArrowPatch as Arrow
@@ -230,8 +235,8 @@ def plot_brain_figure(z, table, regions, subtype_titles, n_events, vmax=12, cmap
     stages = list(range(6, n_events + 1, 5)) or [n_events]
     k, g = len(subtype_titles), len(stages)
     shades = subtype_colors(k, colors)
-    fig = plt.figure(figsize=(max(2.9 * k, 2.1 * g + 1.2), 2.9 + 2.2 * k))
-    grid = fig.add_gridspec(2, 1, height_ratios=[2.5, 2.2 * k], hspace=0.22)
+    fig = plt.figure(figsize=(max(2.9 * k, 3.0 * g + 1.2), 4.4 + 2.2 * k))
+    grid = fig.add_gridspec(2, 1, height_ratios=[4.0, 2.2 * k], hspace=0.18)
     top = grid[0].subgridspec(1, k, wspace=0.18)
     bottom = grid[1].subgridspec(k, g, hspace=0.3, wspace=0.05)
     for n, title in enumerate(subtype_titles, start=1):               # Fig. 1c: one block per subtype
@@ -255,18 +260,10 @@ def plot_brain_figure(z, table, regions, subtype_titles, n_events, vmax=12, cmap
                 ax.text(0.5, 0.5, "nobody", ha="center", va="center", fontsize=8, color="#9AA5B1",
                         transform=ax.transAxes)
             else:
-                values = atlas_values(z[members][regions].mean())
-                width, height = draw_view(ax, "medial_left", values, 0, 0, cmap, vmax, low=low)
-                lateral = view_box("lateral_left")
-                draw_view(ax, "lateral_left", values, 0, height + 20, cmap, vmax, low=low)
-                ax.set_xlim(-20, max(width, lateral[2] - lateral[0]) + 20)
-                ax.set_ylim(height + 20 + lateral[3] - lateral[1] + 20, -20)
-                ax.set_aspect("equal")
+                draw_four_views(ax, atlas_values(z[members][regions].mean()), None, regions, cmap, vmax, low,
+                                sides=n == 1)
                 ax.text(0.5, -0.02, f"n = {int(members.sum())}", transform=ax.transAxes, ha="center", va="top",
                         fontsize=7, color="#52606D")
-            if n == 1:
-                ax.set_title(f"{stage}\n(stages {max(stage - 4, 1)}-{stage})", fontsize=8, fontweight="normal",
-                             color="#52606D")
         ax0 = stage_axes[n - 1, 0]
         ax0.text(-0.12, 0.5, title, rotation=90, ha="right", va="center", transform=ax0.transAxes,
                  fontsize=9, fontweight="bold")
@@ -281,7 +278,7 @@ def plot_brain_figure(z, table, regions, subtype_titles, n_events, vmax=12, cmap
     y = first.y1 + 0.045
     fig.patches.append(Arrow((first.x0, y), (last.x1 + 0.03, y), transform=fig.transFigure, arrowstyle="-|>",
                              mutation_scale=14, lw=1.2, color="#52606D"))
-    fig.text(first.x0, y + 0.008, "SuStaIn stage", ha="left", va="bottom", fontsize=9, color="#1F2933")
+    fig.text(first.x0, y + 0.008, "SuStaIn stage (early to late)", ha="left", va="bottom", fontsize=9, color="#1F2933")
     blocks = [ax for ax in fig.axes[:k]]
     top_y = max(ax.get_position().y1 for ax in blocks)
     bar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(low, vmax), cmap=cmap),

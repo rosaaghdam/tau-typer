@@ -79,7 +79,7 @@ def test_report_is_made_in_the_background(one_run):
             if ts.get_output("report_ready").status == "ok" and ts.get_output("report_ready").value:
                 break
             time.sleep(1)
-            ts.set_inputs(fig_vmax=12)                    # lets the app check whether the job is done
+            ts.set_inputs(tick=_)                         # lets the app check whether the job is done
         assert errors(ts) == {}
         assert "Download" in str(ts.get_output("report_ready").value)
         ts.set_inputs(make_pdf=1)
@@ -108,7 +108,7 @@ def wait_for(ts, output, seconds=120):
         if ts.get_output(output).status == "ok" and ts.get_output(output).value:
             return
         time.sleep(1)
-        ts.set_inputs(fig_vmax=12)
+        ts.set_inputs(tick=_)
 
 
 def test_report_summary(one_run):
