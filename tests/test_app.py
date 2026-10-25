@@ -130,7 +130,8 @@ def test_loading_a_run_fills_tabs_1_and_2(one_run, tmp_path):
     shutil.copytree(runs / one_run, copy)
     try:
         z = pd.read_csv(copy / "zscores.csv", index_col="subject")
-        data = pd.read_csv(TOY)
+        sample = ROOT / "data" / "toy" / "sim_tau_400.csv"           # the file the run was made from
+        data = pd.read_csv(sample if str(z.index[0]).startswith("SIM") else TOY)
         data[data["subject_id"].isin(z.index)].to_csv(copy / "input_data.csv", index=False)
         data.set_index("subject_id").loc[z.index, list(z.columns)].to_csv(copy / "input_values.csv",
                                                                         index_label="subject")

@@ -14,6 +14,7 @@ import ggseg
 import matplotlib.pyplot as plt
 import numpy as np
 from ggseg import _svg_parse_
+from scipy import ndimage
 from matplotlib.patches import FancyArrowPatch, PathPatch, Rectangle
 from matplotlib.path import Path
 from matplotlib.transforms import Affine2D
@@ -97,6 +98,25 @@ def region_points(atlas_regions, hemisphere, view):
     return points[inside]
 
 
+@functools.lru_cache(maxsize=None)
+def lobe_map(view, step=2.0):
+    """(x, y, lobe number of every grid point) of one view: 0 = no lobe, 1, 2, ... = the lobes of LOBES.
+    Made once per view (the atlas does not change); used to draw the borders between the lobes."""
+    hemisphere = "left" if view.endswith("left") else "right"
+    x0, y0, x1, y1 = view_box(view)
+    xs, ys = np.arange(x0, x1 + step, step), np.arange(y0, y1 + step, step)
+    grid = np.column_stack([g.ravel() for g in np.meshgrid(xs, ys)])
+    lobes = np.zeros((len(ys), len(xs)), dtype=int)
+    for number, atlas_regions in enumerate(LOBES.values(), start=1):
+        inside = np.zeros(len(grid), dtype=bool)
+        for region in atlas_regions:
+            inside |= outline(f"{region}_{hemisphere}").contains_points(grid)
+        # the atlas has thin gaps between its regions: close them, so a lobe is one area
+        inside = ndimage.binary_fill_holes(ndimage.binary_closing(inside.reshape(lobes.shape), iterations=4))
+        lobes[inside & (lobes == 0)] = number
+    return xs, ys, lobes
+
+
 def draw_view(ax, view, values, x, y, cmap, vmax, labels=()):
     """One view of one hemisphere with its top-left corner at (x, y) in the axes (y grows down). Each atlas
     region is filled with values[(side, region)]; its edge has the same colour, so the atlas regions of one of
@@ -119,6 +139,11 @@ def draw_view(ax, view, values, x, y, cmap, vmax, labels=()):
                           transform=move)
         ax.add_patch(patch)
         patch.set_clip_path(clip)
+    xs, ys, lobes = lobe_map(view)                           # white lines between the lobes
+    for number in range(1, len(LOBES) + 1):
+        if (lobes == number).any():
+            ax.contour(xs - x0 + x, ys - y0 + y, (lobes == number).astype(float), levels=[0.5], colors="white",
+                       linewidths=1.8, zorder=3)
     for text, atlas_regions, value in labels:
         points = region_points(atlas_regions, hemisphere, view)
         if len(points) <= 3:
@@ -126,10 +151,10 @@ def draw_view(ax, view, values, x, y, cmap, vmax, labels=()):
         cx, cy = points.mean(axis=0)
         if set(atlas_regions) <= set(LOBES["mtl"]):          # small area: its value just under the view
             ax.text(cx - x0 + x, y1 - y0 + y + 28, f"MTL {text}", ha="center", va="top", fontsize=8,
-                    fontweight="bold", color="#1F2933")
+                    fontweight="bold", color="#1F2933", zorder=4)
         else:
             ax.text(cx - x0 + x, cy - y0 + y, text, ha="center", va="center", fontsize=8, fontweight="bold",
-                    color="white" if value > 0.55 * vmax else "#1F2933")
+                    color="white" if value > 0.55 * vmax else "#1F2933", zorder=4)
     return x1 - x0, y1 - y0
 
 
@@ -148,10 +173,10 @@ def lobe_labels(means, regions, side, view):
     return labels
 
 
-def colour_bar_on_top(fig, cmap, vmax, label):
-    """A slim horizontal colour bar above the figure."""
+def colour_bar_on_top(fig, cmap, vmax, label, top):
+    """A slim horizontal colour bar above the figure, just above `top` (figure fraction)."""
     bar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(0, vmax), cmap=cmap),
-                       cax=fig.add_axes([0.3, 0.97, 0.4, 0.016]), orientation="horizontal")
+                       cax=fig.add_axes([0.3, top + 0.035, 0.4, 0.012]), orientation="horizontal")
     bar.outline.set_visible(False)
     bar.ax.tick_params(length=0, labelsize=8)
     bar.ax.xaxis.set_ticks_position("top")
@@ -159,40 +184,45 @@ def colour_bar_on_top(fig, cmap, vmax, label):
     bar.set_label(label, fontsize=9)
 
 
+def draw_hemisphere(ax, side, values, means, regions, cmap, vmax, label_values=True):
+    """One brain: a hemisphere seen from the side (above) and from the middle (right under it - the MTL is
+    only visible there). Returns nothing; the axes is set to fit it."""
+    views = ["lateral_left", "medial_left"] if side == "L" else ["lateral_right", "medial_right"]
+    width, height = 0, 0
+    for view in views:
+        labels = lobe_labels(means, regions, side, view) if label_values and means is not None else []
+        w, h = draw_view(ax, view, values, 0, height, cmap, vmax, labels)
+        width, height = max(width, w), height + h + 10
+    ax.set_xlim(-15, width + 15)
+    ax.set_ylim(height + 70, -15)                            # room for the MTL value under the brain
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+
 def plot_brain_map(z, table, regions, subtype_titles, vmax=12, cmap="Reds"):
-    """Average z-score of each subtype's tau+ people on the brain: one row per subtype with the left and
-    the right hemisphere, each seen from the side (lateral) and from the middle (medial: the MTL is only
-    visible there). Each of the data's regions is one coloured area with its value written on it.
-    Grey = no region of the data there. None if no region name matches the atlas."""
+    """Average z-score of each subtype's tau+ people on the brain: one row per subtype with two brains, the
+    left and the right hemisphere - each seen from the side (above) and from the middle (below: the MTL is
+    only visible there). White lines separate the regions; each region's value is written on it (MTL: under
+    the brain). Grey = no region of the data there. None if no region name matches the atlas."""
     if not any(atlas_regions_of(r) for r in regions):
         return None
     tau_pos = table["ml_stage"] > 0
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean()   # subtypes x regions
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
     k = len(subtype_titles)
-    fig, axes = plt.subplots(k, 2, figsize=(10, 1.95 * k), squeeze=False, gridspec_kw={"wspace": 0.08,
-                                                                                         "hspace": 0.45})
+    fig, axes = plt.subplots(k, 2, figsize=(7.2, 3.5 * k), squeeze=False, gridspec_kw={"wspace": 0.06,
+                                                                                        "hspace": 0.25})
     for row, title in enumerate(subtype_titles, start=1):
         row_means = means.loc[row] if row in means.index else None
         values = atlas_values(row_means) if row_means is not None else {}
-        for col, (side, views) in enumerate([("L", ["lateral_left", "medial_left"]),
-                                             ("R", ["medial_right", "lateral_right"])]):
-            ax = axes[row - 1, col]
-            x = 0
-            for view in views:
-                labels = lobe_labels(row_means, regions, side, view) if row_means is not None else []
-                width, _ = draw_view(ax, view, values, x, 0, cmap, vmax, labels)
-                x += width + 30
-            ax.set_xlim(-15, x - 15)
-            ax.set_ylim(620, -15)                             # room for the MTL value under the views
-            ax.set_aspect("equal")
-            ax.axis("off")
+        for col, side in enumerate(["L", "R"]):
+            draw_hemisphere(axes[row - 1, col], side, values, row_means, regions, cmap, vmax)
             if row == 1:
-                ax.text(0.5, 1.32, "left hemisphere" if side == "L" else "right hemisphere", ha="center",
-                        transform=ax.transAxes, fontsize=9, color="#52606D")
+                axes[0, col].text(0.5, 1.16, "left hemisphere" if side == "L" else "right hemisphere",
+                                  ha="center", transform=axes[0, col].transAxes, fontsize=9, color="#52606D")
         axes[row - 1, 0].set_title(f"{title} (n = {counts.get(row, 0)})", loc="left", fontsize=10,
                                    fontweight="bold")
-    colour_bar_on_top(fig, cmap, vmax, "average z-score (tau+ people)")
+    colour_bar_on_top(fig, cmap, vmax, "average z-score (tau+ people)", axes[0, 0].get_position().y1)
     return fig
 
 
