@@ -16,7 +16,7 @@ REGIONS = ["L_MTL", "R_MTL", "L_temporal", "R_temporal", "L_parietal", "R_pariet
 BUTTONS = {name: 0 for name in ["normalize", "pr_reset", "run_button", "cancel_run", "load_run", "delete_run",
                                      "make_report", "make_pdf"]}
 # under each figure: its colours (where it has them), as the app starts
-TOOL_INPUTS = {"brain_colors": "Reds", "progression_colors": "Reds", "regions_colors": "RdBu_r",
+TOOL_INPUTS = {"brain_colors": "#C8211B, #F26B1D, #FBB735, #F9E833", "regions_colors": "RdBu_r",
                "correlations_colors": "RdBu", "eda_colors": "", "boxplots_colors": "", "bars_colors": "",
                "disease_boxplots_colors": "", "disease_bars_colors": "",
                "zeda_colors": "", "sim_confusion_colors": "Blues", "subtype_colors": "#00897B, #E87BA4, #8A5A00, #9E9D24, #AD1457, #008300",

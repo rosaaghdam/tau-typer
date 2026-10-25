@@ -28,13 +28,13 @@ FIG_HELP = {    # short help text above each tab-4 figure
            "people as pySuStaIn estimates it (the S0 people, who have no abnormal tau, are shared out over the "
            "subtypes too) and n = f x number of people, as pySuStaIn writes them; tau+ = the people with abnormal "
            "tau (stage > 0) assigned to this subtype - the number in Quick result and the other figures.",
-    "patterns": "Top: how much tau each subtype has - the average z-score of its tau+ people, written on each "
-                "region - on the brain (Desikan-Killiany atlas outlines from the ggseg package). Each row: the "
-                "left and the right hemisphere, seen from the side and from the middle (the MTL - entorhinal and "
-                "parahippocampal - is only visible from the middle; its value is written under that view). Grey "
-                "= no region of the data there (e.g. cingulate, insula). Bottom: the same per stage group, from "
-                "early to late stages (arrow), on the left hemisphere, in the colours of the top figure - so you "
-                "can see where tau spreads as the stage rises. n = number of people.",
+    "patterns": "Drawn as in Vogel et al. 2021 (Fig. 1c and 1e), on the outlines of the Desikan-Killiany atlas "
+                "(ggseg). Top: each subtype's average z-score (its tau+ people): the left and right hemisphere "
+                "from the side (above) and from the middle (below), with each region's value; the MTL "
+                "(entorhinal, parahippocampal) is only visible from the middle - its value is under it, with an "
+                "arrow. Bottom: each subtype through the SuStaIn stages (columns 6, 11, 16, ...: each brain is "
+                "the mean of the people at that stage and up to four stages lower), left hemisphere only, as in "
+                "the paper. Grey = below the first cut-point (normal); red to yellow = more tau. n = people.",
     "probs": "How clearly each tau+ person belongs to one subtype. Each dot is a person, each "
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "

@@ -11,6 +11,7 @@ import os.path as op
 import re
 
 import ggseg
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from ggseg import _svg_parse_
@@ -35,7 +36,10 @@ LOBE_WORDS = {"mtl": ["mtl", "medial_temporal", "medialtemporal", "hippocamp"], 
 ATLAS_REGIONS = sorted({r for regions in LOBES.values() for r in regions} |
                        {"caudalanteriorcingulate", "rostralanteriorcingulate", "posteriorcingulate",
                         "isthmuscingulate", "insula"})
-NO_DATA = "#E4E7EB"
+NO_DATA = "#E4E7EB"      # no region of the data there (e.g. cingulate, insula)
+BELOW = "#BFC5CE"        # a value below the first cut-point: normal, as in Vogel et al. 2021
+# Vogel et al. 2021 colours: from red at the first cut-point (z 2) through orange to yellow at the top
+VOGEL_COLOURS = "#C8211B, #F26B1D, #FBB735, #F9E833"
 
 
 def side_of(region):
@@ -117,10 +121,18 @@ def lobe_map(view, step=2.0):
     return xs, ys, lobes
 
 
-def draw_view(ax, view, values, x, y, cmap, vmax, labels=()):
+def ink_on(face):
+    """White or dark text, whichever reads better on this colour."""
+    r, g, b = matplotlib.colors.to_rgb(face)
+    return "white" if 0.299 * r + 0.587 * g + 0.114 * b < 0.55 else "#1F2933"
+
+
+def draw_view(ax, view, values, x, y, cmap, vmax, labels=(), low=0):
     """One view of one hemisphere with its top-left corner at (x, y) in the axes (y grows down). Each atlas
-    region is filled with values[(side, region)]; its edge has the same colour, so the atlas regions of one of
-    our regions (a lobe) merge into one clear area. labels: (text, atlas regions) written on that area.
+    region is filled with values[(side, region)] on the colour scale low ... vmax; below low (normal) it is
+    grey, as in Vogel et al. 2021. A region's edge has its own colour, so the atlas regions of one of our
+    regions (a lobe) merge into one area; white lines separate the lobes. labels: (text, atlas regions,
+    value) written on that area - the small MTL gets its value under the view, with an arrow to it.
     Returns the view's width and height."""
     side = "L" if view.endswith("left") else "R"
     hemisphere = "left" if side == "L" else "right"
@@ -134,7 +146,10 @@ def draw_view(ax, view, values, x, y, cmap, vmax, labels=()):
     shape.set_clip_path(clip)
     for region in ATLAS_REGIONS:
         value = values.get((side, region))
-        face = NO_DATA if value is None else colours(float(np.clip(value / vmax, 0, 1)))
+        if value is None or value < low:
+            face = NO_DATA if value is None else BELOW
+        else:
+            face = colours(float(np.clip((value - low) / (vmax - low), 0, 1)))
         patch = PathPatch(outline(f"{region}_{hemisphere}"), facecolor=face, edgecolor=face, lw=1.5,
                           transform=move)
         ax.add_patch(patch)
@@ -149,12 +164,15 @@ def draw_view(ax, view, values, x, y, cmap, vmax, labels=()):
         if len(points) <= 3:
             continue
         cx, cy = points.mean(axis=0)
-        if set(atlas_regions) <= set(LOBES["mtl"]):          # small area: its value just under the view
-            ax.text(cx - x0 + x, y1 - y0 + y + 28, f"MTL {text}", ha="center", va="top", fontsize=8,
-                    fontweight="bold", color="#1F2933", zorder=4)
+        if set(atlas_regions) <= set(LOBES["mtl"]):          # small area: its value under the view, with an arrow
+            ax.annotate(f"MTL {text}", xy=(cx - x0 + x, cy - y0 + y), xytext=(cx - x0 + x, y1 - y0 + y + 95),
+                        ha="center", va="top", fontsize=7.5, fontweight="bold", color="#1F2933", zorder=5,
+                        arrowprops={"arrowstyle": "-|>", "color": "#1F2933", "lw": 0.8, "shrinkA": 0,
+                                    "shrinkB": 1, "mutation_scale": 7})
         else:
-            ax.text(cx - x0 + x, cy - y0 + y, text, ha="center", va="center", fontsize=8, fontweight="bold",
-                    color="white" if value > 0.55 * vmax else "#1F2933", zorder=4)
+            face = BELOW if value < low else colours(float(np.clip((value - low) / (vmax - low), 0, 1)))
+            ax.text(cx - x0 + x, cy - y0 + y, text, ha="center", va="center", fontsize=7.5, fontweight="bold",
+                    color=ink_on(face), zorder=4)
     return x1 - x0, y1 - y0
 
 
@@ -173,100 +191,104 @@ def lobe_labels(means, regions, side, view):
     return labels
 
 
-def colour_bar_on_top(fig, cmap, vmax, label, top):
-    """A slim horizontal colour bar above the figure, just above `top` (figure fraction)."""
-    bar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(0, vmax), cmap=cmap),
-                       cax=fig.add_axes([0.3, top + 0.035, 0.4, 0.012]), orientation="horizontal")
-    bar.outline.set_visible(False)
-    bar.ax.tick_params(length=0, labelsize=8)
-    bar.ax.xaxis.set_ticks_position("top")
-    bar.ax.xaxis.set_label_position("top")
-    bar.set_label(label, fontsize=9)
-
-
-def draw_hemisphere(ax, side, values, means, regions, cmap, vmax, label_values=True):
-    """One brain: a hemisphere seen from the side (above) and from the middle (right under it - the MTL is
-    only visible there). Returns nothing; the axes is set to fit it."""
-    views = ["lateral_left", "medial_left"] if side == "L" else ["lateral_right", "medial_right"]
-    width, height = 0, 0
-    for view in views:
-        labels = lobe_labels(means, regions, side, view) if label_values and means is not None else []
-        w, h = draw_view(ax, view, values, 0, height, cmap, vmax, labels)
-        width, height = max(width, w), height + h + 10
-    ax.set_xlim(-15, width + 15)
-    ax.set_ylim(height + 70, -15)                            # room for the MTL value under the brain
+def draw_four_views(ax, values, means, regions, cmap, vmax, low):
+    """One subtype as in Vogel et al. 2021 Fig. 1c: lateral views of the left and right hemisphere on top,
+    their medial views below, each region's value written on it."""
+    rows = [["lateral_left", "lateral_right"], ["medial_left", "medial_right"]]
+    y, width = 0, 0
+    for views in rows:
+        x, height = 0, 0
+        for view in views:
+            side = "L" if view.endswith("left") else "R"
+            labels = lobe_labels(means, regions, side, view) if means is not None else []
+            w, h = draw_view(ax, view, values, x, y, cmap, vmax, labels, low)
+            x, height = x + w + 30, max(height, h)
+        y, width = y + height + 110, max(width, x - 30)       # room under the medial views for the MTL value
+    ax.set_xlim(-10, width + 10)
+    ax.set_ylim(y, -10)
     ax.set_aspect("equal")
     ax.axis("off")
 
 
-def plot_brain_map(z, table, regions, subtype_titles, vmax=12, cmap="Reds"):
-    """Average z-score of each subtype's tau+ people on the brain: one row per subtype with two brains, the
-    left and the right hemisphere - each seen from the side (above) and from the middle (below: the MTL is
-    only visible there). White lines separate the regions; each region's value is written on it (MTL: under
-    the brain). Grey = no region of the data there. None if no region name matches the atlas."""
+def plot_brain_figure(z, table, regions, subtype_titles, n_events, vmax=12, cmap=None, low=2, colors=None):
+    """Tau of the subtypes on the brain in one figure, following Vogel et al. 2021 (Fig. 1c and 1e).
+    Top: each subtype's average z-score (its tau+ people), lateral and medial views of both hemispheres,
+    with each region's value. Bottom: each subtype through the SuStaIn stages - columns at stages 6, 11,
+    16, ...; each brain is the mean of the people at that stage and up to four stages lower; only the left
+    hemisphere (medial above, lateral below), as in the paper. Grey = below the first cut-point (normal).
+    None if no region name matches the atlas."""
+    from matplotlib.colors import LinearSegmentedColormap
+    from matplotlib.patches import FancyArrowPatch as Arrow
+    from src.figures import colour_list, subtype_colors
     if not any(atlas_regions_of(r) for r in regions):
         return None
+    if cmap is None:
+        cmap = LinearSegmentedColormap.from_list("vogel", colour_list(VOGEL_COLOURS))
     tau_pos = table["ml_stage"] > 0
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean()   # subtypes x regions
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
-    k = len(subtype_titles)
-    fig, axes = plt.subplots(k, 2, figsize=(7.2, 3.5 * k), squeeze=False, gridspec_kw={"wspace": 0.06,
-                                                                                        "hspace": 0.25})
-    for row, title in enumerate(subtype_titles, start=1):
-        row_means = means.loc[row] if row in means.index else None
-        values = atlas_values(row_means) if row_means is not None else {}
-        for col, side in enumerate(["L", "R"]):
-            draw_hemisphere(axes[row - 1, col], side, values, row_means, regions, cmap, vmax)
-            if row == 1:
-                axes[0, col].text(0.5, 1.16, "left hemisphere" if side == "L" else "right hemisphere",
-                                  ha="center", transform=axes[0, col].transAxes, fontsize=9, color="#52606D")
-        axes[row - 1, 0].set_title(f"{title} (n = {counts.get(row, 0)})", loc="left", fontsize=10,
-                                   fontweight="bold")
-    colour_bar_on_top(fig, cmap, vmax, "average z-score (tau+ people)", axes[0, 0].get_position().y1)
-    return fig
-
-
-def plot_brain_stages(z, table, regions, subtype_titles, stage_edges, vmax=12, cmap="Reds"):
-    """How tau spreads with stage, on the brain: one row per subtype, one column per stage group (e.g.
-    1-6, 7-12, ...), each cell the average z-score of the tau+ people of that subtype and stage group on
-    the left hemisphere (lateral above, medial below). n = people in the cell. The colours are those of the
-    figure above."""
-    import pandas as pd
-    if not any(atlas_regions_of(r) for r in regions):
-        return None
-    labels = [f"{a}-{b - 1}" for a, b in zip(stage_edges[:-1], stage_edges[1:])]
-    group = pd.cut(table["ml_stage"], stage_edges, right=False, labels=labels)
-    k, g = len(subtype_titles), len(labels)
-    fig, axes = plt.subplots(k, g, figsize=(2.3 * g + 1.4, 2.9 * k + 0.6), squeeze=False,
-                             gridspec_kw={"hspace": 0.55, "wspace": 0.12})
-    medial = view_box("medial_left")
-    for row, title in enumerate(subtype_titles, start=1):
-        people = (table["ml_subtype"] == row) & (table["ml_stage"] > 0)
-        for col, label in enumerate(labels):
-            ax = axes[row - 1, col]
-            members = people & (group == label)
+    stages = list(range(6, n_events + 1, 5)) or [n_events]
+    k, g = len(subtype_titles), len(stages)
+    shades = subtype_colors(k, colors)
+    fig = plt.figure(figsize=(max(2.9 * k, 2.1 * g + 1.2), 2.9 + 2.2 * k))
+    grid = fig.add_gridspec(2, 1, height_ratios=[2.5, 2.2 * k], hspace=0.22)
+    top = grid[0].subgridspec(1, k, wspace=0.18)
+    bottom = grid[1].subgridspec(k, g, hspace=0.3, wspace=0.05)
+    for n, title in enumerate(subtype_titles, start=1):               # Fig. 1c: one block per subtype
+        ax = fig.add_subplot(top[n - 1])
+        row_means = means.loc[n] if n in means.index else None
+        draw_four_views(ax, atlas_values(row_means) if row_means is not None else {}, row_means, regions,
+                        cmap, vmax, low)
+        share = 100 * counts.get(n, 0) / max(int(tau_pos.sum()), 1)
+        ax.text(-0.03, 0.5, f"{title}\n{share:.0f}% (n = {counts.get(n, 0)})", rotation=90, ha="right",
+                va="center", transform=ax.transAxes, fontsize=9, fontweight="bold")
+    stage_axes = np.empty((k, g), dtype=object)
+    for n, title in enumerate(subtype_titles, start=1):               # Fig. 1e: one row per subtype
+        people = (table["ml_subtype"] == n) & tau_pos
+        for col, stage in enumerate(stages):
+            ax = fig.add_subplot(bottom[n - 1, col])
+            ax.set_facecolor("none")                                  # the subtype arrow shows behind
+            stage_axes[n - 1, col] = ax
+            members = people & table["ml_stage"].between(stage - 4, stage)
             ax.axis("off")
             if members.sum() == 0:
                 ax.text(0.5, 0.5, "nobody", ha="center", va="center", fontsize=8, color="#9AA5B1",
                         transform=ax.transAxes)
             else:
                 values = atlas_values(z[members][regions].mean())
-                width, height = draw_view(ax, "lateral_left", values, 0, 0, cmap, vmax)
-                draw_view(ax, "medial_left", values, 0, height + 30, cmap, vmax)
-                ax.set_xlim(-20, max(width, medial[2] - medial[0]) + 20)
-                ax.set_ylim(height + 30 + medial[3] - medial[1] + 20, -20)
+                width, height = draw_view(ax, "medial_left", values, 0, 0, cmap, vmax, low=low)
+                lateral = view_box("lateral_left")
+                draw_view(ax, "lateral_left", values, 0, height + 20, cmap, vmax, low=low)
+                ax.set_xlim(-20, max(width, lateral[2] - lateral[0]) + 20)
+                ax.set_ylim(height + 20 + lateral[3] - lateral[1] + 20, -20)
                 ax.set_aspect("equal")
                 ax.text(0.5, -0.02, f"n = {int(members.sum())}", transform=ax.transAxes, ha="center", va="top",
-                        fontsize=8, color="#52606D")
-            if row == 1:
-                ax.set_title(f"stages {label}", fontsize=9, pad=4)
-        axes[row - 1, 0].text(-0.08, 0.5, title, transform=axes[row - 1, 0].transAxes, ha="right", va="center",
-                              fontsize=10, fontweight="bold")
-    first, last = axes[0, 0].get_position(), axes[0, -1].get_position()     # the arrow of the stages
+                        fontsize=7, color="#52606D")
+            if n == 1:
+                ax.set_title(f"{stage}\n(stages {max(stage - 4, 1)}-{stage})", fontsize=8, fontweight="normal",
+                             color="#52606D")
+        ax0 = stage_axes[n - 1, 0]
+        ax0.text(-0.12, 0.5, title, rotation=90, ha="right", va="center", transform=ax0.transAxes,
+                 fontsize=9, fontweight="bold")
+    fig.canvas.draw()                                                  # positions are known from here on
+    for n in range(k):                                                 # the subtype's arrow behind its row
+        left, right = stage_axes[n, 0].get_position(), stage_axes[n, -1].get_position()
+        y = (left.y0 + left.y1) / 2
+        fig.patches.append(Arrow((left.x0, y), (right.x1 + 0.03, y), transform=fig.transFigure, zorder=-1,
+                                 arrowstyle="simple,head_width=1.4,head_length=1.1,tail_width=0.55",
+                                 mutation_scale=22, color=shades[n], alpha=0.3, lw=0))
+    first, last = stage_axes[0, 0].get_position(), stage_axes[0, -1].get_position()
     y = first.y1 + 0.045
-    fig.patches.append(FancyArrowPatch(
-        (first.x0, y), (last.x1, y), transform=fig.transFigure, arrowstyle="-|>", mutation_scale=18, lw=1.6,
-        color="#52606D"))
-    fig.text((first.x0 + last.x1) / 2, y + 0.012, "stage (from early to late)", ha="center", va="bottom",
-             fontsize=9, color="#52606D")
+    fig.patches.append(Arrow((first.x0, y), (last.x1 + 0.03, y), transform=fig.transFigure, arrowstyle="-|>",
+                             mutation_scale=14, lw=1.2, color="#52606D"))
+    fig.text(first.x0, y + 0.008, "SuStaIn stage", ha="left", va="bottom", fontsize=9, color="#1F2933")
+    blocks = [ax for ax in fig.axes[:k]]
+    top_y = max(ax.get_position().y1 for ax in blocks)
+    bar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(low, vmax), cmap=cmap),
+                       cax=fig.add_axes([0.35, top_y + 0.03, 0.3, 0.01]), orientation="horizontal")
+    bar.outline.set_visible(False)
+    bar.ax.tick_params(length=0, labelsize=8)
+    bar.ax.xaxis.set_ticks_position("top")
+    bar.ax.xaxis.set_label_position("top")
+    bar.set_label(f"average z-score; grey = below {low:g} (normal)", fontsize=9)
     return fig
