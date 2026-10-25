@@ -553,8 +553,16 @@ def server(input, output, session, shared):
             return ui.p("Click Normalize first.", class_="text-muted")
         table = z_max_values()
         values = table["Z_max used"]
+        if input.per_region() or input.z_max_method() == "manual":
+            used = "Z_max as typed"
+        elif input.z_max_percentile() == 100:
+            used = "Z_max = the 100th percentile of each region, i.e. its largest z-score: nobody is above it"
+        else:
+            used = (f"Z_max = the {input.z_max_percentile():g}th percentile of each region: about "
+                    f"{100 - input.z_max_percentile():g}% of the people with abnormal tau there are above it")
         too_low = [region for region, cuts in region_cuts().items() if values[region] <= cuts[-1]]
-        lines = [ui.p("Z_max is above the last cut-point in every region.", class_="text-success fw-bold")
+        lines = [ui.p(used + ".", class_="mb-1"),
+                 ui.p("Z_max is above the last cut-point in every region.", class_="text-success fw-bold")
                  if not too_low else
                  ui.p(f"Z_max must be above the region's last cut-point. Too low in: {', '.join(too_low)}",
                       class_="text-danger fw-bold")]
@@ -566,8 +574,8 @@ def server(input, output, session, shared):
                               "Raise it, e.g. to the max column, or choose 'Percentile per region' (Events, left).",
                               class_="text-danger fw-bold"))
         else:
-            lines.append(ui.p("Z_max is at or above the 95th percentile in every region: it covers the data.",
-                              class_="text-success"))
+            lines.append(ui.p("Check: Z_max is at or above the 95th percentile (p95 column) in every region, so it "
+                              "covers the data.", class_="text-success"))
         return ui.TagList(*lines)
 
     @render.data_frame

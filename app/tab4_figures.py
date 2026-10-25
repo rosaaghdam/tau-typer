@@ -6,7 +6,7 @@ from shiny import reactive, render, req, ui
 from shiny.types import SafeException
 
 from src.figures import (SUBTYPE_COLORS, colour_list, colour_map, plot_model_choice, plot_person, plot_pvd,
-                         plot_stage_progression, plot_stages, plot_subtype_patterns, plot_subtype_probabilities,
+                         plot_stage_progression, plot_stages, plot_subtype_probabilities,
                          plot_subtype_tree)
 from src.brain import lobe_of, plot_brain_map
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
@@ -44,15 +44,12 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                                             multiple=True, width="24rem"),
                          ui.output_ui("fig_pvd_more"))),
                      ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
-                                                              ui.output_image("fig_patterns", height="auto"),
-                                                              figure_tools("patterns", "Reds", colors_label=HEAT_COLOURS),
+                                                              ui.output_ui("fig_brain_status"),
+                                                              ui.output_image("fig_brain", height="auto"),
+                                                              figure_tools("brain", "Reds", colors_label=HEAT_COLOURS),
                                                               ui.output_image("fig_progression", height="auto"),
                                                               figure_tools("progression", "Reds",
-                                                                           colors_label=HEAT_COLOURS)),
-                                  figure_card("Tau per subtype on the brain (schematic)", FIG_HELP["brain"],
-                                              ui.output_ui("fig_brain_status"),
-                                              ui.output_image("fig_brain", height="auto"),
-                                              figure_tools("brain", "Reds", colors_label=HEAT_COLOURS))),
+                                                                           colors_label=HEAT_COLOURS))),
                      ui.nav_panel("Subtype probabilities", figure_card("Subtype probabilities", FIG_HELP["probs"],
                                                                        ui.output_plot("fig_probs", height="560px"),
                                                                        figure_tools("probs"))),
@@ -175,16 +172,6 @@ def server(input, output, session, shared):
             pictures += [ui.h6(f"Model with {k} subtype{'s' if k > 1 else ''}", class_="mt-3"),
                          picture_tag(make_pvd(k, legend=False), f"PVD of the model with {k} subtypes")]
         return ui.TagList(*pictures)
-
-    def make_patterns():
-        d = fig_data()
-        return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12,
-                                     cmap=colour_map(input.patterns_colors(), "Reds"))
-
-    @render.image(delete_file=True)
-    def fig_patterns():
-        """At its own size, so the cells stay square."""
-        return as_picture(make_patterns())
 
     def make_brain():
         d = fig_data()
@@ -322,9 +309,8 @@ def server(input, output, session, shared):
 
     # Save as PNG / PDF for every figure of this tab; all but One person are in the report (in this order)
     for fig_id, title, make in [("pvd", "Positional variance diagram", make_pvd),
-                                ("patterns", "Tau per subtype", make_patterns),
                                 ("progression", "Tau per subtype and stage group", make_progression),
-                                ("brain", "Tau per subtype on the brain (schematic)", make_brain),
+                                ("brain", "Tau per subtype on the brain", make_brain),
                                 ("probs", "Subtype probabilities", make_probs),
                                 ("stages", "Stages and how sure they are", make_stages),
                                 ("choice", "How many subtypes", make_choice),

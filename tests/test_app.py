@@ -52,7 +52,7 @@ def test_show_saved_run(one_run):
         for name in ["subtype_summary_table", "event_order_view", "fig_pvd", "fig_probs", "fig_stages",
                      "fig_tree", "an_table1", "an_regions_plot"]:
             assert ts.get_output(name).status == "ok", name
-        ts.set_inputs(pvd_more=["1"], subtype_colors="#000000, 112233", patterns_colors="#FFFFFF, #0F5C6E")
+        ts.set_inputs(pvd_more=["1"], subtype_colors="#000000, 112233", brain_colors="#FFFFFF, #0F5C6E")
         assert errors(ts) == {}
         assert "Model with 1 subtype" in str(ts.get_output("fig_pvd_more").value)
         assert "1 figure(s)" not in str(ts.get_output("report_contents").value)   # many figures ticked

@@ -28,8 +28,8 @@ FIG_HELP = {    # short help text above each tab-4 figure
            "people as pySuStaIn estimates it (the S0 people, who have no abnormal tau, are shared out over the "
            "subtypes too) and n = f x number of people, as pySuStaIn writes them; tau+ = the people with abnormal "
            "tau (stage > 0) assigned to this subtype - the number in Quick result and the other figures.",
-    "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people "
-                "(number in each cell). Bottom: the same, split into stage groups (early stages on the left, late "
+    "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people, "
+                "drawn on the brain (the number on each lobe). Bottom: the same, split into stage groups (early stages on the left, late "
                 "on the right), so you can see where tau spreads as the stage rises. n = number of people.",
     "brain": "The numbers of the figure above drawn on a simple side view of each hemisphere (left one facing "
              "left, right one facing right): each lobe coloured by the subtype's average z-score. The MTL "

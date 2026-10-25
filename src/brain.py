@@ -70,7 +70,7 @@ def draw_hemisphere(ax, values, side, x0, mirror, cmap, vmax):
     colours = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
     for lobe, corners in LOBES.items():
         value = values.get((side, lobe))
-        face = "#E4E7EB" if value is None else colours(min(max(value / vmax, 0), 1))
+        face = "#E4E7EB" if value is None else colours(float(np.clip(value / vmax, 0, 1)))
         patch = Polygon(flip(corners), closed=True, facecolor=face, edgecolor="white", lw=1.5, zorder=2,
                         hatch="///" if value is None else None)
         ax.add_patch(patch)
@@ -82,7 +82,7 @@ def draw_hemisphere(ax, values, side, x0, mirror, cmap, vmax):
     value = values.get((side, "mtl"))
     (x, y), = flip([MTL_AT])
     ax.add_patch(Ellipse((x, y), *MTL_SIZE, facecolor="#E4E7EB" if value is None else
-                         colours(min(max(value / vmax, 0), 1)), edgecolor="#1F2933", lw=1, ls="--", zorder=5))
+                         colours(float(np.clip(value / vmax, 0, 1))), edgecolor="#1F2933", lw=1, ls="--", zorder=5))
     ax.text(x, y, "MTL" if value is None else f"MTL {value:.1f}", ha="center", va="center", fontsize=6.5, zorder=6,
             color="white" if value is not None and value > 0.55 * vmax else "#1F2933")
     ax.text(x0 + 0.5, -0.06, "left" if side == "L" else "right", ha="center", va="top", fontsize=8, color="#52606D")
