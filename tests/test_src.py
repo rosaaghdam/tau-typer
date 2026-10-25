@@ -257,3 +257,18 @@ def test_brain_figures_colour_the_right_atlas_regions():
     assert atlas_regions_of("subject_id") == []
     values = atlas_values({"L_frontal": 3.0, "R_frontal": 1.0})
     assert values[("L", "superiorfrontal")] == 3.0 and values[("R", "superiorfrontal")] == 1.0
+
+
+def test_best_mcmc_sample_is_the_highest_likelihood_one(one_run):
+    """The best MCMC sample is the one with the highest likelihood; its orders are real event orders."""
+    import yaml
+    from conftest import ROOT
+    from src.results import best_sample_orders, event_orders, load_sustain_result, size_order
+    folder = ROOT / "results" / "app_runs" / one_run
+    settings = yaml.safe_load(open(folder / "settings.yaml"))
+    result = load_sustain_result(folder, settings["dataset_name"], 2)
+    Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
+    best, orders = best_sample_orders(result, Z_vals, settings["regions"], size_order(result))
+    assert best == int(np.argmax(result["samples_likelihood"].ravel())) + 1
+    em = [e for e, _, _ in event_orders(result, Z_vals, settings["regions"], size_order(result))]
+    assert all(sorted(o) == sorted(e) for o, e in zip(orders, em))      # the same events, maybe another order

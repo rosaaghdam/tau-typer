@@ -87,6 +87,16 @@ def event_orders(result, Z_vals, regions, order, min_share=0.05):
     return orders
 
 
+def best_sample_orders(result, Z_vals, regions, order):
+    """(MCMC sample with the highest likelihood (1 = first), the event order of each subtype in it, Subtype 1
+    first). pySuStaIn starts the MCMC from the EM order, so this is often the EM order itself."""
+    names = event_names(Z_vals, regions)
+    best = int(np.argmax(np.asarray(result["samples_likelihood"]).ravel()))
+    orders = [[names[e] for e in result["samples_sequence"][s][:, best].astype(int)]
+              for s in pvd_order(result, order)]
+    return best + 1, orders
+
+
 def stage_sd(prob_stage):
     """How sure SuStaIn is about each person's stage: the SD (in stages) of their stage probabilities.
     SD = sqrt(sum(stage^2 * p) - mean^2), mean = sum(stage * p). 0 = sure; larger = could be several stages."""
