@@ -46,7 +46,11 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                                             multiple=True, width="24rem"),
                          ui.output_ui("fig_pvd_more"))),
                      ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
-                                                              ui.output_plot("fig_patterns", height="520px"),
+                                                              ui.input_radio_buttons(
+                                                                  "patterns_shape", "Cells",
+                                                                  {"squares": "Squares with numbers",
+                                                                   "circles": "Circles"}, inline=True),
+                                                              ui.output_image("fig_patterns", height="auto"),
                                                               figure_tools("patterns", "Reds", colors_label=HEAT_COLOURS),
                                                               ui.output_image("fig_progression", height="auto"),
                                                               figure_tools("progression", "Reds",
@@ -183,17 +187,17 @@ def server(input, output, session, shared):
     def make_patterns():
         d = fig_data()
         return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12,
-                                     colors=typed_subtype_colors(),
-                                     cmap=colour_map(input.patterns_colors(), "Reds"))
+                                     cmap=colour_map(input.patterns_colors(), "Reds"),
+                                     shape=input.patterns_shape() or "squares")
 
-    @render.plot
+    @render.image(delete_file=True)
     def fig_patterns():
-        return make_patterns()
+        """At its own size, so the cells stay square."""
+        return as_picture(make_patterns(), width=None)
 
     def make_progression():
         d = fig_data()
         return plot_stage_progression(d["z"], d["table"], d["regions"], fig_titles(), d["edges"], None,
-                                      colors=typed_subtype_colors(),
                                       vmax=input.fig_vmax() or 12, cmap=colour_map(input.progression_colors(), "Reds"))
 
     @render.image(delete_file=True)

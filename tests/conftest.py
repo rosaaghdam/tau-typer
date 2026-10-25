@@ -28,7 +28,7 @@ TOOL_INPUTS = {**{f"{name}_report": True for name in IN_REPORT},
                "correlations_colors": "RdBu", "eda_colors": "", "boxplots_colors": "", "bars_colors": "",
                "disease_boxplots_colors": "", "disease_bars_colors": "",
                "zeda_colors": "", "sim_confusion_colors": "Blues", "subtype_colors": "#00897B, #E87BA4, #8A5A00, #9E9D24, #AD1457, #008300",
-               "pvd_more": [], "adjust_interactions": []}
+               "pvd_more": [], "patterns_shape": "squares", "adjust_interactions": []}
 DATA_INPUTS = {**BUTTONS, **TOOL_INPUTS, "col_id": "subject_id", "col_age": "age", "col_sex": "sex", "col_diagnosis": "diagnosis",
                "col_amyloid": "amyloid_positive", "col_regions": REGIONS, "apply_rule": False, "col_cohort": "",
                "col_visit": ""}

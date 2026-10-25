@@ -201,8 +201,8 @@ def step_status(text, state="waiting"):
 
 def as_picture(fig, width="100%", dpi=110):
     """A figure saved as a PNG for render.image (deleted after showing), at its own size - so its labels are
-    never squeezed or cut off by the page width."""
+    never squeezed or cut off by the page width. width: the share of the page width, or None (as drawn)."""
     path = Path(tempfile.gettempdir()) / f"tau_typer_figure_{secrets.token_hex(8)}.png"
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
-    return {"src": str(path), "width": width}
+    return {"src": str(path), "width": width} if width else {"src": str(path)}   # None: its own pixel size

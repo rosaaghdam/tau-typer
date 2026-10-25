@@ -42,7 +42,7 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     figs, _ = ZscoreSustain.plot_positional_var(
         result["samples_sequence"], result["samples_f"], np.inf, Z_vals,
         biomarker_labels=regions, subtype_titles=subtype_titles,
-        figsize=(14, n_rows * panel_height), title_font_size=13, label_font_size=10, stage_font_size=9,
+        figsize=(14, n_rows * panel_height), title_font_size=10, label_font_size=8, stage_font_size=8,
         stage_interval=stage_interval, subtype_order=subtype_order)
     fig = figs[0]
     for ax in fig.axes:
@@ -54,14 +54,13 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
         levels = np.unique(Z_vals[Z_vals > 0])
         handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in colours[:len(levels)]]
         fig.legend(handles, [f"z-score {z:g}" for z in levels], loc="upper center", ncol=len(levels),
-                   bbox_to_anchor=(0.5, 1), frameon=False, fontsize=11)             # on top
+                   bbox_to_anchor=(0.5, 1), frameon=False, fontsize=9)             # on top
     if save_path is not None:
         fig.savefig(f"{save_path}.png", dpi=150, bbox_inches="tight")
     return fig
 
 
-def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12, cmap="Reds",
-                           colors=None):
+def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_path, vmax=12, cmap="Reds"):
     """Average z-score per region for real people, grouped by subtype and stage (paper Fig. 1e idea).
 
     One panel per subtype: rows = regions, columns = stage groups (e.g. 1-6, 7-12, ...), n = people.
@@ -70,18 +69,17 @@ def plot_stage_progression(z, table, regions, subtype_titles, stage_edges, save_
     labels = [f"{a}-{b - 1}" for a, b in zip(stage_edges[:-1], stage_edges[1:])]
     stage_group = pd.cut(table["ml_stage"], stage_edges, right=False, labels=labels)
     n = len(subtype_titles)
-    shades = subtype_colors(n, colors)
     fig, axes = plt.subplots(1, n, figsize=(2.3 * n + 1.6, 0.36 * len(regions) + 2.2), squeeze=False)
     for k, (ax, title) in enumerate(zip(axes[0], subtype_titles), start=1):
         people = (table["ml_subtype"] == k) & (table["ml_stage"] > 0)      # this subtype, tau+ only
         means = z[people].groupby(stage_group[people], observed=False)[regions].mean().T  # regions x groups
         counts = stage_group[people].value_counts().reindex(labels)
         image = heat_cells(ax, means.to_numpy(), cmap, vmax, numbers=False)
-        ax.set_xticks(range(len(labels)), [f"{lab}\nn={c}" for lab, c in zip(labels, counts)], fontsize=8)
+        ax.set_xticks(range(len(labels)), [f"{lab}\nn={c}" for lab, c in zip(labels, counts)])
         ax.set_yticks(range(len(regions)), [nice_region(r) for r in regions] if k == 1 else [])
-        subtype_header(ax, title, shades[k - 1], f"{int(people.sum())} tau+ people")
-    axes[0, 0].set_xlabel("stage group", fontsize=9, color="#52606D")
-    bar = fig.colorbar(image, ax=axes[0].tolist(), orientation="horizontal", fraction=0.05, pad=0.16, aspect=50)
+        ax.set_title(f"{title}\n{int(people.sum())} tau+ people", fontweight="bold")
+    axes[0, 0].set_xlabel("stage group")
+    bar = fig.colorbar(image, ax=axes[0].tolist(), fraction=0.02, pad=0.02, shrink=0.7)
     style_colorbar(bar, "average z-score")
     if save_path:                                         # the app shows the figure without saving
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -93,10 +91,10 @@ def nice_region(name):
     return name.replace("_", " ")
 
 
-def heat_cells(ax, values, cmap, vmax, numbers=True):
+def heat_cells(ax, values, cmap, vmax, numbers=True, aspect="auto"):
     """A heat map with a thin white gap around every cell, no frame and no tick marks; numbers=True writes
     each value in its cell (white on dark cells). Returns the image (for a colour bar)."""
-    image = ax.imshow(values, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
+    image = ax.imshow(values, cmap=cmap, vmin=0, vmax=vmax, aspect=aspect)
     rows, cols = values.shape
     ax.set_xticks(np.arange(-0.5, cols), minor=True)
     ax.set_yticks(np.arange(-0.5, rows), minor=True)
@@ -107,23 +105,16 @@ def heat_cells(ax, values, cmap, vmax, numbers=True):
     if numbers:
         for (row, col), value in np.ndenumerate(values):
             if not np.isnan(value):
-                ax.text(col, row, f"{value:.1f}", ha="center", va="center", fontsize=9,
+                ax.text(col, row, f"{value:.1f}", ha="center", va="center", fontsize=8,
                         color="white" if value > 0.55 * vmax else "#1F2933")
     return image
-
-
-def subtype_header(ax, title, colour, note):
-    """Above a panel: a strip in the subtype's colour, its name in bold and a small note (e.g. n)."""
-    ax.set_title(f"{title}\n", fontsize=11, fontweight="bold", color="#1F2933", pad=14)
-    ax.text(0.5, 1.035, note, transform=ax.transAxes, ha="center", va="bottom", fontsize=8.5, color="#52606D")
-    ax.add_patch(plt.Rectangle((0, 1.005), 1, 0.022, transform=ax.transAxes, color=colour, clip_on=False))
 
 
 def style_colorbar(bar, label):
     """A quiet colour bar: no outline, small ticks, label in ink."""
     bar.outline.set_visible(False)
-    bar.ax.tick_params(length=0, labelsize=8, colors="#52606D")
-    bar.set_label(label, fontsize=9, color="#1F2933")
+    bar.ax.tick_params(length=0, colors="#52606D")
+    bar.set_label(label, color="#1F2933")
 
 
 def left_right_layout(regions, max_cols=6):
@@ -258,28 +249,47 @@ def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
     return fig
 
 
-def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds", colors=None):
+def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds", shape="squares"):
     """Average z-score per region in each subtype, tau+ people only (paper Fig. 1a/c, as a heat map).
 
-    Columns = subtypes (a strip in the subtype's colour on top, n = number of tau+ people), rows = regions,
-    number in each cell = average z.
+    Columns = subtypes (n = number of tau+ people), rows = regions. shape "squares": square cells with the
+    average z written in them; "circles": one circle per cell, bigger and darker = more tau.
     """
     tau_pos = table["ml_stage"] > 0
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean().T   # regions x subtypes
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
-    shades = subtype_colors(len(subtype_titles), colors)
-    fig, ax = plt.subplots(figsize=(1.35 * len(means.columns) + 2.4, 0.42 * len(regions) + 2.0))
-    image = heat_cells(ax, means.to_numpy(), cmap, vmax)
+    cell = 0.72                                            # inches: square cells
+    fig, ax = plt.subplots(figsize=(cell * len(means.columns) + 2.6, cell * len(regions) + 1.2))
+    if shape == "circles":
+        image = circle_cells(ax, means.to_numpy(), cmap, vmax)
+    else:
+        image = heat_cells(ax, means.to_numpy(), cmap, vmax, aspect="equal")
     ax.xaxis.tick_top()
     ax.set_xticks(range(len(means.columns)), [f"{subtype_titles[k - 1]}\nn = {counts[k]}" for k in means.columns],
-                  fontsize=10, color="#1F2933")
-    ax.tick_params(axis="x", pad=12)
-    for col, k in enumerate(means.columns):                # subtype colour strip above each column
-        ax.add_patch(plt.Rectangle((col - 0.45, -0.62), 0.9, 0.1, color=shades[k - 1], clip_on=False))
-    ax.set_yticks(range(len(regions)), [nice_region(r) for r in regions], fontsize=10, color="#1F2933")
-    bar = fig.colorbar(image, ax=ax, orientation="horizontal", fraction=0.04, pad=0.04, aspect=40)
-    style_colorbar(bar, "average z-score of the tau+ people (0 = normal)")
+                  rotation=0)
+    ax.set_yticks(range(len(regions)), [nice_region(r) for r in regions])
+    bar = fig.colorbar(image, ax=ax, fraction=0.05, pad=0.03, shrink=0.7)
+    style_colorbar(bar, "average z-score (tau+ people)")
     return fig
+
+
+def circle_cells(ax, values, cmap, vmax):
+    """One circle per cell (like the correlation figure): bigger and darker = higher value; a light grid
+    marks the cells. Returns a colour scale for the colour bar."""
+    rows, cols = values.shape
+    colours = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
+    for (row, col), value in np.ndenumerate(values):
+        ax.add_patch(plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, edgecolor="#D9E2EC", lw=0.8))
+        if not np.isnan(value):
+            share = min(max(value / vmax, 0), 1)
+            ax.add_patch(plt.Circle((col, row), 0.08 + 0.37 * np.sqrt(share), color=colours(share)))
+    ax.set_xlim(-0.5, cols - 0.5)
+    ax.set_ylim(rows - 0.5, -0.5)
+    ax.set_aspect("equal")
+    ax.tick_params(length=0)
+    for side in ax.spines.values():
+        side.set_visible(False)
+    return plt.cm.ScalarMappable(norm=plt.Normalize(0, vmax), cmap=colours)
 
 
 # Subtype colours: teal, pink, brown, olive (+ raspberry, green, grey-brown, grey for 5-8 subtypes).
@@ -356,7 +366,7 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0, colo
         count = (subtype == n).sum()
         side = np.sign(round(x, 6)) * 0.3                   # side corners: label away from the dots
         ax.text(1.12 * x + side, 1.17 * y, f"{title}\nn = {count} ({100 * count / n_tau:.0f}%)",
-                ha="center", va="center", fontsize=10, fontweight="bold")     # text in ink, the dots carry colour
+                ha="center", va="center", fontsize=9, fontweight="bold")     # text in ink, the dots carry colour
     ax.legend([box], [f"Inside: {100 * inside.mean():.0f}%\nOutside: {100 * (1 - inside.mean()):.0f}%"],
               loc="upper right", bbox_to_anchor=(1, 0.92), frameon=False, handlelength=1.5, handleheight=2.5)
     ax.set_xlim(-1.75, 1.75)
@@ -641,7 +651,7 @@ def plot_truth_confusion(counts, pairing, cmap="Blues"):
     fig, ax = plt.subplots(figsize=(1.5 * counts.shape[1] + 3, 0.7 * counts.shape[0] + 2))
     image = ax.imshow(share, cmap=cmap, vmin=0, vmax=100, aspect="auto")
     for (row, col), n in np.ndenumerate(counts.to_numpy()):
-        ax.text(col, row, f"{n}\n{share.iloc[row, col]:.0f}%", ha="center", va="center", fontsize=9,
+        ax.text(col, row, f"{n}\n{share.iloc[row, col]:.0f}%", ha="center", va="center", fontsize=8,
                 color="white" if share.iloc[row, col] > 60 else "#1F2933")
     partners = {"S0": "S0", **pairing}
     for col, found in enumerate(counts.columns):
@@ -649,7 +659,7 @@ def plot_truth_confusion(counts, pairing, cmap="Blues"):
             row = list(counts.index).index(partners[found])
             ax.add_patch(plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, lw=2.5, color="#1F2933"))
     labels = [f"{found}\n= {pairing[found]}" if found in pairing else found for found in counts.columns]
-    ax.set_xticks(range(counts.shape[1]), labels, fontsize=9)
+    ax.set_xticks(range(counts.shape[1]), labels)
     ax.set_yticks(range(counts.shape[0]), counts.index)
     ax.set_xlabel("found by SuStaIn (= its true partner)")
     ax.set_ylabel("true subtype")
@@ -797,13 +807,12 @@ def plot_correlations(data, numbers, cmap="RdBu"):
     ax.set_ylim(n - 0.5, -0.5)
     ax.set_aspect("equal")
     ax.xaxis.tick_top()
-    ax.set_xticks(range(n), numbers, rotation=45, ha="left", fontsize=9)
-    ax.set_yticks(range(n), numbers, fontsize=9)
+    ax.set_xticks(range(n), numbers, rotation=45, ha="left")
+    ax.set_yticks(range(n), numbers)
     ax.tick_params(length=0, colors="#1F2933")             # names in ink, not grey
     for side in ax.spines.values():
         side.set_visible(False)
     colorbar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(-1, 1), cmap=cmap), ax=ax, shrink=0.8)
-    colorbar.set_label("Spearman r", fontsize=9)
-    colorbar.ax.tick_params(labelsize=8, colors="#1F2933")
+    colorbar.set_label("Spearman r")
     fig.tight_layout()
     return fig
