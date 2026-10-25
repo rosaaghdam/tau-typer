@@ -68,7 +68,8 @@ def event_names(Z_vals, regions):
 def event_orders(result, Z_vals, regions, order, min_share=0.05):
     """For each subtype (Subtype 1 first): (EM order, MCMC order, MCMC stage ranges).
     EM order = the single best order EM found (ml_sequence_EM; the MCMC starts there).
-    MCMC order = events sorted by their average position over all MCMC samples (what the PVD shows).
+    MCMC order = events sorted by their average position over all MCMC samples: a summary of the samples
+    (the PVD shows the full distribution of positions); this exact order may never occur in any sample.
     Stage range of each MCMC event, e.g. "9-11": the stages where it is in at least min_share of the
     samples; "" if it is (almost) always at one stage."""
     names = event_names(Z_vals, regions)

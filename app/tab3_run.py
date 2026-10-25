@@ -383,8 +383,10 @@ def server(input, output, session, shared):
             ui.h6("Event order of each subtype", class_="mt-4"),
             ui.p(f"EM = the best order SuStaIn found; the MCMC starts from it. Best MCMC sample = the MCMC "
                  f"sample with the highest likelihood (here sample {best}); when it is the EM order itself, it is "
-                 "not shown again. MCMC average = events sorted by their average place over all MCMC samples - "
-                 "what the PVD shows. Red = a different event at that place than in the EM order. Subtypes are "
+                 "not shown again. MCMC average = events sorted by their average place over all MCMC samples: "
+                 "a summary of the samples, and this exact order may never occur in any of them (the PVD shows "
+                 "the full distribution of event places, not just their average). Red = a different event at "
+                 "that place than in the EM order. Subtypes are "
                  "numbered by their number of tau+ people (Subtype 1 = most), as everywhere in the app; "
                  "pySuStaIn's own order (by estimated fraction f, ml_f_EM) can differ.",
                  class_="text-muted small"),

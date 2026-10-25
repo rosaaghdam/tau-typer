@@ -23,8 +23,9 @@ RUNS_FOLDER = ROOT / CONFIG["runs"]["folder"]          # one sub-folder per SuSt
 SAMPLE_DATA = ROOT / "data" / "toy" / "sim_tau_400.csv"         # simulated data: 400 people, 3 sites (no truth)
 SAMPLE_TRUTH = ROOT / "data" / "toy" / "sim_tau_400_truth.csv"  # its true subtype and stage (Simulation check)
 FIG_HELP = {    # short help text above each tab-4 figure
-    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Dark = SuStaIn "
-           "is sure the event happens at that stage, pale = unsure. In each title: f = the subtype's share of ALL "
+    "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. The strength of "
+           "each square = the share of MCMC samples in which that event is at that stage: the full distribution "
+           "of event positions, not one order (dark = almost always there, pale = sometimes). In each title: f = the subtype's share of ALL "
            "people as pySuStaIn estimates it (the S0 people, who have no abnormal tau, are shared out over the "
            "subtypes too) and n = f x number of people, as pySuStaIn writes them; tau+ = the people with abnormal "
            "tau (stage > 0) assigned to this subtype - the number in Quick result and the other figures.",
