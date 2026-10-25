@@ -471,7 +471,7 @@ def server(input, output, session, shared):
 
     @render.image(delete_file=True)
     def correlation_plot():
-        return as_picture(make_correlations(), width="60%")    # about 0.7 of the earlier size
+        return as_picture(make_correlations())
 
     def make_correlations():
         numbers, _ = number_and_category_columns(analysis_data(), other_columns())

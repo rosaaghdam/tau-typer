@@ -79,7 +79,8 @@ table, .shiny-data-grid { font-variant-numeric: tabular-nums; }   /* digits line
 .tt-eda-scroll { overflow-x: auto; }
 .tt-eda-table { font-size: .82rem; margin-bottom: .25rem; }
 .tt-eda-table th { color: var(--tt-slate); font-weight: 700; white-space: nowrap; }
-.tt-eda-figure { max-width: 100%; height: auto; display: block; margin-top: .25rem; }
+/* figures are pictures at their real size (sharp, the same text size everywhere); a wide one shrinks to fit */
+.shiny-image-output img, img.tt-figure { max-width: 100%; height: auto; display: block; margin-top: .25rem; }
 
 /* ---- keyboard focus always visible ---- */
 :focus-visible { outline: 3px solid #2D7FF9; outline-offset: 2px; }

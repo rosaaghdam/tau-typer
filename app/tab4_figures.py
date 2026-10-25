@@ -1,8 +1,5 @@
 """Tab 4 - Figures of the shown run: PVD, tau patterns, probabilities, stages, choosing k, person."""
-import base64
-import io
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from shiny import reactive, render, req, ui
@@ -15,7 +12,7 @@ from src.brain import lobe_of, plot_brain_map
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
 from common import (CONFIG, FIG_HELP, add_figure, add_table, as_picture, figure_card, figure_tools, no_run_banner,
-                    step_status, step_title, table_tools)
+                    picture_tag, step_status, step_title, table_tools)
 
 HEAT_COLOURS = "Colours: a map name (Reds, Blues, viridis, ...) or hex codes from low to high"
 
@@ -157,7 +154,7 @@ def server(input, output, session, shared):
     @render.image(delete_file=True)
     def fig_pvd():
         """Saved as a picture at its own size (a resized plot squeezes the labels together)."""
-        return as_picture(make_pvd(), width="60%" if fig_data()["k"] == 1 else "100%", dpi=150)   # 1 panel: not too big
+        return as_picture(make_pvd())
 
     @reactive.effect
     def _pvd_more_choices():
@@ -175,14 +172,8 @@ def server(input, output, session, shared):
         for k in sorted(int(k) for k in input.pvd_more() or []):
             if k > shown_settings()["n_subtypes_max"]:
                 continue
-            buffer = io.BytesIO()
-            fig = make_pvd(k, legend=False)                     # the legend of the first PVD holds for all
-            fig.savefig(buffer, format="png", dpi=90, bbox_inches="tight")
-            plt.close(fig)
-            source = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
             pictures += [ui.h6(f"Model with {k} subtype{'s' if k > 1 else ''}", class_="mt-3"),
-                         ui.img(src=source, style=f"width: {60 if k == 1 else 100}%;",
-                                alt=f"PVD of the model with {k} subtypes")]
+                         picture_tag(make_pvd(k, legend=False), f"PVD of the model with {k} subtypes")]
         return ui.TagList(*pictures)
 
     def make_patterns():
@@ -193,7 +184,7 @@ def server(input, output, session, shared):
     @render.image(delete_file=True)
     def fig_patterns():
         """At its own size, so the cells stay square."""
-        return as_picture(make_patterns(), width=None)
+        return as_picture(make_patterns())
 
     def make_brain():
         d = fig_data()

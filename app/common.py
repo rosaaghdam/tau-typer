@@ -2,6 +2,7 @@
 import sys
 from pathlib import Path
 
+import base64
 import io
 import secrets
 import tempfile
@@ -208,10 +209,25 @@ def step_status(text, state="waiting"):
     return ui.span(text, class_=f"tt-step-status tt-{state}", title=text)   # full text on hover
 
 
-def as_picture(fig, width="100%", dpi=110):
-    """A figure saved as a PNG for render.image (deleted after showing), at its own size - so its labels are
-    never squeezed or cut off by the page width. width: the share of the page width, or None (as drawn)."""
+SHARP = 192    # dots per inch of the figure pictures: twice the screen's 96, so text is sharp on any screen
+
+
+def as_picture(fig):
+    """A figure saved as a PNG for render.image (deleted after showing), shown at its real size: 9 pt text
+    is 9 pt in every figure (a picture stretched to the page would make text blurry and of different
+    sizes). A figure wider than the page is made smaller to fit (tau_typer.css)."""
     path = Path(tempfile.gettempdir()) / f"tau_typer_figure_{secrets.token_hex(8)}.png"
-    fig.savefig(path, dpi=dpi, bbox_inches="tight")
+    fig.savefig(path, dpi=SHARP, bbox_inches="tight")
     plt.close(fig)
-    return {"src": str(path), "width": width} if width else {"src": str(path)}   # None: its own pixel size
+    return {"src": str(path), "width": f"{round(plt.imread(path).shape[1] * 96 / SHARP)}px"}
+
+
+def picture_tag(fig, alt):
+    """The same for a figure inside a page (render.ui): an <img> at its real size, sharp."""
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=SHARP, bbox_inches="tight")
+    plt.close(fig)
+    buffer.seek(0)
+    width = round(plt.imread(buffer).shape[1] * 96 / SHARP)
+    source = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    return ui.img(src=source, alt=alt, width=f"{width}px", class_="tt-figure")

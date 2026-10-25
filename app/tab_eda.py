@@ -1,13 +1,10 @@
 """EDA report: an automatic statistical report of the data of tab 1 (after the inclusion rule, if it is
 applied) - overview, missing values, every variable, group and site differences and correlations, each
 with a table and/or figure and short conclusions. The same report can be downloaded as a PDF."""
-import base64
-import io
-
-import matplotlib.pyplot as plt
 from shiny import reactive, render, req, ui
 
 from src.eda import build_eda_pdf, eda_sections
+from common import picture_tag
 
 panel = ui.nav_panel("EDA report",
              ui.div(
@@ -35,13 +32,8 @@ def server(input, output, session, shared):
                             diagnosis_groups()[1])
 
     def picture(make, alt):
-        """A figure as an image in the page."""
-        fig = make()
-        buffer = io.BytesIO()
-        fig.savefig(buffer, format="png", dpi=100, bbox_inches="tight")
-        plt.close(fig)
-        source = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
-        return ui.img(src=source, alt=alt, class_="tt-eda-figure")
+        """A figure as a sharp image at its real size."""
+        return picture_tag(make(), alt)
 
     def table_html(table):
         shown = table.copy()
