@@ -405,9 +405,9 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0, colo
 
 
 def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None, colors=None):
-    """Top: % of all people at each SuStaIn stage, per subtype (paper Ext. Fig. 2), stage 0 (S0, no abnormal
-    tau) included. The S0 bar is usually far higher than the others: then it is cut at the top of the axis
-    and its real % is written on it, so the other stages stay readable.
+    """Top: % of all people at each SuStaIn stage (paper Ext. Fig. 2). Left: S0 (stage 0, no abnormal tau -
+    no subtype, since at stage 0 all subtypes look the same); right: stages 1, 2, ... per subtype. Each panel
+    has its own axis, because S0 is usually far bigger than any single stage.
     Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
     stage (high where events overlap - the pale squares of the PVD).
     Right: the same uncertainty per subtype. Dashed red line = sd_limit (above = uncertain stage).
@@ -416,24 +416,30 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None,
     k = len(subtype_titles)
     colors = subtype_colors(k, colors)
     stages = np.arange(table["ml_stage"].max() + 1)
-    fig = plt.figure(figsize=(13, 9))                    # top: counts; bottom: uncertainty + per subtype
-    grid = fig.add_gridspec(2, 2, width_ratios=[3, 1])
-    ax1, ax2, ax3 = fig.add_subplot(grid[0, :]), fig.add_subplot(grid[1, 0]), fig.add_subplot(grid[1, 1])
+    fig = plt.figure(figsize=(13, 9))                    # top: S0 + stages; bottom: uncertainty + per subtype
+    grid = fig.add_gridspec(2, 1)
+    top_row = grid[0].subgridspec(1, 2, width_ratios=[1, 14], wspace=0.08)
+    bottom_row = grid[1].subgridspec(1, 2, width_ratios=[3, 1])
+    ax0, ax1 = fig.add_subplot(top_row[0]), fig.add_subplot(top_row[1])
+    ax2, ax3 = fig.add_subplot(bottom_row[0]), fig.add_subplot(bottom_row[1])
     bottom = np.zeros(len(stages))
     everyone = len(table)
-    s0 = 100 * (table["ml_stage"] == 0).sum() / everyone             # % of all people at stage 0
+    n_s0 = int((table["ml_stage"] == 0).sum())
     for n, title in enumerate(subtype_titles, start=1):
         counts = table.loc[(table["ml_subtype"] == n) & (table["ml_stage"] > 0), "ml_stage"]
         heights = 100 * counts.value_counts().reindex(stages, fill_value=0).to_numpy() / everyone
         ax1.bar(stages, heights, bottom=bottom, color=colors[n - 1],
-                label=f"{title}: {100 * len(counts) / everyone:.0f}% (n={len(counts)})")
+                label=f"{title}: {100 * len(counts) / everyone:.0f}% of all (n={len(counts)})")
         bottom += heights
-    ax1.bar(0, s0, color="#BCCCDC", label=f"S0 (no abnormal tau): {s0:.0f}% (n={(table['ml_stage'] == 0).sum()})")
-    top = 1.35 * max(bottom[1:].max(), 1)                              # room for the tau+ stages
-    if s0 > top:                                                       # cut the S0 bar, say its real height
-        ax1.text(0, top * 0.97, f"{s0:.0f}%", ha="center", va="top", fontsize=8, fontweight="bold")
-    ax1.set_ylim(0, top if s0 > top else None)
-    ax1.set_xlabel("most likely SuStaIn stage (S0 = stage 0)")
+    ax0.bar(0, 100 * n_s0 / everyone, color="#BCCCDC", width=0.6)       # S0: its own axis
+    ax0.text(0, 100 * n_s0 / everyone, f"{100 * n_s0 / everyone:.0f}%\n(n={n_s0})", ha="center", va="bottom",
+             fontsize=8)
+    ax0.set_ylim(0, 100 * n_s0 / everyone * 1.3 + 1)
+    ax0.set_xlim(-0.6, 0.6)
+    ax0.set_xticks([0], ["S0"])
+    ax0.set_ylabel("% of all people")
+    ax0.set_title("no abnormal tau", fontsize=8, fontweight="normal", color="#52606D")
+    ax1.set_xlabel("most likely SuStaIn stage (abnormal tau, per subtype)")
     ax1.set_ylabel("% of all people")
     ax1.legend()
 
@@ -449,9 +455,9 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None,
         ax2.scatter(tau.loc[person, "ml_stage"], tau.loc[person, "stage_sd"], s=150, facecolors="none",
                     edgecolors="black", linewidths=2, label=str(person))
     ax2.set_xlabel("most likely SuStaIn stage")
-    ax2.set_ylabel("uncertainty (SD of stage, in stages)")
-    ax1.set_xticks(stages, ["S0"] + [str(v) for v in stages[1:]], fontsize=7)   # every stage number
-    ax1.set_xlim(-0.6, stages[-1] + 0.6)
+    ax2.set_ylabel("stage uncertainty: SD, in stages")
+    ax1.set_xticks(stages[1:], stages[1:], fontsize=7)                 # every stage number
+    ax1.set_xlim(0.4, stages[-1] + 0.6)
     ax2.set_xticks(stages[1:], stages[1:], fontsize=7)
     ax2.set_xlim(0.4, stages[-1] + 0.6)
 
@@ -460,7 +466,7 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None,
     for n, (patch, color) in enumerate(zip(ax3.patches, colors), start=1):
         patch.set_facecolor(color if subtype in (None, n) else "lightgray")
     ax3.set_xticks(range(1, k + 1), subtype_titles, rotation=30, ha="right")
-    ax3.set_ylabel("uncertainty (SD of stage)")
+    ax3.set_ylabel("stage uncertainty: SD, in stages")
     ax3.set_ylim(ax2.get_ylim())
     if sd_limit is not None:
         for ax in (ax2, ax3):

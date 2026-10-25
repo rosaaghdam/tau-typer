@@ -38,9 +38,9 @@ FIG_HELP = {    # short help text above each tab-4 figure
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
              "it.",
-    "stages": "Top: % of all people at each SuStaIn stage, coloured by subtype; S0 (stage 0, no abnormal tau) "
-              "in grey. The S0 bar is usually much higher than the others, so it is cut at the top and its "
-              "real % is written on it. Bottom left: how sure SuStaIn is about each "
+    "stages": "Top: % of all people at each SuStaIn stage. Left, own axis: S0 (stage 0) = no abnormal tau, so no "
+              "subtype (at stage 0 every subtype looks the same). Right: stages 1, 2, ... coloured by subtype. "
+              "Bottom left: how sure SuStaIn is about each "
               "person's stage (SD of their stage probabilities) - low = sure, high = the stage could be one of "
               "several (often higher in the middle stages, where events overlap - the pale squares of the PVD). "
               "Bottom right: the same per subtype. Choosing a subtype above shows it in colour and the others "
