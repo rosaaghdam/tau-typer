@@ -54,6 +54,10 @@ DATA_HELP = {   # help (i) of the figures in tabs 1-3
                "group (a number column is split into low / middle / high thirds) and draws one trend line "
                "per group: lines that are not parallel mean the trend differs between the groups "
                "(an interaction, e.g. age x sex). The table below tests this per region.",
+    "missing": "Every column that has missing values (most missing on top) against every row of the data "
+               "(rows with the most missing values on the left); dark = missing. Lines of dark cells across "
+               "columns show rows that miss several values together (e.g. no cognitive tests at all). Right: "
+               "how many values each column misses; the most missing one in orange. The title gives the totals.",
     "covariates": "The other columns of the file per diagnosis group: numbers as box plots (one dot per "
                   "person), categories as bars (% per group), and the Spearman correlations between the "
                   "number columns and the mean of the regions.",

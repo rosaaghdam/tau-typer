@@ -21,7 +21,7 @@ IN_REPORT = {"pvd", "patterns", "progression", "probs", "stages", "choice", "tre
              "sim_stages", "sim_subtypes"}
 NOT_IN_REPORT = {"person", "uncertain", "compare", "model", "demographics", "eda", "eda_tests", "covariates",
                  "boxplots", "bars", "correlations", "gmm", "zeda", "zeda_tests", "cohort_table", "followup_table",
-                 "sim_people", "disease_boxplots", "disease_bars"}
+                 "sim_people", "disease_boxplots", "disease_bars", "missing"}
 TOOL_INPUTS = {**{f"{name}_report": True for name in IN_REPORT},
                **{f"{name}_report": False for name in NOT_IN_REPORT},
                "patterns_colors": "Reds", "progression_colors": "Reds", "regions_colors": "RdBu_r",

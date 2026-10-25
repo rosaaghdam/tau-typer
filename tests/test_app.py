@@ -276,6 +276,7 @@ def test_sample_data_inclusion_rule_and_one_scan_note():
         for _ in range(2):
             ts.set_inputs(apply_rule=True, col_visit="age")
         assert "390 of 400 people kept" in str(ts.get_output("rule_note").value)
+        assert ts.get_output("missing_plot").status == "ok"
         assert "only one row, so nothing changes" in str(ts.get_output("data_status").value)
 
 

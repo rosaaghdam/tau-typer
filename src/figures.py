@@ -161,10 +161,55 @@ def plot_region_histograms(data, regions, xlabel="value (e.g. SUVR)", color="#4C
     return fig
 
 
+def plot_missing(data):
+    """Missing values of the whole table in one figure. Left: every column that has missing values (most
+    missing on top) against every person (people with the most missing values on the left); dark = missing,
+    so patterns show (e.g. the same people missing all cognitive tests). Right: how many values each of these
+    columns misses (count and %). Columns with no missing value are named in the title."""
+    missing = data.isna()
+    per_column = missing.sum().sort_values(ascending=False)
+    with_missing = per_column[per_column > 0]
+    complete_people = int((~missing.any(axis=1)).sum())
+    summary = (f"{int(missing.values.sum()):,} of {missing.size:,} values missing ({100 * missing.values.mean():.1f}%); "
+               f"{complete_people} of {len(data)} rows complete")
+    if with_missing.empty:
+        fig, ax = plt.subplots(figsize=(8, 1.2))
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No missing values in any column.", ha="center", va="center", fontsize=10)
+        return fig
+    people = missing[with_missing.index].sum(axis=1).sort_values(ascending=False, kind="stable").index
+    matrix = missing.loc[people, with_missing.index].T.to_numpy()          # columns x people
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 0.3 * len(with_missing) + 1.6), sharey=True,
+                                   gridspec_kw={"width_ratios": [3, 1], "wspace": 0.04})
+    shades = matplotlib.colors.ListedColormap(["#E4E7EB", "#0F5C6E"])       # present, missing
+    ax1.imshow(matrix, cmap=shades, vmin=0, vmax=1, aspect="auto", interpolation="nearest")
+    ax1.set_yticks(range(len(with_missing)), with_missing.index)
+    ax1.set_xticks([])
+    ax1.set_xlabel(f"{len(data)} rows (most missing values on the left); dark = missing")
+    share = 100 * with_missing / len(data)
+    bars = ax2.barh(range(len(with_missing)), share, color="#0F5C6E", height=0.7)
+    bars[0].set_color("#9A5B00")                                           # the most missing column
+    for row, (count, pct) in enumerate(zip(with_missing, share)):
+        ax2.text(pct + share.max() * 0.03, row, f"{count} ({pct:.0f}%)", va="center", fontsize=8)
+    ax2.set_xlim(0, share.max() * 1.45)
+    ax2.set_xlabel("% missing")
+    ax2.tick_params(axis="y", length=0)
+    for ax in (ax1, ax2):
+        for side in ax.spines.values():
+            side.set_visible(False)
+    complete_columns = [c for c in per_column.index if per_column[c] == 0]
+    fig.suptitle(summary, x=0.02, ha="left", fontsize=10, fontweight="bold")
+    if complete_columns:
+        fig.text(0.02, -0.02, f"No missing values in the other {len(complete_columns)} columns.",
+                 fontsize=8, color="#52606D", va="top")
+    return fig
+
+
 def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label="value (e.g. SUVR)",
                     single_color="#52606D"):
     """Explore the regional values (tab 1). One panel per region (left on top, right below):
-    - x = None: the distribution of the values (one colour per group if groups is given);
+    - x = None: the distribution of the values; with groups, each bar is split into the groups (stacked,
+      so the bar's height is still all people in that bin);
     - x = a number column (e.g. age): each person as a dot, with a straight trend line per group - if the
       lines of two groups are not parallel, the trend differs between the groups (an interaction);
     - x = a category column (e.g. sex): a box per category, with the people as dots coloured by group.
@@ -183,11 +228,16 @@ def plot_region_eda(data, regions, x=None, groups=None, colors=None, value_label
         if region is None:
             ax.set_visible(False)
             continue
+        if x is None:                                             # histogram; split: stacked groups per bin
+            edges = np.histogram_bin_edges(values[region].dropna(), bins=30)
+            ax.hist([values.loc[member[g], region].dropna() for g in names], bins=edges, stacked=True,
+                    color=[colors[g] if g is not None else single_color for g in names],
+                    edgecolor="white", linewidth=0.3)
         for g in names:
             color = colors[g] if g is not None else single_color
             y = values.loc[member[g], region]
             if x is None:
-                ax.hist(y.dropna(), bins=30, color=color, alpha=0.55 if g is not None else 1, label=g)
+                continue
             elif x_is_number:
                 xs = pd.to_numeric(x_values[member[g]], errors="coerce")
                 ok = xs.notna() & y.notna()

@@ -4,7 +4,7 @@ import pandas as pd
 from shiny import reactive, render, req, ui
 from shiny.types import SafeException, SilentException
 
-from src.figures import (OTHER_COLORS, colour_list, colour_map, group_colors, override_colors, plot_category_bars,
+from src.figures import (OTHER_COLORS, plot_missing, colour_list, colour_map, group_colors, override_colors, plot_category_bars,
                          plot_correlations, plot_covariate_boxplots, plot_region_eda, plot_region_histograms)
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns, guess_disease_columns,
                     number_and_category_columns, qc_summary, region_trend_tests, split_baseline, three_groups,
@@ -35,6 +35,9 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                                   ui.output_data_frame("data_head")),
                      ui.nav_panel("QC summary", ui.output_ui("qc_status"),
                                   ui.output_data_frame("qc_table"),
+                                  figure_card("Missing values", DATA_HELP["missing"],
+                                              ui.output_image("missing_plot", height="auto"),
+                                              figure_tools("missing", in_report=False)),
                                   ui.h6("Inclusion rule", class_="mt-4"),
                                   ui.output_ui("inclusion_status"),
                                   ui.output_data_frame("inclusion_table")),
@@ -319,6 +322,13 @@ def server(input, output, session, shared):
         if group_col:                                       # same order as the figures: CN, SCD, MCI, AD
             table = table.set_index("Group").reindex(["All"] + groups).reset_index()
         return table
+
+    def make_missing():
+        return plot_missing(analysis_data())
+
+    @render.image(delete_file=True)
+    def missing_plot():
+        return as_picture(make_missing())
 
     @render.data_frame
     def demographics():
@@ -626,6 +636,7 @@ def server(input, output, session, shared):
         return step_status(f"{len(analysis_data())} people{rule}", "done")
 
     # Save and "Include in report" for the figures and tables of this tab
+    add_figure(report_items, "missing", "Missing values", make_missing)
     add_table(report_items, "demographics", "Demographics", lambda: make_demographics().set_index("Group"))
     add_figure(report_items, "eda", "Regional values", make_region_figure)
     add_table(report_items, "eda_tests", "Regional values: tests per region", make_eda_tests)
