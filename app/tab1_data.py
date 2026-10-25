@@ -9,19 +9,9 @@ from src.figures import (OTHER_COLORS, colour_list, colour_map, group_colors, ov
 from src.qc import (apply_inclusion_rule, covariate_summary, demographics_table, guess_columns, guess_disease_columns,
                     number_and_category_columns, qc_summary, region_trend_tests, split_baseline, three_groups,
                     top_categories)
-from common import (CONFIG, DATA_HELP, DISEASE_WORDS, ROLE_LABELS, RULE_ROLES, SAMPLE_DATA, add_figure, add_table,
+from common import (CONFIG, DATA_HELP, DISEASE_WORDS, ROLE_LABELS, RULE_ROLES, add_figure, add_table,
                     as_picture, figure_card, figure_tools, step_status, step_title, table_tools)
 
-def sample_summary():
-    """e.g. "400 people, 10 regions, 3 sites, 16 variables" - counted from the sample file."""
-    data = pd.read_csv(SAMPLE_DATA)
-    guess = guess_columns(list(data.columns))
-    sites = data[guess["cohort"]].nunique() if guess["cohort"] else 1
-    variables = len(data.columns) - len(guess["regions"]) - bool(guess["id"]) - bool(guess["cohort"])
-    return f"{len(data)} people, {len(guess['regions'])} regions, {sites} sites, {variables} variables"
-
-
-SAMPLE_SUMMARY = sample_summary()
 GROUP_COLOURS = "Colours (hex codes, in legend order; empty = automatic)"
 
 panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
@@ -30,8 +20,8 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                      ui.accordion(                               # folding sections, as in tabs 2 and 3
                          ui.accordion_panel("Data",
                              ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
-                             ui.download_link("download_sample", "Sample Data"),
-                             ui.p(f"Data is downloaded with {SAMPLE_SUMMARY}.", class_="text-muted small")),
+                             ui.output_ui("upload_summary"),     # shown once a file is uploaded
+                             ui.download_link("download_sample", "Sample Data")),
                          ui.accordion_panel("Match the columns",
                              ui.output_ui("column_matching")),   # filled in after an upload
                          ui.accordion_panel("Disease-related columns",
@@ -108,6 +98,33 @@ def server(input, output, session, shared):
             from_file = old_run_from_file()
             return restore()["data"] if from_file is None else from_file
         return read_upload()
+
+    @render.ui
+    def upload_summary():
+        """Right under the upload: what is in the file (samples, regions, sites, other variables)."""
+        data = uploaded_data()
+        if data is None:
+            return None
+        guess = guess_columns(list(data.columns))
+
+        def chosen(name):
+            """The box's choice, or the first guess while the boxes are not drawn yet."""
+            try:
+                return input[f"col_{name}"]()
+            except SilentException:
+                return guess[name]
+        regions = list(chosen("regions") or [])
+        roles = {role: chosen(role) for role in ("id", "cohort", "visit")}
+        cohort = roles.get("cohort")
+        sites = data[cohort].nunique() if cohort and cohort in data else 1
+        skip = set(regions) | {roles.get("id"), cohort, roles.get("visit")}
+        variables = len([c for c in data.columns if c not in skip])
+        parts = [f"{len(data)} samples", f"{len(regions)} regions"]
+        if sites > 1:
+            parts.append(f"{sites} sites")
+        parts.append(f"{variables} variables")
+        return ui.p("Data uploaded: " + ", ".join(parts) + ".", class_="small fw-bold mt-1",
+                    style="color: var(--tt-accent);")
 
     @render.ui
     def column_matching():
@@ -444,7 +461,7 @@ def server(input, output, session, shared):
 
     @render.image(delete_file=True)
     def correlation_plot():
-        return as_picture(make_correlations(), width="85%")
+        return as_picture(make_correlations(), width="60%")    # about 0.7 of the earlier size
 
     def make_correlations():
         numbers, _ = number_and_category_columns(analysis_data(), other_columns())

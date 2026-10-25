@@ -19,9 +19,11 @@ def test_upload_and_normalize():
     """Tabs 1-2 with the toy data: upload, match columns, normalize (GMM)."""
     with test_server(APP, timeout_secs=120) as ts:
         ts.set_inputs(data_file=toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
+        ts.set_inputs(**DATA_INPUTS)                      # the test server shows some outputs one step later
         assert errors(ts) == {}
         assert ts.get_output("qc_table").status == "ok"
         ts.set_inputs(normalize=1)
+        ts.set_inputs(normalize=2)                        # a few outputs follow only on the next update
         assert errors(ts) == {}
         assert ts.get_output("z_head").status == "ok"            # z-scores were made
         assert ts.get_output("events_table").status == "ok"
@@ -306,3 +308,14 @@ def test_z_max_too_low_for_the_data_is_flagged():
         for _ in range(2):
             ts.set_inputs(z_max_method="percentile", z_max_percentile=95)
         assert "covers the data" in str(ts.get_output("zmax_status").value)
+
+
+def test_upload_summary_appears_after_the_upload():
+    """Nothing before an upload; then the samples, regions, sites and other variables of the file."""
+    from conftest import ROOT
+    with test_server(APP, timeout_secs=120) as ts:
+        assert "Data uploaded" not in str(ts.get_output("upload_summary").value)
+        ts.set_inputs(data_file=toy_upload(ROOT / "data" / "toy" / "sim_tau_400.csv"), **DATA_INPUTS, **NORM_INPUTS)
+        for _ in range(2):
+            ts.set_inputs(col_cohort="site")
+        assert "400 samples, 10 regions, 3 sites, 16 variables" in str(ts.get_output("upload_summary").value)

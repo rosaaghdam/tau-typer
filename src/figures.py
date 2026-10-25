@@ -792,13 +792,13 @@ def plot_correlations(data, numbers, cmap="RdBu"):
     ax.set_ylim(n - 0.5, -0.5)
     ax.set_aspect("equal")
     ax.xaxis.tick_top()
-    ax.set_xticks(range(n), numbers, rotation=45, ha="left", fontsize=12)
-    ax.set_yticks(range(n), numbers, fontsize=12)
+    ax.set_xticks(range(n), numbers, rotation=45, ha="left", fontsize=9)
+    ax.set_yticks(range(n), numbers, fontsize=9)
     ax.tick_params(length=0, colors="#1F2933")             # names in ink, not grey
     for side in ax.spines.values():
         side.set_visible(False)
     colorbar = fig.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(-1, 1), cmap=cmap), ax=ax, shrink=0.8)
-    colorbar.set_label("Spearman r", fontsize=12)
-    colorbar.ax.tick_params(labelsize=11, colors="#1F2933")
+    colorbar.set_label("Spearman r", fontsize=9)
+    colorbar.ax.tick_params(labelsize=8, colors="#1F2933")
     fig.tight_layout()
     return fig
