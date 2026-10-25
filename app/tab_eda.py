@@ -16,7 +16,7 @@ panel = ui.nav_panel("EDA report",
                              "missing, how each variable is spread, how the groups and sites differ and what goes "
                              "together. Each part ends with short conclusions - check them before you use them.",
                              class_="text-muted small mb-2"),
-                        ui.download_button("eda_pdf", "Download the report (PDF)", class_="btn-primary btn-sm")),
+                        ui.download_button("eda_report_pdf", "Download the report (PDF)", class_="btn-primary btn-sm")),
                  ui.output_ui("eda_report"),
                  class_="tt-eda"))
 
@@ -66,5 +66,5 @@ def server(input, output, session, shared):
         return ui.TagList(*parts)
 
     @render.download_button(filename="tau_typer_EDA_report.pdf")
-    def eda_pdf():
+    def eda_report_pdf():
         yield build_eda_pdf(sections(), "Tau-typer EDA report")

@@ -340,3 +340,16 @@ def test_eda_report_and_its_pdf():
     roles = {"id": "subject_id", "diagnosis": "diagnosis", "cohort": "site"}
     sections = eda_sections(data, roles, REGIONS)
     assert build_eda_pdf(sections, "EDA").startswith(b"%PDF")
+
+
+def test_no_two_elements_share_an_id():
+    """Every id in the page is used once (a repeated id, e.g. two downloads with the same name, breaks one)."""
+    import re
+    from collections import Counter
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("tau_app", APP)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    html = str(module.app_ui)
+    repeated = [name for name, n in Counter(re.findall(r'\sid="([^"]+)"', html)).items() if n > 1]
+    assert repeated == []
