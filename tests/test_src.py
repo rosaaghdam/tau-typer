@@ -196,3 +196,32 @@ def test_numbers_with_empty_cells_are_still_numbers():
     from src.qc import number_and_category_columns
     data = pd.DataFrame({"memory": [0.5, -1.2, np.nan, np.nan, 0.3, 1.1], "sex": ["F", "M", "F", None, "M", "F"]})
     assert number_and_category_columns(data, ["memory", "sex"]) == (["memory"], ["sex"])
+
+
+def test_run_time_is_shown_readably(tmp_path):
+    """run_time.txt (seconds) -> a short text; no file -> "-"."""
+    from src.app_runs import run_time
+    assert run_time(tmp_path) == "-"
+    for seconds, text in [(42, "42 s"), (750, "12 min 30 s"), (3900, "1 h 05 min")]:
+        (tmp_path / "run_time.txt").write_text(f"{seconds}\n")
+        assert run_time(tmp_path) == text
+
+
+def test_pvd_title_tau_plus_count_matches_the_tables(one_run):
+    """The PVD's 'tau+' count of each subtype is the number of tau+ people of that subtype in the tables."""
+    import yaml
+    from conftest import ROOT
+    from src.figures import plot_pvd
+    from src.results import load_sustain_result, pvd_order, size_order, subject_table
+    folder = ROOT / "results" / "app_runs" / one_run
+    settings = yaml.safe_load(open(folder / "settings.yaml"))
+    result = load_sustain_result(folder, settings["dataset_name"], 2)
+    order = size_order(result)
+    z = pd.read_csv(folder / "zscores.csv", index_col="subject")
+    table = subject_table(result, z.index, 0.5, order)
+    fig = plot_pvd(result, make_z_vals(settings["regions"], settings["cut_points"]), settings["regions"],
+                   ["Subtype 1", "Subtype 2"], None, subtype_order=pvd_order(result, order))
+    titles = [ax.get_title() for ax in fig.axes if ax.get_title()]
+    for n, title in enumerate(titles, start=1):
+        tau_plus = ((table["ml_subtype"] == n) & (table["ml_stage"] > 0)).sum()
+        assert title.endswith(f"tau+ {tau_plus})"), title

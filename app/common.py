@@ -23,9 +23,10 @@ SAMPLE_DATA = ROOT / "data" / "toy" / "sim_tau_400.csv"         # simulated data
 SAMPLE_TRUTH = ROOT / "data" / "toy" / "sim_tau_400_truth.csv"  # its true subtype and stage (Simulation check)
 FIG_HELP = {    # short help text above each tab-4 figure
     "pvd": "Positional variance diagram, drawn by pySuStaIn. Rows = regions, columns = stages. Dark = SuStaIn "
-           "is sure the event happens at that stage, pale = unsure. In each title, as pySuStaIn writes it: f = the "
-           "subtype's share of all people (S0 included), n = f x number of people - so n can differ from the counts "
-           "of tau+ people in the other figures.",
+           "is sure the event happens at that stage, pale = unsure. In each title: f = the subtype's share of ALL "
+           "people as pySuStaIn estimates it (the S0 people, who have no abnormal tau, are shared out over the "
+           "subtypes too) and n = f x number of people, as pySuStaIn writes them; tau+ = the people with abnormal "
+           "tau (stage > 0) assigned to this subtype - the number in Quick result and the other figures.",
     "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people "
                 "(number in each cell). Bottom: the same, split into stage groups (early stages on the left, late "
                 "on the right), so you can see where tau spreads as the stage rises. n = number of people.",

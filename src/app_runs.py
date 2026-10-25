@@ -1,6 +1,6 @@
 """App tab 3 - one folder per SuStaIn run, and starting pySuStaIn in its own process.
 
-A run folder holds: settings.yaml, zscores.csv, zscore_reference.csv (if any; one row per cohort and
+A run folder holds: settings.yaml, run_time.txt (seconds the run took), zscores.csv, zscore_reference.csv (if any; one row per cohort and
 region), covariates.csv (the other columns: age, sex, diagnosis, ... - used by tab 5),
 followup_zscores.csv (later scans of the same people, if any - staged in tab 5), log.txt (all
 that pySuStaIn prints), pid.txt (the process number while it runs), status.txt (finished / failed /
@@ -108,6 +108,20 @@ def run_status(folder):
     return "stopped"
 
 
+def run_time(folder):
+    """How long a run took, e.g. "12 min 30 s" or "1 h 05 min" (from run_time.txt; "-" for runs made
+    before the time was saved, or still running)."""
+    path = Path(folder) / "run_time.txt"
+    if not path.exists():
+        return "-"
+    seconds = int(float(path.read_text()))
+    hours, rest = divmod(seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if hours:
+        return f"{hours} h {minutes:02d} min"
+    return f"{minutes} min {seconds:02d} s" if minutes else f"{seconds} s"
+
+
 def list_runs(runs_folder):
     """One row per run folder, newest first: status, start time and the main settings."""
     rows = []
@@ -117,8 +131,8 @@ def list_runs(runs_folder):
                      "started": datetime.fromtimestamp(settings_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
                      "people": settings["n_people"], "max subtypes": settings["n_subtypes_max"],
                      "start points": settings["n_startpoints"], "MCMC": settings["n_iterations_mcmc"],
-                     "folds": settings["n_folds"] or "-"})
-    columns = ["run", "status", "started", "people", "max subtypes", "start points", "MCMC", "folds"]
+                     "folds": settings["n_folds"] or "-", "run time": run_time(folder)})
+    columns = ["run", "status", "started", "run time", "people", "max subtypes", "start points", "MCMC", "folds"]
     runs = pd.DataFrame(rows, columns=columns).sort_values("started", ascending=False)
     unfinished = ~runs["status"].isin(["finished", "running"])          # failed, cancelled, stopped: at the end
     return pd.concat([runs[~unfinished], runs[unfinished]])

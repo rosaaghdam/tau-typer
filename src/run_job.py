@@ -3,9 +3,11 @@
 Started by the app (src/app_runs.py, start_run), or by hand from the project folder:
     python -m src.run_job results/app_runs/<run name>
 Reads settings.yaml + zscores.csv from the folder; pySuStaIn writes its files there.
-At the end writes status.txt: "finished", or "failed" (the error is then at the end of log.txt).
+At the end writes status.txt: "finished", or "failed" (the error is then at the end of log.txt), and
+run_time.txt: how many seconds the run took.
 """
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -31,9 +33,12 @@ def main(folder):
 
 if __name__ == "__main__":
     run_folder = Path(sys.argv[1])
+    start = time.time()
     try:
         main(run_folder)
     except Exception:
         traceback.print_exc()                           # the error goes to log.txt
         (run_folder / "status.txt").write_text("failed\n")
         sys.exit(1)
+    finally:
+        (run_folder / "run_time.txt").write_text(f"{time.time() - start:.0f}\n")   # seconds, shown in tab 3

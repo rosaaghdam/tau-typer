@@ -22,14 +22,19 @@ def plot_pvd(result, Z_vals, regions, subtype_titles, save_path, stage_interval=
     save_path is given without ".png" (None = do not save).
     subtype_order: which of pySuStaIn's subtypes to draw first, second, ... (None = pySuStaIn's choice).
     stage_interval: a stage number every ... stages (2: 1, 3, 5, ...). legend: the colour legend on top.
-    Each title gets pySuStaIn's f and n, as pySuStaIn writes them: f = the subtype's share of all people
-    (mean over the MCMC samples), n = f x number of people.
+    Each title gets pySuStaIn's f and n, as pySuStaIn writes them: f = the subtype's share of ALL people
+    (mean over the MCMC samples; S0 people are shared out over the subtypes too), n = f x number of people.
+    tau+ = people with stage > 0 assigned to the subtype - the number in the app's tables and other figures.
     """
     k = len(subtype_titles)
     shares = np.mean(result["samples_f"], axis=1)                     # pySuStaIn's own numbers
-    order = np.argsort(shares)[::-1] if subtype_order is None else subtype_order
+    by_f = np.argsort(shares)[::-1]                                   # pySuStaIn's numbering of ml_subtype
+    order = by_f if subtype_order is None else subtype_order
     n_people = len(result["ml_subtype"])
-    subtype_titles = [f"{title} (f={shares[i]:.2f}, n={round(shares[i] * n_people)})"
+    tau = result["ml_stage"].ravel() > 0
+    tau_counts = np.bincount(result["ml_subtype"].ravel()[tau].astype(int), minlength=k)
+    tau_of = {by_f[j]: tau_counts[j] for j in range(k)}               # by the subtype's number in samples_f
+    subtype_titles = [f"{title} (f={shares[i]:.2f}, n={round(shares[i] * n_people)}, tau+ {tau_of[i]})"
                       for title, i in zip(subtype_titles, order)]
     n_rows, n_cols = (1, k) if k < 3 else (2, int(np.ceil(k / 2)))     # pySuStaIn's own grid (up to 6)
     n_events = int((Z_vals > 0).sum())
