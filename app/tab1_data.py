@@ -27,12 +27,18 @@ GROUP_COLOURS = "Colours (hex codes, in legend order; empty = automatic)"
 panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
              ui.layout_sidebar(
                  ui.sidebar(
-                     ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
-                     ui.download_link("download_sample", "Sample Data"),
-                     ui.p(f"Data is downloaded with {SAMPLE_SUMMARY}.",
-                          class_="text-muted small"),
-                     ui.output_ui("column_matching"),           # filled in after an upload
-                     ui.output_ui("disease_choice"),
+                     ui.accordion(                               # folding sections, as in tabs 2 and 3
+                         ui.accordion_panel("Data",
+                             ui.input_file("data_file", "Upload tau-PET data (CSV)", accept=[".csv"]),
+                             ui.download_link("download_sample", "Sample Data"),
+                             ui.p(f"Data is downloaded with {SAMPLE_SUMMARY}.", class_="text-muted small")),
+                         ui.accordion_panel("Match the columns",
+                             ui.output_ui("column_matching")),   # filled in after an upload
+                         ui.accordion_panel("Disease-related columns",
+                             ui.output_ui("disease_choice")),
+                         ui.accordion_panel("Inclusion rule",
+                             ui.output_ui("inclusion_rule_ui")),
+                         open=["Data", "Match the columns"], multiple=True),
                      width=320, open="always"),          # always visible, like CMiNet
                  ui.navset_tab(
                      ui.nav_panel("Data Head", ui.output_ui("data_status"),
@@ -132,8 +138,7 @@ def server(input, output, session, shared):
                                       "saved with it. Upload the same file above to see them here.",
                                       class_="text-muted small"),
                                  ui.div(regions, class_="d-none"))          # kept (empty) for the other steps
-        return ui.TagList(ui.hr(), ui.h6("Match the columns"), *selects, regions, ui.hr(),
-                          ui.output_ui("inclusion_rule_ui"))
+        return ui.TagList(*selects, regions)
 
     def disease_candidates():
         """Columns that can be marked as disease-related: the other columns except diagnosis and amyloid
@@ -144,7 +149,8 @@ def server(input, output, session, shared):
     @render.ui
     def disease_choice():
         """Which columns measure the disease itself (cognition, biomarkers, ...). Pre-filled by name."""
-        req(uploaded_data() is not None)
+        if uploaded_data() is None:
+            return ui.p("Upload a file first.", class_="text-muted small")
         columns = disease_candidates()
         with reactive.isolate():
             chosen = disease_columns()
@@ -185,13 +191,13 @@ def server(input, output, session, shared):
     @render.ui
     def inclusion_rule_ui():
         """The inclusion-rule checkbox - only when Age, Diagnosis and Amyloid columns are chosen."""
+        if uploaded_data() is None:
+            return ui.p("Upload a file first.", class_="text-muted small")
         missing = missing_roles(RULE_ROLES)
-        title = ui.h6("Filtering rule")
         if missing:
-            return ui.TagList(title, ui.p(f"Inclusion rule not available: it needs {', '.join(missing)}.",
-                                          class_="text-muted small"))
-        return ui.TagList(title, ui.input_checkbox("apply_rule", "Apply the inclusion rule "
-                                                   "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False),
+            return ui.p(f"Inclusion rule not available: it needs {', '.join(missing)}.", class_="text-muted small")
+        return ui.TagList(ui.input_checkbox("apply_rule", "Apply the inclusion rule "
+                                            "(CN/SCD older than 40, or MCI/AD amyloid-positive)", value=False),
                           ui.output_ui("rule_note"))
 
     @render.ui
