@@ -55,34 +55,26 @@ def server(input, output, session, shared):
         return step_status("Ready to download", "done")
 
     def ticked(items):
-        """Titles of the items whose "Include in report" box is ticked (boxes not drawn yet are skipped)."""
-        titles = []
-        for item_id, (title, _) in items.items():
-            try:
-                if input[f"{item_id}_report"]():
-                    titles.append(title)
-            except Exception:
-                continue
-        return titles
+        """Titles of the items that go into the report."""
+        return [title for title, _, in_report in items.values() if in_report]
 
     @render.ui
     def report_contents():
-        """What the reports will hold: the figures and tables ticked 'Include in report' in the tabs."""
+        """What the reports will hold."""
         figures, tables = ticked(report_items["figures"]), ticked(report_items["tables"])
         return ui.TagList(
             ui.h6("In the report"),
             ui.p(f"{len(figures)} figure(s): {', '.join(figures) or 'none'}.", class_="small mb-1"),
             ui.p(f"{len(tables)} table(s): {', '.join(tables) or 'none'}.", class_="small mb-1"),
-            ui.p("Tick or untick 'Include in report' under each figure or table to change this. Each figure "
-                 "is drawn as it is on its page (colours, chosen subtype, person, ...).",
-                 class_="text-muted small"))
+            ui.p("Each figure is drawn as it is on its page (colours, chosen subtype, ...). Every figure and "
+                 "table can also be saved on its own with the buttons under it.", class_="text-muted small"))
 
     def report_parts():
         """(report inputs, chosen figures, chosen tables) - the figures are drawn here, in the app."""
-        figures = chosen_for_report(input, report_items["figures"])
+        figures = chosen_for_report(report_items["figures"])
         for fig in figures.values():
             plt.close(fig)                              # still usable for the report, but pyplot lets go of it
-        return report_inputs(), figures, chosen_for_report(input, report_items["tables"])
+        return report_inputs(), figures, chosen_for_report(report_items["tables"])
 
     @render.ui
     def report_summary():

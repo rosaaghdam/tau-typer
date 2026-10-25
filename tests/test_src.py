@@ -67,8 +67,8 @@ def test_region_trend_tests_find_an_interaction():
     sex = np.where(np.arange(200) % 2 == 0, "F", "M")
     region = 1 + np.where(sex == "F", 0.02 * age, 0) + rng.normal(0, 0.05, 200)
     data = pd.DataFrame({"age": age, "sex": sex, "R1": region})
-    table = region_trend_tests(data, ["R1"], "age", data["sex"])
-    assert table.loc["R1", "p: x by group (interaction)"] < 0.001
+    table = region_trend_tests(data, ["R1"], "age", data["sex"], "sex")
+    assert table.loc["R1", "p: age x sex (interaction)"] < 0.001
 
 
 def test_covariate_interaction_is_tested_and_kept_with_its_own_terms():

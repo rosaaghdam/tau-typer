@@ -21,17 +21,16 @@ import tab5_analysis
 import tab6_report
 import tab7_simulation
 import tab_about
+import tab_eda
 from common import CONFIG, RUNS_FOLDER
 
-TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab6_report, tab7_simulation,
-        tab_about]
+TABS = [tab1_data, tab2_normalization, tab3_run, tab4_figures, tab5_analysis, tab6_report, tab_eda,
+        tab7_simulation, tab_about]
 
-# Atkinson Hyperlegible: a typeface made for legibility (the browser loads it from Google Fonts;
-# without internet the system font is used)
-FONT = "https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap"
+# One font everywhere: Arial (or Helvetica) - set in tau_typer.css for the app and in src/tau_typer.mplstyle
+# for the figures, so text in the app and in its figures looks the same
 app_ui = ui.page_navbar(*[tab.panel for tab in TABS], title="Tau-typer", id="main_nav", theme=ui.Theme("shiny"),
-                        header=ui.head_content(ui.tags.link(rel="stylesheet", href=FONT),
-                                               ui.include_css(APP_FOLDER / "tau_typer.css")))
+                        header=ui.head_content(ui.include_css(APP_FOLDER / "tau_typer.css")))
 
 
 def server(input, output, session):

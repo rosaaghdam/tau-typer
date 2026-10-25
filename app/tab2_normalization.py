@@ -75,7 +75,7 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                      ui.nav_panel("GMM fit per region", figure_card("GMM fit of one region", DATA_HELP["gmm"],
                                                                     ui.output_ui("gmm_region_choice"),
                                                                     ui.output_plot("gmm_fit_plot", height="420px"),
-                                                                    figure_tools("gmm", in_report=False))),
+                                                                    figure_tools("gmm"))),
                      ui.nav_panel("Z-scores",
                                   ui.p("z = (value - normal mean) / normal SD. First 20 people:",
                                        class_="text-muted small"),
@@ -88,7 +88,7 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                                                                   choices={"": "(no split)"}),
                                                   col_widths=[4, 4]),
                                               ui.output_plot("z_hist", height="560px"),
-                                              figure_tools("zeda", "", in_report=False, colors_label="Colours (hex codes, in legend order; empty = automatic)"),
+                                              figure_tools("zeda", "", colors_label="Colours (hex codes, in legend order; empty = automatic)"),
                                               ui.output_ui("zeda_tests_view"))),
                      ui.nav_panel("Events",
                                   ui.p("Number of people reaching each cut-point in each region.",
@@ -427,7 +427,7 @@ def server(input, output, session, shared):
     def make_zeda_tests():
         x, groups, _ = zeda_choice()
         req(x is not None)
-        return region_trend_tests(z_with_columns(), list(normalized()["z"].columns), x, groups)
+        return region_trend_tests(z_with_columns(), list(normalized()["z"].columns), x, groups, input.zeda_split())
 
     add_figure(report_items, "gmm", "GMM fit of one region", make_gmm)
     add_figure(report_items, "zeda", "Z-scores", make_z_figure)
@@ -704,12 +704,22 @@ def server(input, output, session, shared):
         return ui.TagList(ui.h6("Covariate adjustment per region: slope (p-value)"),
                           ui.p("Slope = change in SUVR per unit of the covariate in the healthy reference group "
                                "(per year of age, per year of education, or vs the first category). An interaction (age x sex=M) = "
-                               "how much the age slope of men differs from that of women. "
-                               "Bold with ✓ = removed from everyone's SUVR.", class_="text-muted small"),
+                               "how much the age slope of men differs from that of women.",
+                          class_="text-muted small"),
                           ui.output_data_frame("slopes_table"),
+                          ui.output_ui("slopes_note"),
                           ui.download_button("download_slopes", "Download covariate adjustment (CSV)"),
                           ui.p("Keep this file too: new people must be adjusted with the same slopes.",
                                class_="text-muted small"))
+
+    @render.ui
+    def slopes_note():
+        """What * means, with this normalization's own settings."""
+        adjustment = req(normalized()["adjustment"])
+        rule = (f"p < {adjustment['alpha']:g}" if adjustment["only_significant"] else
+                "all chosen covariates, whatever their p-value")
+        return ui.p(f"* = removed from everyone's SUVR: {rule}, tested in {adjustment['n_reference']} people of the "
+                    f"healthy reference group ({adjustment['group']}).", class_="small mt-1")
 
     def adjustment_table():
         """For the download: per region and covariate the estimated slope, its p-value and removed (yes/no)."""
@@ -723,14 +733,14 @@ def server(input, output, session, shared):
 
     @render.data_frame
     def slopes_table():
-        """One column per covariate: 'slope (p = ...)', bold with ✓ where it was removed."""
+        """One column per covariate: 'slope (p = ...)', bold with * where it was removed."""
         adjustment = req(normalized()["adjustment"])        # only after an adjusted normalization
         removed = adjustment["slopes"] != 0
         shown = pd.DataFrame(index=adjustment["p_values"].index)
         styles = []
         for j, col in enumerate(adjustment["p_values"].columns):
             shown[col] = [f"{adjustment['estimates'].loc[r, col]:+.4f} (p = {adjustment['p_values'].loc[r, col]:.2g})"
-                          + (" ✓ removed" if removed.loc[r, col] else "") for r in shown.index]
+                          + (" *" if removed.loc[r, col] else "") for r in shown.index]
             rows = [i for i, region in enumerate(shown.index) if removed.loc[region, col]]
             if rows:
                 styles.append({"rows": rows, "cols": [1 + j], "style": {"font-weight": "bold",

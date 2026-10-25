@@ -299,21 +299,17 @@ def plot_gmm_fit(values, gmm, region, normal_mean, normal_sd, z_events):
     return fig
 
 
-def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds", shape="squares"):
+def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds"):
     """Average z-score per region in each subtype, tau+ people only (paper Fig. 1a/c, as a heat map).
 
-    Columns = subtypes (n = number of tau+ people), rows = regions. shape "squares": square cells with the
-    average z written in them; "circles": one circle per cell, bigger and darker = more tau.
+    Columns = subtypes (n = number of tau+ people), rows = regions; square cells with the average z in them.
     """
     tau_pos = table["ml_stage"] > 0
     means = z[tau_pos].groupby(table.loc[tau_pos, "ml_subtype"])[regions].mean().T   # regions x subtypes
     counts = table.loc[tau_pos, "ml_subtype"].value_counts()
     cell = 0.72                                            # inches: square cells
     fig, ax = plt.subplots(figsize=(cell * len(means.columns) + 2.6, cell * len(regions) + 1.2))
-    if shape == "circles":
-        image = circle_cells(ax, means.to_numpy(), cmap, vmax)
-    else:
-        image = heat_cells(ax, means.to_numpy(), cmap, vmax, aspect="equal")
+    image = heat_cells(ax, means.to_numpy(), cmap, vmax, aspect="equal")
     ax.xaxis.tick_top()
     ax.set_xticks(range(len(means.columns)), [f"{subtype_titles[k - 1]}\nn = {counts[k]}" for k in means.columns],
                   rotation=0)
@@ -321,25 +317,6 @@ def plot_subtype_patterns(z, table, regions, subtype_titles, vmax=12, cmap="Reds
     bar = fig.colorbar(image, ax=ax, fraction=0.05, pad=0.03, shrink=0.7)
     style_colorbar(bar, "average z-score (tau+ people)")
     return fig
-
-
-def circle_cells(ax, values, cmap, vmax):
-    """One circle per cell (like the correlation figure): bigger and darker = higher value; a light grid
-    marks the cells. Returns a colour scale for the colour bar."""
-    rows, cols = values.shape
-    colours = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
-    for (row, col), value in np.ndenumerate(values):
-        ax.add_patch(plt.Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, edgecolor="#D9E2EC", lw=0.8))
-        if not np.isnan(value):
-            share = min(max(value / vmax, 0), 1)
-            ax.add_patch(plt.Circle((col, row), 0.08 + 0.37 * np.sqrt(share), color=colours(share)))
-    ax.set_xlim(-0.5, cols - 0.5)
-    ax.set_ylim(rows - 0.5, -0.5)
-    ax.set_aspect("equal")
-    ax.tick_params(length=0)
-    for side in ax.spines.values():
-        side.set_visible(False)
-    return plt.cm.ScalarMappable(norm=plt.Normalize(0, vmax), cmap=colours)
 
 
 # Subtype colours: teal, pink, brown, olive (+ raspberry, green, grey-brown, grey for 5-8 subtypes).
@@ -428,8 +405,9 @@ def plot_subtype_probabilities(prob_subtype, table, subtype_titles, seed=0, colo
 
 
 def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None, colors=None):
-    """Left: how many tau+ people are at each SuStaIn stage, per subtype (paper Ext. Fig. 2); stage 0
-    (S0) is only counted in the legend, so its large bar does not squash the others.
+    """Top: % of all people at each SuStaIn stage, per subtype (paper Ext. Fig. 2), stage 0 (S0, no abnormal
+    tau) included. The S0 bar is usually far higher than the others: then it is cut at the top of the axis
+    and its real % is written on it, so the other stages stay readable.
     Middle: how sure SuStaIn is about each person's stage (table column stage_sd) against the most likely
     stage (high where events overlap - the pale squares of the PVD).
     Right: the same uncertainty per subtype. Dashed red line = sd_limit (above = uncertain stage).
@@ -442,17 +420,22 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None,
     grid = fig.add_gridspec(2, 2, width_ratios=[3, 1])
     ax1, ax2, ax3 = fig.add_subplot(grid[0, :]), fig.add_subplot(grid[1, 0]), fig.add_subplot(grid[1, 1])
     bottom = np.zeros(len(stages))
-    s0 = (table["ml_stage"] == 0).sum()
+    everyone = len(table)
+    s0 = 100 * (table["ml_stage"] == 0).sum() / everyone             # % of all people at stage 0
     for n, title in enumerate(subtype_titles, start=1):
         counts = table.loc[(table["ml_subtype"] == n) & (table["ml_stage"] > 0), "ml_stage"]
-        heights = counts.value_counts().reindex(stages, fill_value=0).to_numpy()
-        ax1.bar(stages, heights, bottom=bottom, color=colors[n - 1], label=f"{title} (n={len(counts)})")
+        heights = 100 * counts.value_counts().reindex(stages, fill_value=0).to_numpy() / everyone
+        ax1.bar(stages, heights, bottom=bottom, color=colors[n - 1],
+                label=f"{title}: {100 * len(counts) / everyone:.0f}% (n={len(counts)})")
         bottom += heights
-    ax1.set_xlabel("most likely SuStaIn stage")
-    ax1.set_ylabel("people (tau+)")
-    ax1.set_xlim(0.4, stages[-1] + 0.6)
-    ax1.bar(0, 0, color="white", label=f"S0 (no abnormal tau): {s0} ({100 * s0 / len(table):.0f}%), not shown")
-    ax1.legend(fontsize=8)
+    ax1.bar(0, s0, color="#BCCCDC", label=f"S0 (no abnormal tau): {s0:.0f}% (n={(table['ml_stage'] == 0).sum()})")
+    top = 1.35 * max(bottom[1:].max(), 1)                              # room for the tau+ stages
+    if s0 > top:                                                       # cut the S0 bar, say its real height
+        ax1.text(0, top * 0.97, f"{s0:.0f}%", ha="center", va="top", fontsize=8, fontweight="bold")
+    ax1.set_ylim(0, top if s0 > top else None)
+    ax1.set_xlabel("most likely SuStaIn stage (S0 = stage 0)")
+    ax1.set_ylabel("% of all people")
+    ax1.legend()
 
     tau = table[table["ml_stage"] > 0]
     if subtype is None:
@@ -467,9 +450,10 @@ def plot_stages(table, subtype_titles, sd_limit=None, person=None, subtype=None,
                     edgecolors="black", linewidths=2, label=str(person))
     ax2.set_xlabel("most likely SuStaIn stage")
     ax2.set_ylabel("uncertainty (SD of stage, in stages)")
-    for ax in (ax1, ax2):                                 # every stage number on the x-axis
-        ax.set_xticks(stages[1:], stages[1:], fontsize=7)
-        ax.set_xlim(0.4, stages[-1] + 0.6)
+    ax1.set_xticks(stages, ["S0"] + [str(v) for v in stages[1:]], fontsize=7)   # every stage number
+    ax1.set_xlim(-0.6, stages[-1] + 0.6)
+    ax2.set_xticks(stages[1:], stages[1:], fontsize=7)
+    ax2.set_xlim(0.4, stages[-1] + 0.6)
 
     ax3.boxplot([tau.loc[tau["ml_subtype"] == n, "stage_sd"] for n in range(1, k + 1)], widths=0.6,
                 patch_artist=True, medianprops={"color": "white"})
@@ -524,48 +508,79 @@ def plot_model_choice(likelihoods, cross_validation=None, traces=None):
 
 
 def plot_subtype_tree(subtypes_by_k, colors=None):
-    """How people move between subtypes when one more subtype is allowed (paper Ext. Fig. 1f).
+    """How people move between subtypes when one more subtype is allowed (paper Ext. Fig. 1f), drawn to
+    show how stable the subtypes are.
 
     subtypes_by_k: {k: Series of subtype numbers per person (0 = S0)}, same people for every k.
-    Each column = one model; boxes = subtypes (height = people); bands = people moving from a subtype
-    in model k to a subtype in model k+1, labelled with the % of the subtype that goes there.
-    S0 (no tau) is left out.
+    Each column = one model; boxes = subtypes (height = tau+ people); ribbons = people going from a subtype
+    of model k to one of model k+1. Each subtype is placed level with the subtype it mostly comes from, so a
+    subtype that stays together runs straight across. The main ribbon of each subtype (where most of its
+    people go) is drawn strong and labelled with n and %; the others are light. Above each step: the % of
+    people who follow their subtype's main ribbon. S0 (no tau) is left out.
     """
     ks = sorted(subtypes_by_k)
-    fig, ax = plt.subplots(figsize=(2.6 * len(ks) + 1, 5.5))
+    fig, ax = plt.subplots(figsize=(2.8 * len(ks) + 1, 5.8))
     n_people = max((s > 0).sum() for s in subtypes_by_k.values())
-    gap = 0.03 * n_people
-    tops = {}                                             # (k, subtype) -> y of the box top
-    for x, k in enumerate(ks):
-        counts = subtypes_by_k[k][subtypes_by_k[k] > 0].value_counts().sort_index()
-        y = 0
-        for subtype, count in counts.items():
-            ax.add_patch(plt.Rectangle((x - 0.13, y), 0.26, count, color=subtype_colors(k, colors)[subtype - 1]))
-            ax.text(x, y + count / 2, f"{subtype}\n{count} ({100 * count / counts.sum():.0f}%)",
-                    ha="center", va="center", fontsize=8, color="white")
-            tops[(k, subtype)] = y
-            y += count + gap
-    for x, (k1, k2) in enumerate(zip(ks[:-1], ks[1:])):
+    gap, width = 0.04 * n_people, 0.22
+    flows_of = {}
+    order = {ks[0]: sorted(subtypes_by_k[ks[0]][subtypes_by_k[ks[0]] > 0].unique())}
+    for k1, k2 in zip(ks[:-1], ks[1:]):                   # each new subtype next to where its people come from
         both = (subtypes_by_k[k1] > 0) & (subtypes_by_k[k2] > 0)
         flows = pd.crosstab(subtypes_by_k[k1][both], subtypes_by_k[k2][both])
-        left = {s: tops[(k1, s)] for s in flows.index}
-        right = {s: tops[(k2, s)] for s in flows.columns}
-        for a in flows.index:
-            for b in flows.columns:
-                n = flows.loc[a, b]
-                if n == 0:
-                    continue
-                ax.fill_between([x + 0.13, x + 0.87], [left[a], right[b]], [left[a] + n, right[b] + n],
-                                color=subtype_colors(k1, colors)[a - 1], alpha=0.35, lw=0)
-                # % of subtype a (model k1) that goes to subtype b (model k2), at the start of the band
-                ax.text(x + 0.15, left[a] + n / 2, f"→ {b}: {100 * n / flows.loc[a].sum():.0f}%",
-                        ha="left", va="center", fontsize=8)
-                left[a] += n
-                right[b] += n
-    ax.set_xticks(range(len(ks)), [f"{k} subtype(s)" for k in ks])
+        flows_of[(k1, k2)] = flows
+        rank = {a: i for i, a in enumerate(order[k1])}
+        weight = {b: (flows[b] * flows.index.map(rank)).sum() / max(flows[b].sum(), 1) for b in flows.columns}
+        others = [b for b in subtypes_by_k[k2][subtypes_by_k[k2] > 0].unique() if b not in weight]
+        order[k2] = sorted(weight, key=weight.get) + sorted(others)
+    bottoms = {}                                           # (k, subtype) -> y of the box bottom
+    for x, k in enumerate(ks):
+        counts = subtypes_by_k[k][subtypes_by_k[k] > 0].value_counts()
+        y = 0
+        for subtype in order[k]:
+            count = counts[subtype]
+            ax.add_patch(plt.Rectangle((x - width / 2, y), width, count, color=subtype_colors(k, colors)[subtype - 1],
+                                       zorder=3))
+            ax.text(x, y + count / 2, f"{subtype}\n{count}", ha="center", va="center", fontsize=8, color="white",
+                    fontweight="bold", zorder=4)
+            bottoms[(k, subtype)] = y
+            y += count + gap
+    t = np.linspace(0, 1, 60)
+    ease = (1 - np.cos(np.pi * t)) / 2                     # smooth S-shaped ribbons
+    for x, (k1, k2) in enumerate(zip(ks[:-1], ks[1:])):
+        flows = flows_of[(k1, k2)]
+        out = {a: bottoms[(k1, a)] for a in flows.index}   # where the next ribbon leaves / arrives
+        into = {b: bottoms[(k2, b)] for b in flows.columns}
+        main = flows.idxmax(axis=1)                        # where most people of each subtype go
+        followed = sum(flows.loc[a, main[a]] for a in flows.index) / max(flows.values.sum(), 1)
+        ax.text(x + 0.5, -0.06 * n_people, f"{100 * followed:.0f}% follow\ntheir main ribbon", ha="center",
+                va="top", fontsize=8, color="#52606D")
+        rank_into = {b: i for i, b in enumerate(order[k2])}
+        rank_out = {a: i for i, a in enumerate(order[k1])}
+        pairs = [(a, b) for a in order[k1] if a in flows.index
+                 for b in sorted(flows.columns, key=rank_into.get) if flows.loc[a, b] > 0]
+        arrivals = {}                                      # ribbons into a box ordered by where they come from
+        for a, b in sorted(pairs, key=lambda p: (rank_into[p[1]], rank_out[p[0]])):
+            arrivals[(a, b)] = into[b]
+            into[b] += flows.loc[a, b]
+        xs = x + width / 2 + (1 - width) * t
+        for a, b in pairs:
+            n = flows.loc[a, b]
+            low = out[a] + (arrivals[(a, b)] - out[a]) * ease
+            strong = b == main[a]
+            ax.fill_between(xs, low, low + n, color=subtype_colors(k1, colors)[a - 1], lw=0,
+                            alpha=0.55 if strong else 0.15, zorder=2 if strong else 1)
+            if strong:                                     # n and % of the subtype on its main ribbon
+                ax.text(x + 0.5, (out[a] + arrivals[(a, b)]) / 2 + n / 2,
+                        f"{n} ({100 * n / flows.loc[a].sum():.0f}%)", ha="center", va="center", fontsize=8,
+                        zorder=5, bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "none", "alpha": 0.8})
+            out[a] += n
+    ax.set_xticks(range(len(ks)), [f"{k} subtype{'s' if k > 1 else ''}" for k in ks])
+    ax.tick_params(axis="x", length=0)
     ax.set_xlim(-0.5, len(ks) - 0.5)
-    ax.set_ylim(0, None)
+    ax.set_ylim(-0.16 * n_people, None)
     ax.set_yticks([])
+    for side in ax.spines.values():
+        side.set_visible(False)
     ax.set_ylabel("tau+ people")
     fig.tight_layout()
     return fig

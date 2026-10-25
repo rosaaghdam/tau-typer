@@ -37,7 +37,7 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                                   ui.output_data_frame("qc_table"),
                                   figure_card("Missing values", DATA_HELP["missing"],
                                               ui.output_image("missing_plot", height="auto"),
-                                              figure_tools("missing", in_report=False)),
+                                              figure_tools("missing")),
                                   ui.h6("Inclusion rule", class_="mt-4"),
                                   ui.output_ui("inclusion_status"),
                                   ui.output_data_frame("inclusion_table")),
@@ -48,7 +48,7 @@ panel = ui.nav_panel(step_title(1, "Data & QC", "step1_status"),
                              ui.input_select("eda_split", "Split by (colour)", choices={"": "(no split)"}),
                              col_widths=[4, 4]),
                          ui.output_plot("region_hist", height="560px"),
-                         figure_tools("eda", "", in_report=False, colors_label=GROUP_COLOURS),
+                         figure_tools("eda", "", colors_label=GROUP_COLOURS),
                          ui.output_ui("eda_tests_view"))),
                      ui.nav_panel("Demographics",
                                   ui.p("Everyone, and per diagnosis group.", class_="text-muted small"),
@@ -371,19 +371,19 @@ def server(input, output, session, shared):
             cards.append(figure_card(
                 "Disease-related columns by diagnosis", DATA_HELP["disease"],
                 *([ui.output_plot("disease_boxplots", height=plot_height(len(parts["disease numbers"]))),
-                   figure_tools("disease_boxplots", "", in_report=False, colors_label=GROUP_COLOURS)]
+                   figure_tools("disease_boxplots", "", colors_label=GROUP_COLOURS)]
                   if parts["disease numbers"] else []),
                 *([ui.output_plot("disease_bars", height=plot_height(len(parts["disease categories"]))),
-                   figure_tools("disease_bars", "", in_report=False, colors_label=GROUP_COLOURS)]
+                   figure_tools("disease_bars", "", colors_label=GROUP_COLOURS)]
                   if parts["disease categories"] else [])))
         if parts["numbers"]:
             cards.append(figure_card("Other number columns by diagnosis", DATA_HELP["covariates"],
                                      ui.output_plot("covariate_boxplots", height=plot_height(len(parts["numbers"]))),
-                                     figure_tools("boxplots", "", in_report=False, colors_label=GROUP_COLOURS)))
+                                     figure_tools("boxplots", "", colors_label=GROUP_COLOURS)))
         if parts["categories"]:
             cards.append(figure_card("Other category columns by diagnosis", DATA_HELP["covariates"],
                                      ui.output_plot("category_bars", height=plot_height(len(parts["categories"]))),
-                                     figure_tools("bars", "", in_report=False, colors_label=GROUP_COLOURS)))
+                                     figure_tools("bars", "", colors_label=GROUP_COLOURS)))
         return ui.TagList(
             ui.h6("All other columns", class_="mt-4"),
             ui.p("Numbers: mean (SD). Categories: % of each value (the 4 most common).", class_="text-muted small"),
@@ -392,7 +392,7 @@ def server(input, output, session, shared):
             *cards,
             figure_card("Correlations between number columns (and the mean of the regions)", DATA_HELP["correlations"],
                         ui.output_image("correlation_plot", height="auto"),
-                        figure_tools("correlations", "RdBu", in_report=False,
+                        figure_tools("correlations", "RdBu",
                                      colors_label="Colours: a map name (RdBu, PuOr, ...) or hex codes from -1 to +1")))
 
     def make_covariate_table():
@@ -548,9 +548,9 @@ def server(input, output, session, shared):
         return ui.TagList(
             ui.h6("Tests per region", class_="mt-3"),
             ui.p(f"Linear model: {value} ~ {x}" + (f" x {split}" if split else "") +
-                 f". 'p: x' = does it change with {x}" + (
-                     "; 'p: group' = do the groups differ; 'p: x by group' = does the trend differ between the "
-                     "groups (interaction)" if split else "") +
+                 f". 'p: {x}' = does it change with {x}" + (
+                     f"; 'p: {split}' = do the {split} groups differ; 'p: {x} x {split}' = does the trend with {x} "
+                     f"differ between the {split} groups (interaction)" if split else "") +
                  ". p-values are not corrected for testing many regions.", class_="text-muted small"),
             ui.output_data_frame(output_id),
             table_tools(output_id))
@@ -567,7 +567,7 @@ def server(input, output, session, shared):
     def make_eda_tests():
         x, groups, _ = eda_choice()
         req(x is not None)
-        return region_trend_tests(analysis_data(), list(input.col_regions()), x, groups)
+        return region_trend_tests(analysis_data(), list(input.col_regions()), x, groups, input.eda_split())
 
     @render.data_frame
     def eda_tests():
@@ -635,7 +635,7 @@ def server(input, output, session, shared):
         rule = " (rule applied)" if included()[1] is not None else ""
         return step_status(f"{len(analysis_data())} people{rule}", "done")
 
-    # Save and "Include in report" for the figures and tables of this tab
+    # Save buttons (and place in the report) for the figures and tables of this tab
     add_figure(report_items, "missing", "Missing values", make_missing)
     add_table(report_items, "demographics", "Demographics", lambda: make_demographics().set_index("Group"))
     add_figure(report_items, "eda", "Regional values", make_region_figure)
@@ -651,4 +651,4 @@ def server(input, output, session, shared):
     shared.update(analysis_data=analysis_data, chosen_columns=chosen_columns, missing_roles=missing_roles,
                   followup_data=followup_data, cohort_labels=cohort_labels, disease_columns=disease_columns,
                   other_columns=other_columns, split_groups=split_groups, tests_grid=tests_grid,
-                  tests_view=tests_view, uploaded_data=uploaded_data)
+                  tests_view=tests_view, uploaded_data=uploaded_data, diagnosis_groups=diagnosis_groups)

@@ -320,3 +320,23 @@ def test_upload_summary_appears_after_the_upload():
         for _ in range(2):
             ts.set_inputs(col_cohort="site")
         assert "400 samples, 10 regions, 3 sites, 16 variables" in str(ts.get_output("upload_summary").value)
+
+
+def test_eda_report_and_its_pdf():
+    """EDA report: every part is drawn for the sample data (3 sites) and the toy data, and the PDF is made."""
+    from conftest import ROOT
+    from src.eda import build_eda_pdf, eda_sections
+    import pandas as pd
+    for path in [ROOT / "data" / "toy" / "sim_tau_400.csv", None]:
+        with test_server(APP, timeout_secs=300) as ts:
+            ts.set_inputs(data_file=toy_upload(path) if path else toy_upload(), **DATA_INPUTS, **NORM_INPUTS)
+            for _ in range(2):
+                ts.set_inputs(col_cohort="site" if path else "")
+            assert errors(ts) == {}
+            report = str(ts.get_output("eda_report").value)
+            assert "Missing values" in report and "Correlations" in report
+            assert ("Differences between site groups" in report) == bool(path)
+    data = pd.read_csv(ROOT / "data" / "toy" / "sim_tau_400.csv")
+    roles = {"id": "subject_id", "diagnosis": "diagnosis", "cohort": "site"}
+    sections = eda_sections(data, roles, REGIONS)
+    assert build_eda_pdf(sections, "EDA").startswith(b"%PDF")

@@ -48,10 +48,10 @@ panel = ui.nav_panel(step_title(3, "Run SuStaIn", "step3_status"),
                                   ui.output_ui("run_progress_view")),
                      ui.nav_panel("Model choice", ui.output_ui("model_choice_status"),
                                   ui.output_data_frame("model_likelihood_table"),
-                                  table_tools("models", in_report=True),
+                                  table_tools("models"),
                                   figure_card("How many subtypes?", DATA_HELP["model"],
                                               ui.output_plot("model_choice_plot", height="330px"),
-                                              figure_tools("model", in_report=False)),
+                                              figure_tools("model")),
                                   ui.output_ui("cv_folds_view")),
                      ui.nav_panel("Quick result", ui.output_ui("quick_result_status"),
                                   ui.input_select("result_model", "Model to look at", choices=[]),
@@ -298,7 +298,7 @@ def server(input, output, session, shared):
     def model_choice_plot():
         return make_model_plot()
 
-    add_table(shared["report_items"], "models", "Fit per number of subtypes", make_models_table)
+    add_table(shared["report_items"], "models", "Fit per number of subtypes", make_models_table, in_report=True)
     add_figure(shared["report_items"], "model", "Fit and MCMC per number of subtypes", make_model_plot)
 
     @render.ui

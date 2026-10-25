@@ -11,6 +11,7 @@ from shiny.types import SafeException
 from src.figures import (SUBTYPE_COLORS, colour_list, colour_map, plot_model_choice, plot_person, plot_pvd,
                          plot_stage_progression, plot_stages, plot_subtype_patterns, plot_subtype_probabilities,
                          plot_subtype_tree)
+from src.brain import lobe_of, plot_brain_map
 from src.results import load_sustain_result, model_likelihoods, pvd_order, size_order, subject_table
 from src.sustain_model import make_z_vals
 from common import (CONFIG, FIG_HELP, add_figure, add_table, as_picture, figure_card, figure_tools, no_run_banner,
@@ -46,15 +47,15 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                                             multiple=True, width="24rem"),
                          ui.output_ui("fig_pvd_more"))),
                      ui.nav_panel("Tau patterns", figure_card("Tau per subtype and stage", FIG_HELP["patterns"],
-                                                              ui.input_radio_buttons(
-                                                                  "patterns_shape", "Cells",
-                                                                  {"squares": "Squares with numbers",
-                                                                   "circles": "Circles"}, inline=True),
                                                               ui.output_image("fig_patterns", height="auto"),
                                                               figure_tools("patterns", "Reds", colors_label=HEAT_COLOURS),
                                                               ui.output_image("fig_progression", height="auto"),
                                                               figure_tools("progression", "Reds",
-                                                                           colors_label=HEAT_COLOURS))),
+                                                                           colors_label=HEAT_COLOURS)),
+                                  figure_card("Tau per subtype on the brain (schematic)", FIG_HELP["brain"],
+                                              ui.output_ui("fig_brain_status"),
+                                              ui.output_image("fig_brain", height="auto"),
+                                              figure_tools("brain", "Reds", colors_label=HEAT_COLOURS))),
                      ui.nav_panel("Subtype probabilities", figure_card("Subtype probabilities", FIG_HELP["probs"],
                                                                        ui.output_plot("fig_probs", height="560px"),
                                                                        figure_tools("probs"))),
@@ -79,7 +80,7 @@ panel = ui.nav_panel(step_title(4, "Figures", "step4_status"),
                      ui.nav_panel("Person", figure_card("One person", FIG_HELP["person"],
                                                         ui.input_selectize("fig_person", "Person", choices=[]),
                                                         ui.output_plot("fig_person_plot", height="420px"),
-                                                        figure_tools("person", in_report=False))))))
+                                                        figure_tools("person"))))))
 
 
 def server(input, output, session, shared):
@@ -187,13 +188,29 @@ def server(input, output, session, shared):
     def make_patterns():
         d = fig_data()
         return plot_subtype_patterns(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12,
-                                     cmap=colour_map(input.patterns_colors(), "Reds"),
-                                     shape=input.patterns_shape() or "squares")
+                                     cmap=colour_map(input.patterns_colors(), "Reds"))
 
     @render.image(delete_file=True)
     def fig_patterns():
         """At its own size, so the cells stay square."""
         return as_picture(make_patterns(), width=None)
+
+    def make_brain():
+        d = fig_data()
+        fig = plot_brain_map(d["z"], d["table"], d["regions"], fig_titles(), input.fig_vmax() or 12,
+                             cmap=colour_map(input.brain_colors(), "Reds"))
+        req(fig is not None)                              # no region name matches a lobe
+        return fig
+
+    @render.ui
+    def fig_brain_status():
+        if not any(lobe_of(r) for r in fig_data()["regions"]):
+            return ui.p("The brain map needs region names with a lobe in them (frontal, parietal, occipital, "
+                        "temporal, MTL / hippocampus / entorhinal), e.g. L_frontal.", class_="text-muted small")
+
+    @render.image(delete_file=True)
+    def fig_brain():
+        return as_picture(make_brain())
 
     def make_progression():
         d = fig_data()
@@ -312,16 +329,17 @@ def server(input, output, session, shared):
     def fig_person_plot():
         return make_person()
 
-    # Save as PNG / PDF and "Include in report", for every figure of this tab (in the report in this order)
+    # Save as PNG / PDF for every figure of this tab; all but One person are in the report (in this order)
     for fig_id, title, make in [("pvd", "Positional variance diagram", make_pvd),
                                 ("patterns", "Tau per subtype", make_patterns),
                                 ("progression", "Tau per subtype and stage group", make_progression),
+                                ("brain", "Tau per subtype on the brain (schematic)", make_brain),
                                 ("probs", "Subtype probabilities", make_probs),
                                 ("stages", "Stages and how sure they are", make_stages),
                                 ("choice", "How many subtypes", make_choice),
                                 ("tree", "Subtype tree", make_tree),
                                 ("person", "One person", make_person)]:
-        add_figure(report_items, fig_id, title, make)
+        add_figure(report_items, fig_id, title, make, in_report=fig_id != "person")
     add_table(report_items, "uncertain", "People with an uncertain stage", uncertain_table)
 
     # what the later tabs use

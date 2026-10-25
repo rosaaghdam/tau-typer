@@ -220,7 +220,7 @@ def covariate_summary(data, columns, group_col=None, groups=None):
     return pd.DataFrame(rows)
 
 
-def region_trend_tests(data, regions, x, groups=None):
+def region_trend_tests(data, regions, x, groups=None, group_name="group"):
     """Per region: does the value change with x, does it differ between the groups, and does the effect of
     x differ between the groups (interaction)? Linear model: value ~ x (+ group + x:group), type-II tests.
     Returns a table of p-values (not corrected for testing many regions) and, for a number x, the slope.
@@ -241,11 +241,11 @@ def region_trend_tests(data, regions, x, groups=None):
         tests = sm.stats.anova_lm(fit, typ=2)["PR(>F)"]
         row = {"people": len(frame)}
         if x_is_number:
-            row["slope per unit of x"] = fit.params["x"]
-        row["p: x"] = tests[x_term]
+            row[f"slope per unit of {x}"] = fit.params["x"]
+        row[f"p: {x}"] = tests[x_term]
         if groups is not None:
-            row["p: group"] = tests["C(g)"]
-            row["p: x by group (interaction)"] = tests[f"{x_term}:C(g)"]
+            row[f"p: {group_name}"] = tests["C(g)"]
+            row[f"p: {x} x {group_name} (interaction)"] = tests[f"{x_term}:C(g)"]
         rows[region] = row
     return pd.DataFrame(rows).T
 

@@ -43,7 +43,7 @@ panel = ui.nav_panel("Simulation check",
                                       colors_label="Colours: a map name (Blues, Greens, ...) or hex codes low to high"),
                          ui.h6("Per true subtype", class_="mt-2"),
                          ui.output_data_frame("sim_subtype_table"),
-                         table_tools("sim_subtypes", in_report=True))),
+                         table_tools("sim_subtypes"))),
                      ui.nav_panel("Stages", figure_card(
                          "True against found stages", SIM_HELP["stages"],
                          ui.output_plot("sim_stage_plot", height="480px"),
@@ -175,7 +175,10 @@ def server(input, output, session, shared):
                                styles=[{"rows": wrong, "cols": [list(rows.columns).index("found = true subtype")],
                                         "style": {"background-color": "#FDE2E1"}}])
 
-    add_figure(report_items, "sim_confusion", "Simulation check: true against found subtypes", make_confusion)
-    add_table(report_items, "sim_subtypes", "Simulation check: per true subtype", make_subtype_table)
-    add_figure(report_items, "sim_stages", "Simulation check: true against found stages", make_stage_plot)
+    add_figure(report_items, "sim_confusion", "Simulation check: true against found subtypes", make_confusion,
+               in_report=True)
+    add_table(report_items, "sim_subtypes", "Simulation check: per true subtype", make_subtype_table,
+              in_report=True)
+    add_figure(report_items, "sim_stages", "Simulation check: true against found stages", make_stage_plot,
+               in_report=True)
     add_table(report_items, "sim_people", "Simulation check: per person", make_people)

@@ -1,6 +1,7 @@
 # One look for every figure of the app and the report (used by src/figures.py)
 font.family: sans-serif
-font.sans-serif: Arial, Helvetica, DejaVu Sans   # the first one installed is used
+font.sans-serif: Arial, Helvetica, DejaVu Sans   # the same font as the app (tau_typer.css)
+pdf.fonttype: 42             # the font is embedded as TrueType in PDFs (editable text)
 font.size: 9                 # one set of sizes for every figure (as in Demographics)
 axes.titlesize: 10
 axes.titleweight: bold

@@ -34,7 +34,7 @@ panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
                      ui.nav_panel("Table 1", figure_card("Table 1: the subtypes compared", AN_HELP["table1"],
                                                          ui.output_ui("an_status"),
                                                          ui.output_data_frame("an_table1"),
-                                                         table_tools("table1", in_report=True))),
+                                                         table_tools("table1"))),
                      ui.nav_panel("Regional differences", figure_card(
                          "Where does each subtype differ?", AN_HELP["regions"],
                          ui.output_plot("an_regions_plot", height="520px"),
@@ -42,7 +42,7 @@ panel = ui.nav_panel(step_title(5, "Subtype analysis", "step5_status"),
                                                                         "hex codes from less to more tau"))),
                      ui.nav_panel("Stage vs variable", figure_card("Stage against a variable", AN_HELP["stage"],
                                                                    ui.output_data_frame("an_stage_table"),
-                                                                   table_tools("stage_table", in_report=True),
+                                                                   table_tools("stage_table"),
                                                                    ui.output_plot("an_stage_plot", height="460px"),
                                                                    figure_tools("stage_plot"))),
                      ui.nav_panel("Left-right asymmetry", figure_card(
@@ -373,15 +373,17 @@ def server(input, output, session, shared):
     def an_followup_table():
         return render.DataGrid(make_followup_table())
 
-    # Save and "Include in report" for the figures and tables of this tab
-    add_table(report_items, "table1", "Table 1: the subtypes compared", lambda: make_table1().set_index("variable"))
-    add_figure(report_items, "regions", "Where does each subtype differ", make_regions)
-    add_table(report_items, "stage_table", "Stage against a variable", make_stage_table)
-    add_figure(report_items, "stage_plot", "Stage against a variable", make_stage_plot)
-    add_figure(report_items, "asymmetry", "Left-right asymmetry", make_asymmetry)
-    add_figure(report_items, "cohort_plot", "Subtypes per cohort", make_cohort_plot)
+    # Save buttons (and place in the report) for the figures and tables of this tab
+    add_table(report_items, "table1", "Table 1: the subtypes compared", lambda: make_table1().set_index("variable"),
+              in_report=True)
+    add_figure(report_items, "regions", "Where does each subtype differ", make_regions, in_report=True)
+    add_table(report_items, "stage_table", "Stage against a variable", make_stage_table, in_report=True)
+    add_figure(report_items, "stage_plot", "Stage against a variable", make_stage_plot, in_report=True)
+    add_figure(report_items, "asymmetry", "Left-right asymmetry", make_asymmetry, in_report=True)
+    add_figure(report_items, "cohort_plot", "Subtypes per cohort", make_cohort_plot, in_report=True)
     add_table(report_items, "cohort_table", "Subtypes per cohort", make_cohort_table)
-    add_figure(report_items, "followup_plot", "Follow-up scans: stage over time", make_followup_plot)
+    add_figure(report_items, "followup_plot", "Follow-up scans: stage over time", make_followup_plot,
+               in_report=True)
     add_table(report_items, "followup_table", "Follow-up scans", make_followup_table)
     add_table(report_items, "compare", "Two runs compared", lambda: an_comparison()[0])
 
@@ -416,7 +418,7 @@ def server(input, output, session, shared):
                   f"Made {datetime.now():%Y-%m-%d %H:%M}. Subtypes are numbered by number of tau+ people "
                   f"(Subtype 1 = most). Subtype names: {', '.join(titles)}.\n"
                   "figures/: PNG (300 dpi) and PDF. tables/: CSV (per_person = one row per person). "
-                  "Only the figures and tables ticked 'Include in report' are here. settings.yaml: everything "
+                  "settings.yaml: everything "
                   "the run used.\n")
         orders = event_orders(d["result"], d["Z_vals"], d["regions"], d["order"])
         return {"run": folder.name, "k": d["k"], "settings": settings,

@@ -11,14 +11,12 @@
   --tt-attention: #9A5B00;    /* "needs your action" */
 }
 
-body {
-  font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--tt-ink);
-  background: var(--tt-bg);
+/* one font for the whole app, its tables and its figures (src/tau_typer.mplstyle uses the same) */
+body, table, .shiny-data-grid, .popover, .form-control, .form-select, .btn {
+  font-family: Arial, Helvetica, "Helvetica Neue", sans-serif;
 }
-/* tables: the system font (Atkinson's slashed zero makes long number columns busy), aligned digits */
-table, .shiny-data-grid { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-                          font-variant-numeric: tabular-nums; }
+body { color: var(--tt-ink); background: var(--tt-bg); }
+table, .shiny-data-grid { font-variant-numeric: tabular-nums; }   /* digits line up in columns */
 .text-muted { color: var(--tt-slate) !important; }
 
 /* ---- the step rail: the main navigation, one step per tab, each with its status ---- */
@@ -71,6 +69,17 @@ table, .shiny-data-grid { font-family: system-ui, -apple-system, "Segoe UI", san
 .tt-tools .form-group, .tt-tools .shiny-input-container { margin-bottom: 0; }
 .tt-tools .form-label { font-size: .8rem; color: var(--tt-slate); margin-bottom: .15rem; }
 .tt-tools .form-check { margin-bottom: .3rem; }
+
+/* ---- EDA report: one readable column, each part a block with its conclusions first ---- */
+.tt-eda { max-width: 1150px; margin: 1rem auto; }
+.tt-eda-part { background: #fff; border: 1px solid var(--tt-line); border-radius: 10px; padding: 1rem 1.25rem;
+               margin-top: 1rem; }
+.tt-eda-findings { border-left: 3px solid var(--tt-accent); background: #EEF5F7; padding: .5rem .75rem .1rem;
+                   border-radius: 4px; font-size: .92rem; }
+.tt-eda-scroll { overflow-x: auto; }
+.tt-eda-table { font-size: .82rem; margin-bottom: .25rem; }
+.tt-eda-table th { color: var(--tt-slate); font-weight: 700; white-space: nowrap; }
+.tt-eda-figure { max-width: 100%; height: auto; display: block; margin-top: .25rem; }
 
 /* ---- keyboard focus always visible ---- */
 :focus-visible { outline: 3px solid #2D7FF9; outline-offset: 2px; }

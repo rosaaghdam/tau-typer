@@ -30,12 +30,18 @@ FIG_HELP = {    # short help text above each tab-4 figure
     "patterns": "Top: how much tau each subtype has in each region - the average z-score of its tau+ people "
                 "(number in each cell). Bottom: the same, split into stage groups (early stages on the left, late "
                 "on the right), so you can see where tau spreads as the stage rises. n = number of people.",
+    "brain": "The numbers of the figure above drawn on a simple side view of each hemisphere (left one facing "
+             "left, right one facing right): each lobe coloured by the subtype's average z-score. The MTL "
+             "(hippocampus, entorhinal) lies on the inner side of the brain, so it is drawn as the dashed oval. "
+             "Only a drawing to see the pattern at a glance - the lobes are not to scale. Grey hatched = no "
+             "region of the data in that lobe.",
     "probs": "How clearly each tau+ person belongs to one subtype. Each dot is a person, each "
              "corner a subtype: close to a corner = a clear member of that subtype; towards the middle = a mix "
              "of subtypes. The dashed box marks the middle; the legend gives the % of people inside and outside "
              "it.",
-    "stages": "Top: how many tau+ people are at each SuStaIn stage, coloured by subtype; people at stage 0 "
-              "(S0, no abnormal tau) are only counted in the legend. Bottom left: how sure SuStaIn is about each "
+    "stages": "Top: % of all people at each SuStaIn stage, coloured by subtype; S0 (stage 0, no abnormal tau) "
+              "in grey. The S0 bar is usually much higher than the others, so it is cut at the top and its "
+              "real % is written on it. Bottom left: how sure SuStaIn is about each "
               "person's stage (SD of their stage probabilities) - low = sure, high = the stage could be one of "
               "several (often higher in the middle stages, where events overlap - the pale squares of the PVD). "
               "Bottom right: the same per subtype. Choosing a subtype above shows it in colour and the others "
@@ -119,30 +125,28 @@ def figure_card(title, help_text, *content):
     return ui.card(ui.card_header(title, info), *content, full_screen=True)
 
 
-def figure_tools(fig_id, colors=None, in_report=True, colors_label="Colours (hex codes, comma-separated)"):
-    """Under one figure: its colours (if colors is given: the starting text), save as PNG / PDF, and
-    "Include in report". The server side is add_figure(fig_id, ...)."""
+def figure_tools(fig_id, colors=None, colors_label="Colours (hex codes, comma-separated)"):
+    """Under one figure: its colours (if colors is given: the starting text) and save as PNG / PDF.
+    The server side is add_figure(fig_id, ...)."""
     parts = []
     if colors is not None:
         parts.append(ui.input_text(f"{fig_id}_colors", colors_label, value=colors, width="24rem"))
     parts += [ui.download_button(f"{fig_id}_png", "Save PNG", class_="btn-sm btn-outline-secondary"),
-              ui.download_button(f"{fig_id}_pdf", "Save PDF", class_="btn-sm btn-outline-secondary"),
-              ui.input_checkbox(f"{fig_id}_report", "Include in report", value=in_report)]
+              ui.download_button(f"{fig_id}_pdf", "Save PDF", class_="btn-sm btn-outline-secondary")]
     return ui.div(*parts, class_="tt-tools")
 
 
-def table_tools(table_id, in_report=False):
-    """Under one table: save as CSV and "Include in report". The server side is add_table(table_id, ...)."""
+def table_tools(table_id):
+    """Under one table: save as CSV. The server side is add_table(table_id, ...)."""
     return ui.div(ui.download_button(f"{table_id}_csv", "Save CSV", class_="btn-sm btn-outline-secondary"),
-                  ui.input_checkbox(f"{table_id}_report", "Include in report", value=in_report),
                   class_="tt-tools")
 
 
-def add_figure(report_items, fig_id, title, make):
-    """Server side of figure_tools: the PNG and PDF downloads of one figure, and its place in the report.
-    make() draws the figure - the same function the page uses, so the files look like the page.
-    report_items: {"figures": {fig_id: (title, make)}, "tables": {...}}, shared by all tabs."""
-    report_items["figures"][fig_id] = (title, make)
+def add_figure(report_items, fig_id, title, make, in_report=False):
+    """Server side of figure_tools: the PNG and PDF downloads of one figure, and whether it goes into the
+    report (tab 6). make() draws the figure - the same function the page uses, so the files look like the
+    page. report_items: {"figures": {fig_id: (title, make, in_report)}, "tables": {...}}, shared by all tabs."""
+    report_items["figures"][fig_id] = (title, make, in_report)
     for fmt in ("png", "pdf"):
         save = figure_file(make, fmt)
         save.__name__ = f"{fig_id}_{fmt}"                       # = the id of its download button
@@ -160,9 +164,10 @@ def figure_file(make, fmt):
     return save
 
 
-def add_table(report_items, table_id, title, make):
-    """Server side of table_tools: the CSV download of one table (make() gives it) and its place in the report."""
-    report_items["tables"][table_id] = (title, make)
+def add_table(report_items, table_id, title, make, in_report=False):
+    """Server side of table_tools: the CSV download of one table (make() gives it) and whether it goes into
+    the report."""
+    report_items["tables"][table_id] = (title, make, in_report)
 
     def save():
         yield make().to_csv()
@@ -170,13 +175,13 @@ def add_table(report_items, table_id, title, make):
     render.download_button(filename=f"tau_typer_{table_id}.csv")(save)
 
 
-def chosen_for_report(input, items):
-    """{title: what make() gives} for the items whose "Include in report" box is ticked. Items that
-    cannot be made yet (e.g. no data uploaded) are left out."""
+def chosen_for_report(items):
+    """{title: what make() gives} for the items that go into the report. Items that cannot be made yet
+    (e.g. no data uploaded) are left out."""
     chosen = {}
-    for item_id, (title, make) in items.items():
+    for title, make, in_report in items.values():
         try:
-            if input[f"{item_id}_report"]():
+            if in_report:
                 chosen[title] = make()
         except Exception:                                  # box not drawn yet, or nothing to show yet
             continue
