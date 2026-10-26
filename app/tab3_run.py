@@ -350,8 +350,8 @@ def server(input, output, session, shared):
 
     @render.ui
     def event_order_view():
-        """Two tables: the best EM model against the best MCMC sample, and against the MCMC mean-position
-        order. One row per event position; events at a different place are red in both columns."""
+        """Two tables: the best EM model against the best MCMC sample, and against the MCMC mean-stage
+        order. One row per stage; events at a different place are red in both columns."""
         shown_table()                                       # waits until a run and model are chosen
         folder, settings = shown_run(), shown_settings()
         result = load_sustain_result(folder, settings["dataset_name"], int(input.result_model()))
@@ -366,7 +366,7 @@ def server(input, output, session, shared):
         n_samples = np.asarray(result["samples_sequence"]).shape[2]
 
         def table(other, other_name, other_f, f_word):
-            """EM and the other order side by side per subtype; red = a different event at that position."""
+            """EM and the other order side by side per subtype; red = a different event at that stage."""
             red = "color: #C62828; font-weight: bold;"
             head = [ui.tags.th("Stage")]
             for n in range(1, len(em) + 1):
@@ -379,7 +379,7 @@ def server(input, output, session, shared):
                     style = red if a[i] != b[i] else None
                     cells += [ui.tags.td(a[i], style=style), ui.tags.td(b[i], style=style)]
                 rows.append(ui.tags.tr(*cells))
-            counts = "; ".join(f"S{n}: {sum(x != y for x, y in zip(a, b))} of {len(a)} positions differ"
+            counts = "; ".join(f"S{n}: {sum(x != y for x, y in zip(a, b))} of {len(a)} stages differ"
                                for n, (a, b) in enumerate(zip(em, other), start=1))
             return ui.TagList(
                 ui.div(ui.tags.table(ui.tags.thead(ui.tags.tr(*head)), ui.tags.tbody(*rows),
@@ -391,16 +391,16 @@ def server(input, output, session, shared):
             ui.p(f"The best EM model found over all starts, next to the complete MCMC sample with the highest "
                  f"total log-likelihood (sample {best} of {n_samples:,}; log-likelihood {likelihood:.2f}). Each "
                  "model holds all subtype orders and their fractions f; all best-MCMC orders and fractions come "
-                 "from that same sample. Red = the two models have a different event at that position. The best "
+                 "from that same sample. Red = the two models have a different event at that stage. The best "
                  "MCMC sample may be the EM model itself, because the MCMC starts from it.",
                  class_="text-muted small"),
             table(best_orders, "best MCMC", best_f, "f"),
-            ui.h6("2. Best EM versus MCMC mean-position order", class_="mt-4"),
+            ui.h6("2. Best EM versus MCMC mean-stage order", class_="mt-4"),
             ui.p(f"The best EM model next to an order summarised over all {n_samples:,} MCMC samples: for each "
-                 "subtype, each event's mean position over all saved samples (repeated states included), events "
+                 "subtype, each event's mean stage over all saved samples (repeated states included), events "
                  "then sorted by that mean. Headers: EM fraction f and mean MCMC fraction. Red = a different "
-                 "event at that position. This summary order is not necessarily a sampled or best-fit model "
-                 "(the PVD shows the full distribution of event positions). Exact ties in mean position are "
+                 "event at that stage. This summary order is not necessarily a sampled or best-fit model "
+                 "(the PVD shows the full distribution of event stages). Exact ties in mean stage are "
                  "shown in pySuStaIn's event order, not by evidence.", class_="text-muted small"),
             table(mean, "MCMC mean order", mean_f, "mean f"),
             ui.p("Subtypes are numbered by their number of tau+ people (S1 = most), as everywhere in the app; "
