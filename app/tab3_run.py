@@ -4,6 +4,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 from shiny import reactive, render, req, ui
@@ -12,7 +13,7 @@ from src.app_runs import list_runs, prepare_run_folder, read_run_inputs, start_r
 from src.figures import plot_model_choice
 from src.report import pysustain_info
 from src.results import (best_sample_orders, event_orders, load_sustain_result, mcmc_traces, model_likelihoods, size_order,
-                         subject_table, subtype_summary)
+                         subject_table, subtype_fractions, subtype_summary)
 from src.sustain_model import make_z_vals
 from common import (CONFIG, DATA_HELP, NORM_METHODS, REFERENCE_GROUPS, ROOT, add_figure, add_table, figure_card,
                     figure_tools, step_status, step_title, table_tools)
@@ -349,50 +350,61 @@ def server(input, output, session, shared):
 
     @render.ui
     def event_order_view():
-        """EM order and MCMC order of each subtype; events at a different place are red."""
+        """Two tables: the best EM model against the best MCMC sample, and against the MCMC mean-position
+        order. One row per event position; events at a different place are red in both columns."""
         shown_table()                                       # waits until a run and model are chosen
         folder, settings = shown_run(), shown_settings()
         result = load_sustain_result(folder, settings["dataset_name"], int(input.result_model()))
         Z_vals = make_z_vals(settings["regions"], settings["cut_points"])
-        orders = event_orders(result, Z_vals, settings["regions"], size_order(result))
-        best, best_orders = best_sample_orders(result, Z_vals, settings["regions"], size_order(result))
+        order = size_order(result)
+        orders = event_orders(result, Z_vals, settings["regions"], order)
+        best, best_orders = best_sample_orders(result, Z_vals, settings["regions"], order)
+        em_f, best_f, mean_f = subtype_fractions(result, order)
+        em = [em_order for em_order, _, _ in orders]
+        mean = [mean_order for _, mean_order, _ in orders]
+        likelihood = float(np.asarray(result["samples_likelihood"]).ravel()[best - 1])
+        n_samples = np.asarray(result["samples_sequence"]).shape[2]
 
-        def show(events, other):
-            """Events joined by arrows; red where the other order has a different event at that place."""
-            parts = []
-            for i, event in enumerate(events):
-                if i > 0:
-                    parts.append(" → ")
-                parts.append(ui.tags.span(event, style="color: #C62828; font-weight: bold;")
-                             if event != other[i] else event)
-            return ui.TagList(*parts)
+        def table(other, other_name, other_f, f_word):
+            """EM and the other order side by side per subtype; red = a different event at that position."""
+            red = "color: #C62828; font-weight: bold;"
+            head = [ui.tags.th("Event position")]
+            for n in range(1, len(em) + 1):
+                head += [ui.tags.th(f"S{n} EM (f={em_f[n - 1]:.4f})"),
+                         ui.tags.th(f"S{n} {other_name} ({f_word}={other_f[n - 1]:.4f})")]
+            rows = []
+            for i in range(len(em[0])):
+                cells = [ui.tags.td(i + 1)]
+                for a, b in zip(em, other):
+                    style = red if a[i] != b[i] else None
+                    cells += [ui.tags.td(a[i], style=style), ui.tags.td(b[i], style=style)]
+                rows.append(ui.tags.tr(*cells))
+            counts = "; ".join(f"S{n}: {sum(x != y for x, y in zip(a, b))} of {len(a)} positions differ"
+                               for n, (a, b) in enumerate(zip(em, other), start=1))
+            return ui.TagList(
+                ui.div(ui.tags.table(ui.tags.thead(ui.tags.tr(*head)), ui.tags.tbody(*rows),
+                                     class_="table table-sm table-striped small"), style="overflow-x: auto;"),
+                ui.p(counts, class_="small"))
 
-        rows = []
-        for n, ((em, mcmc, _), best_order) in enumerate(zip(orders, best_orders), start=1):
-            n_diff = sum(a != b for a, b in zip(em, mcmc))
-            note = "same order" if n_diff == 0 else f"{n_diff} of {len(em)} places differ"
-            same_as_em = best_order == em
-            name = ui.tags.td(ui.strong(f"Subtype {n}"), ui.br(), ui.tags.small(note), rowspan=2 if same_as_em else 3)
-            rows.append(ui.tags.tr(name, ui.tags.td("EM", ui.br(), ui.tags.small(
-                f"= best MCMC sample ({best})" if same_as_em else "")), ui.tags.td(show(em, mcmc))))
-            if not same_as_em:
-                rows.append(ui.tags.tr(ui.tags.td("best MCMC sample", ui.br(), ui.tags.small(f"sample {best}")),
-                                       ui.tags.td(show(best_order, em))))
-            rows.append(ui.tags.tr(ui.tags.td("MCMC average"), ui.tags.td(show(mcmc, em))))
         return ui.TagList(
-            ui.h6("Event order of each subtype", class_="mt-4"),
-            ui.p(f"EM = the best order SuStaIn found; the MCMC starts from it. Best MCMC sample = the MCMC "
-                 f"sample with the highest likelihood (here sample {best}); when it is the EM order itself, it is "
-                 "not shown again. MCMC average = events sorted by their average place over all MCMC samples: "
-                 "a summary of the samples, and this exact order may never occur in any of them (the PVD shows "
-                 "the full distribution of event places, not just their average). Red = a different event at "
-                 "that place than in the EM order. Subtypes are "
-                 "numbered by their number of tau+ people (Subtype 1 = most), as everywhere in the app; "
-                 "pySuStaIn's own order (by estimated fraction f, ml_f_EM) can differ.",
+            ui.h6("1. Best EM versus best MCMC", class_="mt-4"),
+            ui.p(f"The best EM model found over all starts, next to the complete MCMC sample with the highest "
+                 f"total log-likelihood (sample {best} of {n_samples:,}; log-likelihood {likelihood:.2f}). Each "
+                 "model holds all subtype orders and their fractions f; all best-MCMC orders and fractions come "
+                 "from that same sample. Red = the two models have a different event at that position. The best "
+                 "MCMC sample may be the EM model itself, because the MCMC starts from it.",
                  class_="text-muted small"),
-            ui.tags.table(ui.tags.thead(ui.tags.tr(ui.tags.th("subtype"), ui.tags.th("from"),
-                                                   ui.tags.th("event order (first → last)"))),
-                          ui.tags.tbody(*rows), class_="table table-sm table-bordered small"))
+            table(best_orders, "best MCMC", best_f, "f"),
+            ui.h6("2. Best EM versus MCMC mean-position order", class_="mt-4"),
+            ui.p(f"The best EM model next to an order summarised over all {n_samples:,} MCMC samples: for each "
+                 "subtype, each event's mean position over all saved samples (repeated states included), events "
+                 "then sorted by that mean. Headers: EM fraction f and mean MCMC fraction. Red = a different "
+                 "event at that position. This summary order is not necessarily a sampled or best-fit model "
+                 "(the PVD shows the full distribution of event positions). Exact ties in mean position are "
+                 "shown in pySuStaIn's event order, not by evidence.", class_="text-muted small"),
+            table(mean, "MCMC mean order", mean_f, "mean f"),
+            ui.p("Subtypes are numbered by their number of tau+ people (S1 = most), as everywhere in the app; "
+                 "pySuStaIn's own order (by fraction f) can differ.", class_="text-muted small"))
 
     @render.download_button(filename=lambda: f"{shown_run().name}_subtypes_stages.csv")
     def download_subjects():

@@ -313,14 +313,15 @@ def test_z_max_too_low_for_the_data_is_flagged():
 
 
 def test_upload_summary_appears_after_the_upload():
-    """Nothing before an upload; then the samples, regions, sites and other variables of the file."""
+    """Nothing before an upload; then the number of samples (rows) and variables (columns) of the file."""
     from conftest import ROOT
     with test_server(APP, timeout_secs=120) as ts:
         assert "Data uploaded" not in str(ts.get_output("upload_summary").value)
         ts.set_inputs(data_file=toy_upload(ROOT / "data" / "toy" / "sim_tau_400.csv"), **DATA_INPUTS, **NORM_INPUTS)
         for _ in range(2):
             ts.set_inputs(col_cohort="site")
-        assert "400 samples, 10 regions, 3 sites, 16 variables" in str(ts.get_output("upload_summary").value)
+        columns = len(open(ROOT / "data" / "toy" / "sim_tau_400.csv").readline().split(","))
+        assert f"400 samples, {columns} variables" in str(ts.get_output("upload_summary").value)
 
 
 def test_eda_report_and_its_pdf():

@@ -88,6 +88,16 @@ def event_orders(result, Z_vals, regions, order, min_share=0.05):
     return orders
 
 
+def subtype_fractions(result, order):
+    """Estimated fraction f of each subtype (Subtype 1 first): (EM, in the best MCMC sample, mean over all
+    MCMC samples)."""
+    subtypes = pvd_order(result, order)                    # same numbers as samples_sequence
+    samples_f = np.asarray(result["samples_f"])
+    best = int(np.argmax(np.asarray(result["samples_likelihood"]).ravel()))
+    return (np.asarray(result["ml_f_EM"]).ravel()[subtypes], samples_f[subtypes, best],
+            samples_f.mean(axis=1)[subtypes])
+
+
 def best_sample_orders(result, Z_vals, regions, order):
     """(MCMC sample with the highest likelihood (1 = first), the event order of each subtype in it, Subtype 1
     first). pySuStaIn starts the MCMC from the EM order, so this is often the EM order itself."""

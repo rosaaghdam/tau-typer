@@ -38,7 +38,7 @@ panel = ui.nav_panel(step_title(2, "Normalization", "step2_status"),
                                                     choices=[], multiple=True),
                                  ui.p("e.g. age x sex: does the effect of age differ between men and women?",
                                       class_="text-muted small"),
-                                 ui.input_checkbox("adjust_only_sig", "Remove only where significant", value=True),
+                                 ui.input_checkbox("adjust_only_sig", "Adjust only where significant", value=True),
                                  ui.panel_conditional(
                                      "input.adjust_only_sig",
                                      ui.input_numeric("adjust_alpha", "p-value limit",

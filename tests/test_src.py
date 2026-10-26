@@ -281,3 +281,15 @@ def test_pairs_together():
     per_subtype, everyone = pairs_together(flows)
     assert per_subtype[1] == 50 and per_subtype[2] == 100      # 3 of 6 pairs; 1 of 1 pair
     assert round(everyone, 1) == round(100 * 4 / 7, 1)
+
+
+def test_subtype_fractions(one_run):
+    """EM, best-sample and mean MCMC fractions: one per subtype, each set summing to about 1."""
+    import yaml
+    from conftest import ROOT
+    from src.results import load_sustain_result, size_order, subtype_fractions
+    folder = ROOT / "results" / "app_runs" / one_run
+    settings = yaml.safe_load(open(folder / "settings.yaml"))
+    result = load_sustain_result(folder, settings["dataset_name"], 2)
+    for f in subtype_fractions(result, size_order(result)):
+        assert len(f) == 2 and abs(f.sum() - 1) < 1e-6

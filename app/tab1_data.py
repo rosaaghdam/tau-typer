@@ -104,29 +104,12 @@ def server(input, output, session, shared):
 
     @render.ui
     def upload_summary():
-        """Right under the upload: what is in the file (samples, regions, sites, other variables)."""
+        """Right under the upload: how many samples (rows) and variables (columns) the file has. Only these two,
+        so it is right for any file, whatever its column names."""
         data = uploaded_data()
         if data is None:
             return None
-        guess = guess_columns(list(data.columns))
-
-        def chosen(name):
-            """The box's choice, or the first guess while the boxes are not drawn yet."""
-            try:
-                return input[f"col_{name}"]()
-            except SilentException:
-                return guess[name]
-        regions = list(chosen("regions") or [])
-        roles = {role: chosen(role) for role in ("id", "cohort", "visit")}
-        cohort = roles.get("cohort")
-        sites = data[cohort].nunique() if cohort and cohort in data else 1
-        skip = set(regions) | {roles.get("id"), cohort, roles.get("visit")}
-        variables = len([c for c in data.columns if c not in skip])
-        parts = [f"{len(data)} samples", f"{len(regions)} regions"]
-        if sites > 1:
-            parts.append(f"{sites} sites")
-        parts.append(f"{variables} variables")
-        return ui.p("Data uploaded: " + ", ".join(parts) + ".", class_="small fw-bold mt-1",
+        return ui.p(f"Data uploaded: {len(data)} samples, {len(data.columns)} variables.", class_="small fw-bold mt-1",
                     style="color: var(--tt-accent);")
 
     @render.ui
