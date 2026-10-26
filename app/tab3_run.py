@@ -368,7 +368,7 @@ def server(input, output, session, shared):
         def table(other, other_name, other_f, f_word):
             """EM and the other order side by side per subtype; red = a different event at that position."""
             red = "color: #C62828; font-weight: bold;"
-            head = [ui.tags.th("Event position")]
+            head = [ui.tags.th("Stage")]
             for n in range(1, len(em) + 1):
                 head += [ui.tags.th(f"S{n} EM (f={em_f[n - 1]:.4f})"),
                          ui.tags.th(f"S{n} {other_name} ({f_word}={other_f[n - 1]:.4f})")]
